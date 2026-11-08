@@ -571,6 +571,7 @@ namespace Nuvio
             {
                 return;
             }
+            _bridge?.SetWebViewReady(false);
             if (_automaticWebViewRecoveries >= 2)
             {
                 ShowLoadError("The web view stopped repeatedly. Select Retry to reopen it.", false);
@@ -601,6 +602,7 @@ namespace Nuvio
             {
                 return;
             }
+            _bridge?.SetWebViewReady(false);
             if (_automaticBrowserRecoveries >= 2)
             {
                 ShowLoadError("The web view stopped repeatedly. Select Retry to reopen it.", false);
