@@ -183,10 +183,13 @@ html.pointer .chip:hover:not(.focused) { background: var(--surface-2); }
 .row-title { font-size: 1.45rem; font-weight: 700; }
 .row-subtitle { color: var(--muted); font-size: 1rem; }
 .row-track {
-  display: flex; gap: 1.1rem; overflow-x: auto; overflow-y: visible; scrollbar-width: none;
-  padding: .9rem 0 1.3rem;
+  display: flex; gap: 1.1rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  /* Keep focus zoom inside the row's scrollport while clipping cards to the viewport. */
+  padding: 1.1rem 0 1.5rem;
   padding-inline: var(--content-left) var(--content-right);
   scroll-padding-inline: var(--content-left) var(--content-right);
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
 }
 
 .card { position: relative; flex: none; display: flex; flex-direction: column; gap: .55rem; transition: transform .18s var(--ease); }
