@@ -51,15 +51,38 @@ namespace Nuvio.Playback
             if (_mediaPlayer != null) return;
             if (view == null) throw new ArgumentNullException(nameof(view));
             _view = view;
-            _mediaPlayer = new MediaPlayer { AutoPlay = false, IsMuted = false, Volume = 1.0 };
-            _mediaPlayer.MediaFailed += OnMediaFailed;
-            _mediaPlayer.MediaEnded += OnMediaEnded;
-            _mediaPlayer.PlaybackSession.PlaybackStateChanged += OnPlaybackStateChanged;
-            _mediaPlayer.PlaybackSession.PositionChanged += OnPositionChanged;
-            _mediaPlayer.PlaybackSession.NaturalDurationChanged += OnNaturalDurationChanged;
-            _mediaPlayer.PlaybackSession.BufferingProgressChanged += OnBufferingProgressChanged;
-            _view.SetMediaPlayer(_mediaPlayer);
-            Log.Write("Native Windows Media Foundation player ready");
+            CreateMediaPlayer();
+        }
+
+        private void CreateMediaPlayer()
+        {
+            if (_view == null) throw new InvalidOperationException("The native video surface is not available.");
+            if (_mediaPlayer != null) return;
+
+            var player = new MediaPlayer { AutoPlay = false, IsMuted = false, Volume = 1.0 };
+            player.MediaFailed += OnMediaFailed;
+            player.MediaEnded += OnMediaEnded;
+            player.PlaybackSession.PlaybackStateChanged += OnPlaybackStateChanged;
+            player.PlaybackSession.PositionChanged += OnPositionChanged;
+            player.PlaybackSession.NaturalDurationChanged += OnNaturalDurationChanged;
+            player.PlaybackSession.BufferingProgressChanged += OnBufferingProgressChanged;
+            try
+            {
+                _view.SetMediaPlayer(player);
+                _mediaPlayer = player;
+                Log.Write("Native Windows Media Foundation player ready");
+            }
+            catch
+            {
+                player.MediaFailed -= OnMediaFailed;
+                player.MediaEnded -= OnMediaEnded;
+                player.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
+                player.PlaybackSession.PositionChanged -= OnPositionChanged;
+                player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
+                player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
+                player.Dispose();
+                throw;
+            }
         }
 
         private void SetViewOpacity(double opacity)
@@ -95,7 +118,7 @@ namespace Nuvio.Playback
             _pageId = request == null ? null : request.Id;
             _readySent = false;
             _openFailed = false;
-            if (_mediaPlayer == null)
+            if (_view == null)
             {
                 FailOpen(generation, "The native media player is not ready.");
                 return;
@@ -110,6 +133,7 @@ namespace Nuvio.Playback
             }
             try
             {
+                CreateMediaPlayer();
                 _mediaPlayer.Pause();
                 ClearCurrentSource();
                 if (_view != null) SetViewOpacity(0);
@@ -295,10 +319,8 @@ namespace Nuvio.Playback
             Interlocked.Increment(ref _openGeneration);
             CancelPendingOpen();
             _openFailed = true;
-            if (_mediaPlayer == null) return;
-            try { _mediaPlayer.Pause(); ClearCurrentSource(); }
-            catch (Exception ex) { Log.Error("Stopping native playback failed", ex); }
             if (_view != null) SetViewOpacity(0);
+            ReleaseMediaPlayer();
             RaiseState("stopped", null);
         }
 
@@ -337,22 +359,43 @@ namespace Nuvio.Playback
         }
         public void SetViewSize(double width, double height) { }
 
+        private void ReleaseMediaPlayer()
+        {
+            var player = _mediaPlayer;
+            if (player == null)
+            {
+                ClearCurrentSource();
+                return;
+            }
+
+            try { player.Pause(); }
+            catch (Exception ex) { Log.Error("Pausing native playback for cleanup failed", ex); }
+
+            // Detach the source and rendering surface before disposing the player. Keeping a
+            // MediaPlayerElement bound to a stopped MediaPlayer can retain decoder/GPU resources
+            // after the user has left the playback page.
+            ClearCurrentSource();
+            try { if (_view != null) _view.SetMediaPlayer(null); }
+            catch (Exception ex) { Log.Error("Detaching the native media surface failed", ex); }
+
+            player.MediaFailed -= OnMediaFailed;
+            player.MediaEnded -= OnMediaEnded;
+            player.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
+            player.PlaybackSession.PositionChanged -= OnPositionChanged;
+            player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
+            player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
+            try { player.Dispose(); }
+            catch (Exception ex) { Log.Error("Disposing native playback failed", ex); }
+            _mediaPlayer = null;
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;
-            if (_mediaPlayer != null)
-            {
-                _mediaPlayer.MediaFailed -= OnMediaFailed;
-                _mediaPlayer.MediaEnded -= OnMediaEnded;
-                _mediaPlayer.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
-                _mediaPlayer.PlaybackSession.PositionChanged -= OnPositionChanged;
-                _mediaPlayer.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
-                _mediaPlayer.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
-                try { _mediaPlayer.Pause(); ClearCurrentSource(); _mediaPlayer.Dispose(); }
-                catch (Exception ex) { Log.Error("Disposing native playback failed", ex); }
-                _mediaPlayer = null;
-            }
+            Interlocked.Increment(ref _openGeneration);
+            CancelPendingOpen();
+            ReleaseMediaPlayer();
             _view = null;
         }
 
