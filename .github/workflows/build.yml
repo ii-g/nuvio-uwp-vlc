@@ -113,7 +113,7 @@ jobs:
       - name: Verify package
         shell: pwsh
         run: |
-          # Fail the build if VLC, its runtime or the web app didn't make it into the package, and
+          # Fail the build if the native app or the web app didn't make it into the package, and
           # publish a summary as an annotation so it can be read without downloading the artifact.
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $msix = Get-ChildItem AppPackages -Recurse -Include *.msix, *.appx |
@@ -128,33 +128,16 @@ jobs:
             if ($manifest.Package.Identity.ProcessorArchitecture -ne 'x64') {
               throw "Expected an x64 MSIX, got $($manifest.Package.Identity.ProcessorArchitecture)."
             }
-            foreach ($nativeDll in @('libvlc.dll', 'libvlccore.dll')) {
-              $entry = $zip.GetEntry($nativeDll)
-              if (-not $entry) { throw "Missing from package: $nativeDll" }
-              $stream = $entry.Open()
-              $reader = New-Object IO.BinaryReader($stream)
-              try {
-                $stream.Seek(0x3C, [IO.SeekOrigin]::Begin) | Out-Null
-                $peOffset = $reader.ReadInt32()
-                $stream.Seek($peOffset + 4, [IO.SeekOrigin]::Begin) | Out-Null
-                $machine = $reader.ReadUInt16()
-              } finally { $reader.Dispose() }
-              if ($machine -ne 0x8664) {
-                throw "$nativeDll is not x64 (PE machine 0x$('{0:X4}' -f $machine))."
-              }
-            }
             $dependencies = $manifest.Package.Dependencies.PackageDependency | ForEach-Object { $_.Name }
           } finally { $zip.Dispose() }
-          $plugins = @($entries | Where-Object { $_ -like 'plugins/*.dll' }).Count
           $webFiles = @($entries | Where-Object { $_ -like 'web/*' }).Count
           $sizeMb = [math]::Round($msix.Length / 1MB, 1)
-          $summary = "$($msix.Name) ($sizeMb MB): $plugins VLC plugins, $webFiles web app files; depends on $($dependencies -join ', ')"
+          $summary = "$($msix.Name) ($sizeMb MB): native MediaPlayerElement, $webFiles web app files; depends on $($dependencies -join ', ')"
           "::notice title=Package (${{ matrix.configuration }})::$summary"
           # Managed DLLs are compiled into Nuvio.dll by .NET Native in Release, so only check native ones.
-          $missing = @('libvlc.dll', 'libvlccore.dll', 'web/index.html', 'web/js/main.js', 'web/css/app.css') | Where-Object { $entries -notcontains $_ }
+          $missing = @('web/index.html', 'web/js/main.js', 'web/css/app.css') | Where-Object { $entries -notcontains $_ }
           if ($missing) { throw "Missing from package: $($missing -join ', ')" }
-          if ($plugins -lt 50) { throw "Only $plugins VLC plugins were packaged." }
-          if ($dependencies -notcontains 'Microsoft.VCLibs.140.00') { throw 'Package does not depend on Microsoft.VCLibs.140.00 (needed by libvlc).' }
+          if ($dependencies -notcontains 'Microsoft.VCLibs.140.00') { throw 'Package does not depend on Microsoft.VCLibs.140.00 (needed by WebView2).' }
           Get-ChildItem AppPackages -Recurse -File | ForEach-Object { $_.FullName.Substring($PWD.Path.Length + 1) }
 
       - uses: actions/upload-artifact@v6
@@ -164,15 +147,15 @@ jobs:
           if-no-files-found: error
 
       - name: Collect install files
-        # Only what's needed to install: the app at the top, its 5 x64 dependency packages in Dependencies.
+        # Only what's needed to install: the app at the top, its x64 dependency packages in Dependencies.
         if: matrix.configuration == 'Release'
         shell: pwsh
         run: |
           $test = Get-ChildItem AppPackages -Directory -Filter '*_Test' | Select-Object -First 1
           $app = @(Get-ChildItem $test.FullName -Filter *.msix)
           $dependencies = @(Get-ChildItem (Join-Path $test.FullName 'Dependencies\x64') -Filter *.appx)
-          if ($app.Count -ne 1 -or $dependencies.Count -ne 5) {
-            throw "Expected the app and 5 dependencies, found: $(($app + $dependencies).Name -join ', ')"
+          if ($app.Count -ne 1) {
+            throw "Expected one app package, found: $(($app + $dependencies).Name -join ', ')"
           }
           New-Item -ItemType Directory release\Dependencies -Force | Out-Null
           $app | Copy-Item -Destination release
@@ -203,12 +186,12 @@ jobs:
           Compress-Archive -Path release\* -DestinationPath NuvioUWPVLC-x64.zip
           # The app reads "What's new" and "Package version" from these notes for its update notice.
           $changes = [regex]::Match((Get-Content CHANGELOG.md -Raw -Encoding utf8), '(?ms)^## ' + [regex]::Escape($tag) + '[ \t]*\r?\n(.*?)(?=^## |\z)')
-          $notes = @("Nuvio for Xbox Developer Mode with VLC built in.", '')
+          $notes = @("Nuvio for Xbox Developer Mode with native Windows Media Foundation playback.", '')
           if ($changes.Success) { $notes += @("## What's new", $changes.Groups[1].Value.Trim(), '') }
           $notes += @(
             '## Install',
-            'Download **NuvioUWPVLC-x64.zip** and unzip it. It contains the app (.msix) and a Dependencies folder with the 5 dependency packages (.appx).',
-            'Install steps are in the README: upload the .msix in the Xbox Device Portal, then add the 5 files from Dependencies. Installing over an earlier version keeps your sign-in and data.',
+            'Download **NuvioUWPVLC-x64.zip** and unzip it. It contains the app (.msix) and a Dependencies folder with required dependency packages (.appx).',
+            'Install steps are in the README: upload the .msix in the Xbox Device Portal, then add the files from Dependencies. Installing over an earlier version keeps your sign-in and data.',
             '',
             "Package version: $($parts[0..2] -join '.')")
           $notes -join "`n" | Set-Content release-notes.md -Encoding utf8

@@ -2,7 +2,6 @@ using System;
 using System.IO;
 using System.Globalization;
 using System.Threading.Tasks;
-using LibVLCSharp.Platforms.Windows;
 using Microsoft.Web.WebView2.Core;
 using Nuvio.Bridge;
 using Nuvio.Diagnostics;
@@ -16,7 +15,6 @@ using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
-using Windows.UI.Xaml.Markup;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
@@ -24,7 +22,7 @@ namespace Nuvio
 {
     /// <summary>
     /// The Nuvio web app (web/ in the repository, packaged into the app) runs in a WebView2 on top
-    /// of a VLC video surface, and plays streams with VLC through <see cref="AppBridge"/>.
+    /// of a native MediaPlayerElement, and plays streams through <see cref="AppBridge"/>.
     /// </summary>
     public sealed partial class MainPage : Page, IAppHost
     {
@@ -33,7 +31,7 @@ namespace Nuvio
         private static readonly Uri BundledUri = new Uri("https://" + BundledHost + "/index.html");
         private const string WebAppUrlSetting = "webAppUrl";
 
-        private readonly VlcPlayer _player;
+        private readonly NativeMediaPlayer _player;
         private AppBridge _bridge;
         private ControllerBridge _controller;
         private Uri _appUri;
@@ -52,21 +50,7 @@ namespace Nuvio
             Log.Write("Main page starting");
             this.InitializeComponent();
             SetFlowDirection(string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "ar", StringComparison.OrdinalIgnoreCase));
-            _player = new VlcPlayer(Dispatcher);
-            _player.MediaPlayerCreated += mediaPlayer =>
-            {
-                if (VideoView != null)
-                {
-                    VideoView.MediaPlayer = mediaPlayer;
-                }
-            };
-            _player.VideoVisibleChanged += visible =>
-            {
-                if (VideoView != null)
-                {
-                    VideoView.Opacity = visible ? 1 : 0;
-                }
-            };
+            _player = new NativeMediaPlayer();
             // The page has its own focus navigation for the controller; the console's mouse-mode
             // cursor would only get in the way. The web app can turn it back on.
             SetPointerMode(false);
@@ -102,30 +86,13 @@ namespace Nuvio
             get { return _appUri == null || _appUri.Host == BundledHost; }
         }
 
-        /// <summary>
-        /// Called for an unhandled exception. If it came from the VLC video surface while it was
-        /// starting, drop the surface and keep the app running without VLC playback.
-        /// </summary>
+        /// <summary>Handles native media surface initialization failure without taking down the app.</summary>
         internal bool TryRecoverFromVideoFailure(Exception error)
         {
-            if (!_videoViewStarting)
-            {
-                return false;
-            }
+            if (!_videoViewStarting) return false;
             _videoViewStarting = false;
-            Log.Write("The VLC video surface failed to start; continuing without VLC playback");
-            try
-            {
-                if (VideoView != null)
-                {
-                    XamlMarkupHelper.UnloadObject(VideoView);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error("Removing the VLC video surface failed", ex);
-            }
-            _player.SetUnavailable("the video surface failed to start (" + error.Message + ")");
+            Log.Write("The native media surface failed to initialize; continuing without playback");
+            _player.SetUnavailable("the media surface failed to initialize (" + error.Message + ")");
             return true;
         }
 
@@ -450,38 +417,29 @@ namespace Nuvio
             }
         }
 
-        // Realizes the x:Load="False" VideoView. Done after the web app loads so that a problem in
-        // VLC's video surface can't keep the app from starting.
+        // Realize the native media surface after WebView loads so startup remains independent of playback.
         private void CreateVideoView()
         {
-            if (_videoViewRequested)
-            {
-                return;
-            }
+            if (_videoViewRequested) return;
             _videoViewRequested = true;
             try
             {
-                Log.Write("Creating the VLC video surface");
+                Log.Write("Creating the native MediaPlayerElement surface");
                 _videoViewStarting = true;
-                FindName(nameof(VideoView));
-                VideoView.Initialized += VideoView_Initialized;
+                FindName(nameof(MediaElement));
+                _player.Initialize(MediaElement);
+                _videoViewStarting = false;
+                Log.Write("Native media surface ready");
             }
             catch (Exception ex)
             {
                 _videoViewStarting = false;
-                Log.Error("Creating the VLC video surface failed", ex);
-                _player.SetUnavailable("the video surface could not be created (" + ex.Message + ")");
+                Log.Error("Creating the native media surface failed", ex);
+                _player.SetUnavailable("the media surface could not be created (" + ex.Message + ")");
             }
         }
 
-        private void VideoView_Initialized(object sender, InitializedEventArgs e)
-        {
-            _videoViewStarting = false;
-            Log.Write("VLC video surface ready");
-            _player.Initialize(e.SwapChainOptions);
-        }
-
-        private void VideoView_SizeChanged(object sender, SizeChangedEventArgs e)
+        private void MediaElement_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             _player.SetViewSize(e.NewSize.Width, e.NewSize.Height);
         }

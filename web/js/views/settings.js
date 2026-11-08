@@ -407,14 +407,14 @@ function aboutPage() {
   const facts = [
     ['Version', bridge.native ? (bridge.appVersion || 'unknown') + (kind === 'dev' ? ' (developer build)' : '') : 'Web'],
     ['Device', device],
-    ['Video player', bridge.native ? (bridge.vlcVersion ? `LibVLC ${bridge.vlcVersion}` : 'VLC (starting…)') : 'Browser <video>'],
+    ['Video player', bridge.native ? (bridge.mediaEngine || 'Windows Media Foundation') : 'Browser <video>'],
     bridge.native ? ['Web app', bridge.bundled ? 'Built in' : bridge.webAppUrl] : null,
     ['Addons', String(listAddons().length)],
   ].filter(Boolean);
   return page('About',
     h('div', { class: 'about-card' },
       img('assets/wordmark.png', { class: 'about-wordmark', alt: 'Nuvio', loading: 'eager' }),
-      h('p', null, 'An unofficial Nuvio client for Xbox and the web, with VLC built in so MKV, HEVC, Dolby Vision/HDR and lossless audio streams from debrid services play directly.'),
+      h('p', null, 'An unofficial Nuvio client for Xbox and the web, using the native Windows media player for direct playback.'),
       h('dl', { class: 'about-facts' }, facts.map(([k, v]) => [h('dt', null, k), h('dd', null, v)]))),
     kind ? updatesRow(kind) : null,
     bridge.native ? settingRow({
@@ -424,8 +424,8 @@ function aboutPage() {
       control: icon('chevron-right', 'setting-chevron'),
       onClick: () => router.go('settings/log'),
     }) : null,
-    settingRow({ label: 'Licences', description: 'GPL-3.0. Based on Nuvio (NuvioMedia) and Stremio UWP; video by LibVLC (LGPL-2.1).', icon: 'info' }),
-    h('p', { class: 'settings-hint' }, 'Not affiliated with NuvioMedia, Stremio or VideoLAN. Bring your own sources: Nuvio does not host or provide any content.'));
+    settingRow({ label: 'Licences', description: 'GPL-3.0. Based on Nuvio (NuvioMedia) and Stremio UWP.', icon: 'info' }),
+    h('p', { class: 'settings-hint' }, 'Not affiliated with NuvioMedia or Stremio. Bring your own sources: Nuvio does not host or provide any content.'));
 }
 
 function updatesRow(kind) {

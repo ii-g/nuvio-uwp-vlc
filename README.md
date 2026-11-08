@@ -1,8 +1,8 @@
 # Nuvio UWP VLC
 
-Nuvio for **Xbox Developer Mode** with **VLC built in**, plus the same Nuvio web app for any browser.
+Nuvio for **Xbox Developer Mode** with **native Windows Media Foundation playback**, plus the same Nuvio web app for any browser.
 
-Nuvio has no web or Xbox version, so this project is a Nuvio client written as a web app (`web/`) and packaged in a UWP app (`Nuvio/`) that plays everything with LibVLC. Debrid links in any format play: MKV, HEVC/H.265, 4K, Dolby Vision/HDR10, AV1, and TrueHD/Atmos/DTS-HD/EAC3 audio, because VLC does the decoding instead of the Edge engine. Nothing is torrented on the console; it only plays HTTP links served by your addons or debrid service.
+Nuvio has no web or Xbox version, so this project is a Nuvio client written as a web app (`web/`) and packaged in a UWP app (`Nuvio/`) that plays everything with Windows Media Foundation. Debrid links in any format play: MKV, HEVC/H.265, 4K, Dolby Vision/HDR10, AV1, and TrueHD/Atmos/DTS-HD/EAC3 audio, because VLC does the decoding instead of the Edge engine. Nothing is torrented on the console; it only plays HTTP links served by your addons or debrid service.
 
 > **VLC is wrapped into the app.** The package contains LibVLC (the engine behind VLC media player). You don't need to install anything else.
 

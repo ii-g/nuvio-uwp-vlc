@@ -67,11 +67,11 @@ namespace Nuvio.Bridge
         private static readonly HttpClient FetchClient = CreateFetchClient();
 
         private readonly CoreWebView2 _webView;
-        private readonly VlcPlayer _player;
+        private readonly NativeMediaPlayer _player;
         private readonly IAppHost _host;
         private readonly Uri _trustedOrigin;
 
-        public AppBridge(CoreWebView2 webView, VlcPlayer player, IAppHost host, Uri trustedOrigin)
+        public AppBridge(CoreWebView2 webView, NativeMediaPlayer player, IAppHost host, Uri trustedOrigin)
         {
             _webView = webView;
             _player = player;
@@ -251,7 +251,7 @@ namespace Nuvio.Bridge
             payload.SetNamedValue("platform", JsonValue.CreateStringValue(IsXbox ? "xbox" : "desktop"));
             payload.SetNamedValue("appVersion", JsonValue.CreateStringValue(
                 string.Format("{0}.{1}.{2}", version.Major, version.Minor, version.Build)));
-            payload.SetNamedValue("vlcVersion", _player.Version != null ? JsonValue.CreateStringValue(_player.Version) : JsonValue.CreateNullValue());
+            payload.SetNamedValue("mediaEngine", _player.Version != null ? JsonValue.CreateStringValue(_player.Version) : JsonValue.CreateNullValue());
             payload.SetNamedValue("webAppUrl", _host.WebAppUrl != null ? JsonValue.CreateStringValue(_host.WebAppUrl) : JsonValue.CreateNullValue());
             payload.SetNamedValue("bundled", JsonValue.CreateBooleanValue(_host.IsBundledWebApp));
             Send("app.hello", payload);

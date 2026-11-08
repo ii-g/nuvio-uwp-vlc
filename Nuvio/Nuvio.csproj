@@ -28,7 +28,6 @@
     <PackageCertificateThumbprint>11E70F8256EEC8E0DDBBF461F7228DDB378696E0</PackageCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <VlcUWPX64Enabled>true</VlcUWPX64Enabled>
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>builds\x64\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
@@ -40,7 +39,6 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <VlcUWPX64Enabled>true</VlcUWPX64Enabled>
     <OutputPath>builds\x64\Release\</OutputPath>
     <DefineConstants>TRACE;NETFX_CORE;WINDOWS_UWP</DefineConstants>
     <Optimize>true</Optimize>
@@ -55,17 +53,6 @@
   <PropertyGroup>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
-  <!-- VideoLAN.LibVLC.UWP's UWP targets flatten these linked Content files into the
-       package root. Pin the native payload to x64 and name every required asset group
-       explicitly so Release, Debug, and publish builds package the same complete runtime. -->
-  <PropertyGroup Condition="'$(Platform)' == 'x64'">
-    <VlcUWPX64Enabled>true</VlcUWPX64Enabled>
-    <VlcUWPX86Enabled>false</VlcUWPX86Enabled>
-    <VlcUWPARMEnabled>false</VlcUWPARMEnabled>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(Platform)' == 'x64'">
-    <VlcUWPX64IncludeFiles Include="libvlc.%2A;libvlccore.%2A;hrtfs\%2A%2A;locale\%2A%2A;lua\%2A%2A;plugins\%2A%2A" />
-  </ItemGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
@@ -107,17 +94,11 @@
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform">
       <Version>6.2.14</Version>
     </PackageReference>
-    <PackageReference Include="LibVLCSharp.UWP">
-      <Version>3.10.1</Version>
-    </PackageReference>
     <PackageReference Include="Microsoft.UI.Xaml">
       <Version>2.8.7</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.Web.WebView2">
       <Version>1.0.2849.39</Version>
-    </PackageReference>
-    <PackageReference Include="VideoLAN.LibVLC.UWP">
-      <Version>3.3.2</Version>
     </PackageReference>
   </ItemGroup>
   <PropertyGroup Condition=" '$(VisualStudioVersion)' == '' or '$(VisualStudioVersion)' &lt; '14.0' ">

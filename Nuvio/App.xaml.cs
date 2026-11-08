@@ -22,7 +22,7 @@ namespace Nuvio
             TaskScheduler.UnobservedTaskException += (s, e) => Log.Error("Unobserved task exception", e.Exception);
 
             // WebView2 reads these when it starts its browser process, so they must be set before the
-            // first page loads. A transparent background lets the VLC video under the page show through.
+            // first page loads. A transparent background lets the native media surface under the page show through.
             Environment.SetEnvironmentVariable("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "0");
             // Let the app reach addons and servers on the local network over plain http
             // (e.g. a self-hosted addon at http://192.168.1.10:7000, or a Jellyfin server), which

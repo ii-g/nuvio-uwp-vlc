@@ -13,7 +13,7 @@ export const bridge = {
   /** "xbox", "desktop" (UWP on a PC) or "web". */
   platform: 'web',
   appVersion: null,
-  vlcVersion: null,
+  mediaEngine: null,
   webAppUrl: null,
   bundled: true,
 
@@ -107,7 +107,7 @@ if (webview) {
     if (message.type === 'app.hello') {
       bridge.platform = message.platform || 'desktop';
       bridge.appVersion = message.appVersion || null;
-      bridge.vlcVersion = message.vlcVersion || null;
+      bridge.vlcVersion = message.mediaEngine || null;
       bridge.webAppUrl = message.webAppUrl || null;
       bridge.bundled = message.bundled !== false;
     }
