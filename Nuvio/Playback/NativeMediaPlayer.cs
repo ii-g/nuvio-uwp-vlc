@@ -96,7 +96,7 @@ namespace Nuvio.Playback
                 else source = MediaSource.CreateFromUri(uri);
 
                 if (_mediaPlayer == null || _disposed) return;
-                _mediaPlayer.Source = MediaPlaybackItem.Create(source);
+                _mediaPlayer.Source = source;
                 _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
                 _mediaPlayer.Play();
             }
