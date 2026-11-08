@@ -37,6 +37,7 @@ const DIRECTIONS = new Set(['up', 'down', 'left', 'right']);
 // The console may deliver a button both through the app and as a key; drop the echo.
 const DEDUPE_MS = 150;
 const TEXT_INPUT = /^(text|search|email|url|password|tel|number)$/i;
+const pendingScrolls = new WeakMap();
 
 const scopes = [];
 const groupMemory = new WeakMap();
@@ -66,6 +67,7 @@ export const focus = {
     window.addEventListener('keydown', onKeyDown, true);
     events.on('native:input', ({ action, repeat }) => handle(action, !!repeat, 'native'));
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('wheel', onWheel, { capture: true, passive: true });
     document.addEventListener('mousemove', () => {
       if (!usingPointer) {
         usingPointer = true;
@@ -314,6 +316,7 @@ function onKeyDown(e) {
 }
 
 function onPointerDown(e) {
+  cancelUserScrollAnimations(e);
   const el = e.target.closest && e.target.closest('.focusable');
   const scope = topScope();
   if (el && (!scope || scope.el.contains(el))) focus.set(el, { scroll: false });
@@ -417,6 +420,70 @@ function horizontalRowNeighbor(row, from, direction, rtl) {
   return items[index + step] || null;
 }
 
+function cancelPendingScroll(element) {
+  const state = pendingScrolls.get(element);
+  if (!state) return;
+  if (state.frame) cancelAnimationFrame(state.frame);
+  pendingScrolls.delete(element);
+}
+
+function cancelUserScrollAnimations(event) {
+  let node = event.target instanceof Element ? event.target : null;
+  while (node) {
+    if (node.matches('[data-scroll-x], [data-scroll-y]')) cancelPendingScroll(node);
+    node = node.parentElement;
+  }
+}
+
+function smoothScrollTo(element, axis, target) {
+  let state = pendingScrolls.get(element);
+  if (!state) {
+    state = { left: null, top: null, frame: 0, lastTime: 0 };
+    pendingScrolls.set(element, state);
+  }
+  state[axis] = target;
+  if (state.frame) return;
+
+  state.lastTime = performance.now();
+  const step = (now) => {
+    if (!element.isConnected) {
+      pendingScrolls.delete(element);
+      return;
+    }
+    const elapsed = Math.min(32, Math.max(1, now - state.lastTime));
+    state.lastTime = now;
+    let active = false;
+
+    for (const key of ['left', 'top']) {
+      const destination = state[key];
+      if (destination == null) continue;
+      const current = key === 'left' ? element.scrollLeft : element.scrollTop;
+      const distance = destination - current;
+      if (Math.abs(distance) < 0.6) {
+        element.scrollTo(key === 'left' ? { left: destination, behavior: 'auto' } : { top: destination, behavior: 'auto' });
+        state[key] = null;
+        continue;
+      }
+      // Retarget each frame as repeated D-pad input changes the destination, avoiding a queue
+      // of browser smooth-scroll animations while keeping the motion continuous.
+      const next = current + distance * (1 - Math.exp(-elapsed / 105));
+      element.scrollTo(key === 'left' ? { left: next, behavior: 'auto' } : { top: next, behavior: 'auto' });
+      active = true;
+    }
+
+    if (active) state.frame = requestAnimationFrame(step);
+    else {
+      state.frame = 0;
+      if (state.left == null && state.top == null) pendingScrolls.delete(element);
+    }
+  };
+  state.frame = requestAnimationFrame(step);
+}
+
+function onWheel(e) {
+  cancelUserScrollAnimations(e);
+}
+
 function focusInHorizontalRow(row, target, anchorSide = 'right') {
   const rowRect = row.getBoundingClientRect();
   const style = getComputedStyle(row);
@@ -428,7 +495,7 @@ function focusInHorizontalRow(row, target, anchorSide = 'right') {
   const delta = itemEdge - anchor;
 
   focus.set(target, { scroll: false });
-  if (Math.abs(delta) > 1) row.scrollTo({ left: row.scrollLeft + delta, behavior: 'auto' });
+  if (Math.abs(delta) > 1) smoothScrollTo(row, 'left', row.scrollLeft + delta);
 }
 
 function findNext(from, direction, root) {
@@ -512,14 +579,14 @@ function scrollIntoView(el) {
     const style = getComputedStyle(row);
     const padLeft = parseFloat(style.scrollPaddingLeft) || r.width * 0.04;
     const padRight = parseFloat(style.scrollPaddingRight) || r.width * 0.04;
-    if (e.left < r.left + padLeft) row.scrollTo({ left: row.scrollLeft + e.left - r.left - padLeft, behavior: 'auto' });
-    else if (e.right > r.right - padRight) row.scrollTo({ left: row.scrollLeft + e.right - r.right + padRight, behavior: 'auto' });
+    if (e.left < r.left + padLeft) smoothScrollTo(row, 'left', row.scrollLeft + e.left - r.left - padLeft);
+    else if (e.right > r.right - padRight) smoothScrollTo(row, 'left', row.scrollLeft + e.right - r.right + padRight);
   }
   // The page: bring the item's section to a steady spot near the top, like a TV home screen.
   const page = el.closest('[data-scroll-y]');
   if (!page) return;
   if (el.closest('[data-scroll-top]')) {
-    page.scrollTo({ top: 0, behavior: 'auto' });
+    smoothScrollTo(page, 'top', 0);
     return;
   }
   const section = el.closest('[data-nav-row]') || el;
@@ -530,6 +597,6 @@ function scrollIntoView(el) {
   const bottomMargin = p.height * 0.06;
   if (section.hasAttribute('data-nav-row') || s.top < p.top + topMargin || s.bottom > p.bottom - bottomMargin) {
     const delta = s.top - p.top - Math.max(topMargin, anchor);
-    if (Math.abs(delta) > 2) page.scrollTo({ top: page.scrollTop + delta, behavior: 'auto' });
+    if (Math.abs(delta) > 2) smoothScrollTo(page, 'top', page.scrollTop + delta);
   }
 }
