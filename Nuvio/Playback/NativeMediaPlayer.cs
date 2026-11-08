@@ -38,6 +38,7 @@ namespace Nuvio.Playback
         private bool _openFailed;
         private bool _disposed;
         private long _openGeneration;
+        private long _lastPositionEventTicks;
         private CancellationTokenSource _openCancellation;
         private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(30);
 
@@ -127,8 +128,22 @@ namespace Nuvio.Playback
 
                     token.ThrowIfCancellationRequested();
                     if (result.Status != AdaptiveMediaSourceCreationStatus.Success)
-                        throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
-                    source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
+                    {
+                        // MediaSource.CreateFromUri uses the platform's normal format converter
+                        // and can recognize manifests that AdaptiveMediaSource rejects during
+                        // explicit parsing. Preserve authenticated adaptive handling; this fallback
+                        // is only safe when the URL needs no custom request headers.
+                        if (!hasHeaders && result.Status == AdaptiveMediaSourceCreationStatus.ManifestParseFailure)
+                        {
+                            Log.Write("Adaptive manifest parsing failed; retrying with the platform URI source");
+                            source = MediaSource.CreateFromUri(uri);
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
+                        }
+                    }
+                    else source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
                 }
                 else if (hasHeaders)
                 {
@@ -335,6 +350,14 @@ namespace Nuvio.Playback
         }
         private void OnPositionChanged(MediaPlaybackSession sender, object args)
         {
+            // PositionChanged can fire several times per second. Coalesce progress updates so
+            // the WebView bridge doesn't build a backlog on the Xbox renderer thread.
+            var now = DateTime.UtcNow.Ticks;
+            var previous = Interlocked.Read(ref _lastPositionEventTicks);
+            if (now - previous < TimeSpan.TicksPerMillisecond * 250 ||
+                Interlocked.CompareExchange(ref _lastPositionEventTicks, now, previous) != previous)
+                return;
+
             var payload = new JsonObject();
             payload.SetNamedValue("time", JsonValue.CreateNumberValue(Math.Max(0, sender.Position.TotalSeconds)));
             payload.SetNamedValue("duration", JsonValue.CreateNumberValue(Math.Max(0, sender.NaturalDuration.TotalSeconds)));
