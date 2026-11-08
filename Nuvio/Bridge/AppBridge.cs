@@ -9,6 +9,7 @@ using Windows.Data.Json;
 using Windows.Storage.Streams;
 using Windows.System;
 using Windows.System.Profile;
+using Windows.UI.Core;
 using Windows.Web.Http;
 using Windows.Web.Http.Filters;
 
@@ -67,6 +68,7 @@ namespace Nuvio.Bridge
         private static readonly HttpClient FetchClient = CreateFetchClient();
 
         private readonly CoreWebView2 _webView;
+        private readonly CoreDispatcher _dispatcher;
         private readonly NativeMediaPlayer _player;
         private readonly IAppHost _host;
         private readonly Uri _trustedOrigin;
@@ -74,6 +76,9 @@ namespace Nuvio.Bridge
         public AppBridge(CoreWebView2 webView, NativeMediaPlayer player, IAppHost host, Uri trustedOrigin)
         {
             _webView = webView;
+            // WebView2's XAML controller is bound to the UI thread that created it. Native media
+            // events can arrive on a worker thread, so retain the owning dispatcher for all posts.
+            _dispatcher = Windows.UI.Xaml.Window.Current.Dispatcher;
             _player = player;
             _host = host;
             _trustedOrigin = trustedOrigin;
@@ -390,10 +395,41 @@ namespace Nuvio.Bridge
 
         private void Send(string type, JsonObject payload)
         {
+            string json;
             try
             {
                 payload.SetNamedValue("type", JsonValue.CreateStringValue(type));
-                _webView.PostWebMessageAsJson(payload.Stringify());
+                // Serialize on the event's originating thread before crossing to the dispatcher.
+                json = payload.Stringify();
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Bridge message serialization failed: " + ex.Message);
+                return;
+            }
+
+            try
+            {
+                if (_dispatcher.HasThreadAccess)
+                {
+                    PostToWebView(json);
+                }
+                else
+                {
+                    var ignored = _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => PostToWebView(json));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Bridge dispatch failed: " + ex.Message);
+            }
+        }
+
+        private void PostToWebView(string json)
+        {
+            try
+            {
+                _webView.PostWebMessageAsJson(json);
             }
             catch (Exception ex)
             {
