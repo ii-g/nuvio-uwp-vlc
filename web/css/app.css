@@ -725,14 +725,22 @@ html[dir="rtl"] .details-shade {
 }
 html[dir="rtl"] .row-track, html[dir="rtl"] .poster-grid { direction: rtl; }
 
-/* Reserve the expanded RTL sidebar footprint at all times so opening it never shifts the hero. */
-html[dir="rtl"] { --hero-content-start: max(var(--content-left), calc(var(--sidebar-open-w) + 2.5rem)); }
+/* Reserve the expanded RTL sidebar footprint so page content stays fixed as it opens. */
+html[dir="rtl"] { --rtl-safe-start: max(var(--content-left), calc(var(--sidebar-open-w) + 2.5rem)); }
 html[dir="rtl"] .hero {
-  padding-inline-start: var(--hero-content-start);
+  padding-inline-start: var(--rtl-safe-start);
+}
+html[dir="rtl"] .library-filters {
+  direction: rtl;
+  justify-content: flex-start;
+  max-width: 100%;
+  padding-inline-start: var(--rtl-safe-start);
+  padding-inline-end: var(--content-right);
+  scroll-padding-inline-start: var(--rtl-safe-start);
 }
 html[dir="rtl"] .hero-slot { max-width: 100%; min-width: 0; }
 html[dir="rtl"] .hero-info { width: min(44rem, 100%); max-width: 100%; min-width: 0; }
 html[dir="rtl"] .hero-title, html[dir="rtl"] .hero-description { max-width: 100%; overflow-wrap: anywhere; }
 @media (max-aspect-ratio: 1/1) {
-  html[dir="rtl"], html[dir="rtl"].sidebar-open { --hero-content-start: 2rem; }
+  html[dir="rtl"], html[dir="rtl"].sidebar-open { --rtl-safe-start: 2rem; }
 }
