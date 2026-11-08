@@ -32,7 +32,9 @@ namespace Nuvio.Playback
             _client = client;
             _uri = uri;
             Length = length;
-            ContentType = string.IsNullOrWhiteSpace(contentType) ? GuessContentType(uri) : contentType;
+            ContentType = string.IsNullOrWhiteSpace(contentType) ||
+                contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                ? GuessContentType(uri) : contentType;
         }
 
         public string ContentType { get; }
