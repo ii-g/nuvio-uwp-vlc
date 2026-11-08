@@ -304,6 +304,11 @@ namespace Nuvio.Playback
         {
             try { if (_mediaPlayer != null) _mediaPlayer.Source = null; }
             catch (Exception ex) { Log.Error("Clearing native media source failed", ex); }
+            DisposeCurrentSourceResources();
+        }
+
+        private void DisposeCurrentSourceResources()
+        {
             try { _source?.Dispose(); } catch (Exception ex) { Log.Error("Closing media source failed", ex); }
             try { _randomAccessStream?.Dispose(); } catch (Exception ex) { Log.Error("Closing media stream failed", ex); }
             try { _rangeStream?.Dispose(); } catch (Exception ex) { Log.Error("Closing HTTP range stream failed", ex); }
@@ -371,12 +376,13 @@ namespace Nuvio.Playback
             try { player.Pause(); }
             catch (Exception ex) { Log.Error("Pausing native playback for cleanup failed", ex); }
 
-            // Detach the source and rendering surface before disposing the player. Keeping a
-            // MediaPlayerElement bound to a stopped MediaPlayer can retain decoder/GPU resources
-            // after the user has left the playback page.
-            ClearCurrentSource();
+            // Detach the source and rendering surface before disposing the source/player. Keeping
+            // the surface bound to a stopped player can retain decoder/GPU resources after exit.
+            try { player.Source = null; }
+            catch (Exception ex) { Log.Error("Clearing native media source for cleanup failed", ex); }
             try { if (_view != null) _view.SetMediaPlayer(null); }
             catch (Exception ex) { Log.Error("Detaching the native media surface failed", ex); }
+            DisposeCurrentSourceResources();
 
             player.MediaFailed -= OnMediaFailed;
             player.MediaEnded -= OnMediaEnded;
