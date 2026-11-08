@@ -145,10 +145,11 @@ namespace Nuvio.Playback
             var end = Math.Min(Length - 1, start + RangeSize - 1);
             var request = new HttpRequestMessage(HttpMethod.Get, _uri);
             request.Headers.Range = new RangeHeaderValue(start, end);
+            HttpResponseMessage response = null;
 
             try
             {
-                var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+                response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
                 request.Dispose();
                 response.EnsureSuccessStatusCode();
 
@@ -183,6 +184,7 @@ namespace Nuvio.Playback
             catch
             {
                 request.Dispose();
+                response?.Dispose();
                 throw;
             }
         }
