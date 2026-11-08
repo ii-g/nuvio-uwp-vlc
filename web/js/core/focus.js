@@ -186,12 +186,7 @@ export const focus = {
       ? current.closest('[data-nav-carousel]')
       : null;
     if (carousel) {
-      // The edge facing the sidebar leaves the hero immediately instead of changing titles
-      // underneath the user's focus.
-      if (!rtl && direction === toSidebar) {
-        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
-        return true;
-      }
+      // The edge facing the sidebar transfers focus into navigation in either direction mode.
       if (direction === toSidebar && sidebar && isVisible(sidebar)) {
         focus.restore(sidebar);
         return true;
@@ -226,10 +221,6 @@ export const focus = {
         else focus.set(rowTarget);
         return true;
       }
-      if (mediaRow) {
-        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
-        return true;
-      }
       if (direction === toSidebar && sidebar && isVisible(sidebar)) {
         focus.restore(sidebar);
         return true;
@@ -251,10 +242,6 @@ export const focus = {
       const target = findNext(current, direction, contentRoot);
       if (target) {
         focus.set(target);
-        return true;
-      }
-      if (!rtl) {
-        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
         return true;
       }
       if (sidebar && isVisible(sidebar)) {
