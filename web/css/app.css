@@ -407,6 +407,7 @@ html.pointer .stream-item:hover:not(.focused) { background: var(--surface-2); }
 .search-recent { padding-bottom: 1rem; }
 .search-recent .row-title { padding-inline-start: var(--content-left); margin-bottom: .3rem; }
 /* Search follows the page direction while the glyph remains in its LTR icon context. */
+html[dir="rtl"] .search .page-title { padding-inline-start: var(--rtl-safe-start); }
 html[dir="rtl"] .search-bar {
   direction: rtl;
   margin-inline-start: var(--rtl-safe-start);
