@@ -72,6 +72,7 @@ namespace Nuvio.Bridge
         private readonly NativeMediaPlayer _player;
         private readonly IAppHost _host;
         private readonly Uri _trustedOrigin;
+        private bool _webViewReady;
 
         public AppBridge(CoreWebView2 webView, NativeMediaPlayer player, IAppHost host, Uri trustedOrigin)
         {
@@ -106,6 +107,12 @@ namespace Nuvio.Bridge
             var payload = new JsonObject();
             payload.SetNamedValue("visible", JsonValue.CreateBooleanValue(visible));
             Send("app.visibility", payload);
+        }
+
+        /// <summary>Pauses native-to-page messages while WebView2 is recovering.</summary>
+        public void SetWebViewReady(bool ready)
+        {
+            _webViewReady = ready;
         }
 
         private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -213,6 +220,7 @@ namespace Nuvio.Bridge
             switch (type)
             {
                 case "app.hello":
+                    _webViewReady = true;
                     Log.Write("Web app connected");
                     SendHello();
                     break;
@@ -427,6 +435,7 @@ namespace Nuvio.Bridge
 
         private void PostToWebView(string json)
         {
+            if (!_webViewReady) return;
             try
             {
                 _webView.PostWebMessageAsJson(json);
