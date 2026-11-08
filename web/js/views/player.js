@@ -97,6 +97,8 @@ export function playerView({ state }) {
   let tracks = { audio: [], subtitles: [], audioId: -1, subtitleId: -1 };
   let tracksInitialised = false;
   let addonSubtitles = [];
+  let addonSubtitlesLoaded = false;
+  let addonSubtitlesPromise = null;
   let activeAddonSub = null; // { sub, cues }
   let subtitleDelay = 0; // seconds, addon subtitles
   let aspect = 'fit';
@@ -188,6 +190,7 @@ export function playerView({ state }) {
     // While loading only Back is on screen; now the playback controls are.
     if (!focus.current || focus.current === backButton || !el.contains(focus.current)) focus.set(playButton);
     scheduleHide();
+    if (settings.get('autoSelectSubtitles')) loadAddonSubtitles();
   });
   engine.on('ended', ({ reason, message }) => {
     if (reason === 'eof') {
@@ -247,7 +250,6 @@ export function playerView({ state }) {
   const startAt = state.restart || !settings.get('resumePlayback') ? 0 : resumeSeconds(contentInfo.contentId, contentInfo.season, contentInfo.episode);
   if (startAt > 0) toast(`Resuming from ${formatClock(startAt)}`);
   start(stream, startAt);
-  loadAddonSubtitles();
 
   // ---------- Progress ----------
   function maybeSave() {
@@ -444,23 +446,38 @@ export function playerView({ state }) {
   applySubtitleStyle();
   cleanups.push(events.on('settings', applySubtitleStyle));
 
-  async function loadAddonSubtitles() {
+  async function loadAddonSubtitles(force = false) {
+    if (addonSubtitlesLoaded) return;
+    // Avoid extra addon/network work for every playback unless auto-select is enabled or
+    // the user opens the subtitle picker.
+    if (!force && !settings.get('autoSelectSubtitles')) return;
+    if (addonSubtitlesPromise) return addonSubtitlesPromise;
+
     const fromStream = (stream.subtitles || []).filter((s) => s && s.url).map((s) => ({ ...s, addonName: stream.addonName || 'Stream' }));
-    let fromAddons = [];
+    addonSubtitlesPromise = (async () => {
+      let fromAddons = [];
+      try {
+        const hints = stream.behaviorHints || {};
+        const extra = {};
+        if (hints.videoHash) extra.videoHash = hints.videoHash;
+        if (hints.videoSize) extra.videoSize = hints.videoSize;
+        if (hints.filename) extra.filename = hints.filename;
+        fromAddons = await fetchSubtitles(meta.type, contentInfo.videoId, extra);
+      } catch (error) {
+        console.warn('Subtitles failed to load', error);
+      }
+      if (closed) return;
+      addonSubtitles = [...fromStream, ...fromAddons].map((s, i) => ({ ...s, key: `${i}:${s.url}` }));
+      addonSubtitlesLoaded = true;
+      // With VLC, wait for the file's own tracks so a matching built-in track wins.
+      if (tracksInitialised || !engine.hasEmbeddedTracks) applySubtitlePreference(false);
+    })();
+
     try {
-      const hints = stream.behaviorHints || {};
-      const extra = {};
-      if (hints.videoHash) extra.videoHash = hints.videoHash;
-      if (hints.videoSize) extra.videoSize = hints.videoSize;
-      if (hints.filename) extra.filename = hints.filename;
-      fromAddons = await fetchSubtitles(meta.type, contentInfo.videoId, extra);
-    } catch (error) {
-      console.warn('Subtitles failed to load', error);
+      await addonSubtitlesPromise;
+    } finally {
+      addonSubtitlesPromise = null;
     }
-    if (closed) return;
-    addonSubtitles = [...fromStream, ...fromAddons].map((s, i) => ({ ...s, key: `${i}:${s.url}` }));
-    // With VLC, wait for the file's own tracks so a matching built-in track wins.
-    if (tracksInitialised || !engine.hasEmbeddedTracks) applySubtitlePreference(false);
   }
 
   async function selectAddonSubtitle(sub) {
@@ -473,6 +490,7 @@ export function playerView({ state }) {
     activeAddonSub = { sub, cues: null };
     try {
       const cues = await loadSubtitleCues(sub.url);
+      if (closed) return;
       if (activeAddonSub && activeAddonSub.sub === sub) {
         activeAddonSub.cues = cues;
         renderSubtitles();
@@ -535,6 +553,8 @@ export function playerView({ state }) {
   }
 
   async function openSubtitleMenu() {
+    await loadAddonSubtitles(true);
+    if (closed) return;
     const items = [{ label: 'Off', value: { kind: 'off' }, selected: !activeAddonSub && tracks.subtitleId < 0 }];
     if (tracks.subtitles.length) {
       items.push({ header: 'In the video' });
