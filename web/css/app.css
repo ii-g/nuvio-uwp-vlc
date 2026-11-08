@@ -406,6 +406,29 @@ html.pointer .stream-item:hover:not(.focused) { background: var(--surface-2); }
 .search-bar:has(.focused) .search-input { color: #000; }
 .search-recent { padding-bottom: 1rem; }
 .search-recent .row-title { padding-inline-start: var(--content-left); margin-bottom: .3rem; }
+/* Search follows the page direction while the glyph remains in its LTR icon context. */
+html[dir="rtl"] .search-bar {
+  direction: rtl;
+  margin-inline-start: var(--rtl-safe-start);
+  margin-inline-end: var(--content-right);
+}
+html[dir="rtl"] .search-input {
+  direction: rtl;
+  text-align: right;
+  unicode-bidi: plaintext;
+}
+html[dir="rtl"] .search-input::placeholder { text-align: right; }
+html[dir="rtl"] .search-recent .row-title {
+  padding-inline: var(--rtl-safe-start) var(--content-right);
+  text-align: right;
+}
+html[dir="rtl"] .search .row-header {
+  padding-inline-start: var(--rtl-safe-start);
+}
+html[dir="rtl"] .search .row-track {
+  padding-inline-start: var(--rtl-safe-start);
+  scroll-padding-inline-start: var(--rtl-safe-start);
+}
 
 /* ---------- Settings ---------- */
 .settings-list { display: flex; flex-direction: column; gap: .6rem; padding: 0 0 2rem; padding-inline: var(--content-left) var(--content-right); max-width: 80rem; }
