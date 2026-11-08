@@ -14,6 +14,7 @@ import { spinner, choicePanel, toast, button } from '../components/ui.js';
 import { debridAccount, resolveTorrent } from '../services/debrid.js';
 
 const HIDE_CONTROLS_MS = 4000;
+const OPEN_TIMEOUT_MS = 35000;
 const SAVE_EVERY_MS = 5000;
 const SEEK_STEP = 10;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -101,6 +102,8 @@ export function playerView({ state }) {
   let aspect = 'fit';
   let ended = false;
   let closed = false;
+  let failed = false;
+  let openTimer = 0;
   let lastSaved = 0;
   let nextInfo = null; // { video, countdown, timer }
   let nextDismissed = false;
@@ -127,6 +130,7 @@ export function playerView({ state }) {
 
   // ---------- Engine events ----------
   engine.on('state', ({ state: s }) => {
+    if (failed) return;
     const was = playState;
     playState = s;
     if (s === 'playing' || s === 'paused') {
@@ -166,6 +170,9 @@ export function playerView({ state }) {
     }
   });
   engine.on('ready', () => {
+    if (failed) return;
+    clearTimeout(openTimer);
+    openTimer = 0;
     ready = true;
     report('start');
     el.classList.add('ready');
@@ -187,6 +194,11 @@ export function playerView({ state }) {
   });
 
   function updateLoading() {
+    if (failed) {
+      el.classList.remove('buffering');
+      loading.hidden = true;
+      return;
+    }
     const showSpinner = !ready || playState === 'opening' || (playState === 'playing' && bufferingPercent < 100) || playState === 'buffering';
     el.classList.toggle('buffering', ready && showSpinner);
     loading.hidden = ready;
@@ -197,6 +209,9 @@ export function playerView({ state }) {
 
   // ---------- Start ----------
   function start(target, at) {
+    clearTimeout(openTimer);
+    openTimer = 0;
+    failed = false;
     report('stop');
     stream = target;
     ready = false;
@@ -212,6 +227,11 @@ export function playerView({ state }) {
     lastTime = at;
     lastTimeAt = performance.now();
     engine.open({ url: stream.url, start: at, headers: streamHeaders(stream), hwdec: settings.get('hardwareDecoding') });
+    openTimer = setTimeout(() => {
+      if (closed || ready || failed) return;
+      showError('The player did not respond. Check the stream link or network, then retry or choose another source.');
+      engine.stop();
+    }, OPEN_TIMEOUT_MS);
     engine.setAspect(aspect);
     if (rate !== 1) engine.setRate(rate);
   }
@@ -761,6 +781,9 @@ export function playerView({ state }) {
 
   // ---------- Errors ----------
   function showError(message) {
+    failed = true;
+    clearTimeout(openTimer);
+    openTimer = 0;
     ready = false;
     loading.hidden = true;
     el.classList.remove('ready');
@@ -915,6 +938,7 @@ export function playerView({ state }) {
       cancelAnimationFrame(frame);
       clearTimeout(hideTimer);
       clearTimeout(scrubTimer);
+      clearTimeout(openTimer);
       if (nextInfo) clearInterval(nextInfo.timer);
       cleanups.forEach((off) => off());
       engine.destroy();
