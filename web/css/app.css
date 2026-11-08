@@ -725,12 +725,10 @@ html[dir="rtl"] .details-shade {
 }
 html[dir="rtl"] .row-track, html[dir="rtl"] .poster-grid { direction: rtl; }
 
-/* Keep featured copy clear of the right-side navigation in RTL. */
-html[dir="rtl"] { --hero-content-start: max(var(--content-left), calc(var(--sidebar-w) + 2.5rem)); }
-html[dir="rtl"].sidebar-open { --hero-content-start: calc(var(--sidebar-open-w) + 2.5rem); }
+/* Reserve the expanded RTL sidebar footprint at all times so opening it never shifts the hero. */
+html[dir="rtl"] { --hero-content-start: max(var(--content-left), calc(var(--sidebar-open-w) + 2.5rem)); }
 html[dir="rtl"] .hero {
   padding-inline-start: var(--hero-content-start);
-  transition: padding-inline-start .22s var(--ease);
 }
 html[dir="rtl"] .hero-slot { max-width: 100%; min-width: 0; }
 html[dir="rtl"] .hero-info { width: min(44rem, 100%); max-width: 100%; min-width: 0; }
