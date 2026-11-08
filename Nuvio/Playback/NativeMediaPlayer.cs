@@ -62,6 +62,30 @@ namespace Nuvio.Playback
             Log.Write("Native Windows Media Foundation player ready");
         }
 
+        private void SetViewOpacity(double opacity)
+        {
+            var view = _view;
+            if (view == null) return;
+            try
+            {
+                if (view.Dispatcher.HasThreadAccess)
+                {
+                    view.Opacity = opacity;
+                    return;
+                }
+
+                var ignored = view.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                {
+                    if (_disposed || !ReferenceEquals(_view, view)) return;
+                    view.Opacity = opacity;
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Updating the native video surface failed", ex);
+            }
+        }
+
         public void SetUnavailable(string reason) { RaiseState("error", reason); RaiseEnded("error", reason); }
 
         public void Open(OpenRequest request)
@@ -88,7 +112,7 @@ namespace Nuvio.Playback
             {
                 _mediaPlayer.Pause();
                 ClearCurrentSource();
-                if (_view != null) _view.Opacity = 0;
+                if (_view != null) SetViewOpacity(0);
                 _openCancellation = new CancellationTokenSource();
                 var token = _openCancellation.Token;
                 RaiseState("opening", null);
@@ -236,7 +260,7 @@ namespace Nuvio.Playback
                 if (_mediaPlayer != null) _mediaPlayer.Pause();
             }
             catch (Exception ex) { Log.Error("Clearing failed native media source failed", ex); }
-            if (_view != null) _view.Opacity = 0;
+            if (_view != null) SetViewOpacity(0);
             ClearCurrentSource();
             RaiseState("error", message);
             RaiseEnded("error", message);
@@ -274,7 +298,7 @@ namespace Nuvio.Playback
             if (_mediaPlayer == null) return;
             try { _mediaPlayer.Pause(); ClearCurrentSource(); }
             catch (Exception ex) { Log.Error("Stopping native playback failed", ex); }
-            if (_view != null) _view.Opacity = 0;
+            if (_view != null) SetViewOpacity(0);
             RaiseState("stopped", null);
         }
 
@@ -334,6 +358,8 @@ namespace Nuvio.Playback
 
         private void OnPlaybackStateChanged(MediaPlaybackSession sender, object args)
         {
+            // Playback callbacks may arrive after Stop() or on a media worker thread.
+            if (_disposed || _openFailed) return;
             if (sender.PlaybackState == MediaPlaybackState.Playing)
             {
                 if (!_readySent)
@@ -341,7 +367,7 @@ namespace Nuvio.Playback
                     _readySent = true;
                     CancelPendingOpen();
                     Raise("player.ready", new JsonObject());
-                    if (_view != null) _view.Opacity = 1;
+                    if (_view != null) SetViewOpacity(1);
                 }
                 RaiseState("playing", null);
             }
@@ -378,7 +404,7 @@ namespace Nuvio.Playback
         }
         private void OnMediaEnded(MediaPlayer sender, object args)
         {
-            if (_view != null) _view.Opacity = 0;
+            if (_view != null) SetViewOpacity(0);
             ClearCurrentSource();
             RaiseEnded("eof", null);
         }
@@ -389,7 +415,7 @@ namespace Nuvio.Playback
             if (_openFailed || _disposed) return;
             _openFailed = true;
             CancelPendingOpen();
-            if (_view != null) _view.Opacity = 0;
+            if (_view != null) SetViewOpacity(0);
             ClearCurrentSource();
             RaiseState("error", message);
             RaiseEnded("error", message);
