@@ -270,6 +270,7 @@ export async function pullProfiles() {
   const profiles = (await rpc('sync_pull_profiles')) || [];
   profiles.sort((a, b) => a.profile_index - b.profile_index);
   storage.set('profiles', profiles);
+  events.emit('account', { profiles: true });
   return profiles;
 }
 
