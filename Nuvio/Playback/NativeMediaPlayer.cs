@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
+using System.Threading.Tasks;
 using Nuvio.Diagnostics;
 using Windows.Data.Json;
 using Windows.Media.Core;
@@ -25,7 +28,11 @@ namespace Nuvio.Playback
         private MediaPlayer _mediaPlayer;
         private string _pageId;
         private bool _readySent;
+        private bool _openFailed;
         private bool _disposed;
+        private long _openGeneration;
+        private CancellationTokenSource _openCancellation;
+        private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(30);
 
         public event Action<string, JsonObject> EventRaised;
         public string Version { get; private set; } = "Windows Media Foundation";
@@ -47,40 +54,56 @@ namespace Nuvio.Playback
             Log.Write("Native Windows Media Foundation player ready");
         }
 
-        public void SetUnavailable(string reason) { RaiseEnded("error", reason); }
+        public void SetUnavailable(string reason) { RaiseState("error", reason); RaiseEnded("error", reason); }
 
         public void Open(OpenRequest request)
         {
+            CancelPendingOpen();
+            var generation = Interlocked.Increment(ref _openGeneration);
             _pageId = request == null ? null : request.Id;
             _readySent = false;
+            _openFailed = false;
             if (_mediaPlayer == null)
             {
-                RaiseState("error", "The native media player is not ready.");
-                RaiseEnded("error", "The native media player is not ready.");
+                FailOpen(generation, "The native media player is not ready.");
                 return;
             }
+
+            Uri uri;
+            if (request == null || !Uri.TryCreate(request.Url, UriKind.Absolute, out uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                FailOpen(generation, "This player accepts direct HTTP or HTTPS media links.");
+                return;
+            }
+            if (request.Headers != null && request.Headers.Count > 0)
+            {
+                FailOpen(generation, "This link requires custom HTTP headers, which the native UWP player cannot apply to direct media sources.");
+                return;
+            }
+
             try
             {
-                Uri uri;
-                if (request == null || !Uri.TryCreate(request.Url, UriKind.Absolute, out uri) ||
-                    (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                    throw new NotSupportedException("This player accepts direct HTTP or HTTPS media links.");
-                if (request.Headers != null && request.Headers.Count > 0)
-                    throw new NotSupportedException("This link requires custom HTTP headers, which the native UWP player cannot apply to direct media sources.");
                 _mediaPlayer.Pause();
                 _mediaPlayer.Source = null;
+                if (_view != null) _view.Opacity = 0;
+                _openCancellation = new CancellationTokenSource();
+                var token = _openCancellation.Token;
                 RaiseState("opening", null);
-                OpenSourceAsync(request, uri);
+
+                // These tasks never block the WebView message/UI thread. The source resolver catches
+                // every failure itself, while a separate watchdog covers MediaPlayer.Open/Play stalls.
+                _ = OpenSourceAsync(request, uri, generation, token);
+                _ = WatchOpenTimeoutAsync(generation);
             }
             catch (Exception ex)
             {
                 Log.Error("Native media source could not be opened", ex);
-                RaiseState("error", ex.Message);
-                RaiseEnded("error", ex.Message);
+                FailOpen(generation, ex.Message);
             }
         }
 
-        private async void OpenSourceAsync(OpenRequest request, Uri uri)
+        private async Task OpenSourceAsync(OpenRequest request, Uri uri, long generation, CancellationToken token)
         {
             try
             {
@@ -88,28 +111,96 @@ namespace Nuvio.Playback
                 var path = uri.AbsolutePath.ToLowerInvariant();
                 if (path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u"))
                 {
-                    var result = await AdaptiveMediaSource.CreateFromUriAsync(uri);
+                    var operation = AdaptiveMediaSource.CreateFromUriAsync(uri).AsTask(token);
+                    var result = await operation;
+                    token.ThrowIfCancellationRequested();
                     if (result.Status != AdaptiveMediaSourceCreationStatus.Success)
                         throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
                     source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
                 }
-                else source = MediaSource.CreateFromUri(uri);
+                else
+                {
+                    token.ThrowIfCancellationRequested();
+                    source = MediaSource.CreateFromUri(uri);
+                }
 
-                if (_mediaPlayer == null || _disposed) return;
+                if (!IsCurrentOpen(generation, token)) return;
                 _mediaPlayer.Source = source;
                 _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
                 _mediaPlayer.Play();
             }
+            catch (OperationCanceledException)
+            {
+                // A replacement request, Stop(), disposal, or the open timeout cancelled this load.
+            }
             catch (Exception ex)
             {
                 Log.Error("Native media source could not be opened", ex);
-                RaiseState("error", ex.Message);
-                RaiseEnded("error", ex.Message);
+                FailOpen(generation, ex.Message);
             }
+        }
+
+        private async Task WatchOpenTimeoutAsync(long generation)
+        {
+            try
+            {
+                await Task.Delay(OpenTimeout).ConfigureAwait(false);
+                var view = _view;
+                if (view == null || _disposed) return;
+                await view.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                {
+                    if (IsCurrentOpen(generation, CancellationToken.None) && !_readySent && !_openFailed)
+                    {
+                        FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Playback startup watchdog failed", ex);
+            }
+        }
+
+        private bool IsCurrentOpen(long generation, CancellationToken token)
+        {
+            return !_disposed && !token.IsCancellationRequested &&
+                generation == Interlocked.Read(ref _openGeneration) && !_openFailed;
+        }
+
+        private void FailOpen(long generation, string message)
+        {
+            if (generation != Interlocked.Read(ref _openGeneration) || _disposed || _openFailed) return;
+            _openFailed = true;
+            CancelPendingOpen();
+            try
+            {
+                if (_mediaPlayer != null)
+                {
+                    _mediaPlayer.Pause();
+                    _mediaPlayer.Source = null;
+                }
+            }
+            catch (Exception ex) { Log.Error("Clearing failed native media source failed", ex); }
+            if (_view != null) _view.Opacity = 0;
+            RaiseState("error", message);
+            RaiseEnded("error", message);
+        }
+
+        private void CancelPendingOpen()
+        {
+            var cancellation = _openCancellation;
+            _openCancellation = null;
+            if (cancellation == null) return;
+            try { cancellation.Cancel(); }
+            catch (Exception ex) { Log.Error("Cancelling pending media open failed", ex); }
+            cancellation.Dispose();
         }
 
         public void Stop()
         {
+            Interlocked.Increment(ref _openGeneration);
+            CancelPendingOpen();
+            _openFailed = true;
             if (_mediaPlayer == null) return;
             try { _mediaPlayer.Pause(); _mediaPlayer.Source = null; }
             catch (Exception ex) { Log.Error("Stopping native playback failed", ex); }
@@ -178,6 +269,7 @@ namespace Nuvio.Playback
                 if (!_readySent)
                 {
                     _readySent = true;
+                    CancelPendingOpen();
                     Raise("player.ready", new JsonObject());
                     if (_view != null) _view.Opacity = 1;
                 }
@@ -215,6 +307,9 @@ namespace Nuvio.Playback
         {
             var message = string.IsNullOrWhiteSpace(args.ErrorMessage) ? "Windows Media Foundation could not play this media." : args.ErrorMessage;
             Log.Write("Native playback failed (" + args.Error + "): " + message);
+            if (_openFailed || _disposed) return;
+            _openFailed = true;
+            CancelPendingOpen();
             if (_view != null) _view.Opacity = 0;
             RaiseState("error", message);
             RaiseEnded("error", message);
