@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,8 @@ using Windows.Media.Core;
 using Windows.Media.Playback;
 using Windows.Media.Streaming.Adaptive;
 using Windows.UI.Xaml.Controls;
+using Windows.Storage.Streams;
+using Windows.Web.Http;
 
 namespace Nuvio.Playback
 {
@@ -26,6 +29,10 @@ namespace Nuvio.Playback
     {
         private MediaPlayerElement _view;
         private MediaPlayer _mediaPlayer;
+        private MediaSource _source;
+        private HttpRangeStream _rangeStream;
+        private IRandomAccessStream _randomAccessStream;
+        private Windows.Web.Http.HttpClient _adaptiveHttpClient;
         private string _pageId;
         private bool _readySent;
         private bool _openFailed;
@@ -85,7 +92,7 @@ namespace Nuvio.Playback
             try
             {
                 _mediaPlayer.Pause();
-                _mediaPlayer.Source = null;
+                ClearCurrentSource();
                 if (_view != null) _view.Opacity = 0;
                 _openCancellation = new CancellationTokenSource();
                 var token = _openCancellation.Token;
@@ -105,27 +112,48 @@ namespace Nuvio.Playback
 
         private async Task OpenSourceAsync(OpenRequest request, Uri uri, long generation, CancellationToken token)
         {
+            MediaSource source = null;
+            HttpRangeStream rangeStream = null;
+            IRandomAccessStream randomAccessStream = null;
+            Windows.Web.Http.HttpClient adaptiveClient = null;
             try
             {
-                MediaSource source;
+                var hasHeaders = request.Headers != null && request.Headers.Count > 0;
                 var path = uri.AbsolutePath.ToLowerInvariant();
-                if (path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u"))
+                var adaptive = path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u");
+                if (adaptive)
                 {
-                    var operation = AdaptiveMediaSource.CreateFromUriAsync(uri).AsTask(token);
-                    var result = await operation;
+                    AdaptiveMediaSourceCreationResult result;
+                    if (hasHeaders)
+                    {
+                        adaptiveClient = CreateAdaptiveClient(request.Headers);
+                        result = await AdaptiveMediaSource.CreateFromUriAsync(uri, adaptiveClient).AsTask(token);
+                    }
+                    else result = await AdaptiveMediaSource.CreateFromUriAsync(uri).AsTask(token);
+
                     token.ThrowIfCancellationRequested();
                     if (result.Status != AdaptiveMediaSourceCreationStatus.Success)
                         throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
                     source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
                 }
-                else
+                else if (hasHeaders)
                 {
-                    token.ThrowIfCancellationRequested();
-                    source = MediaSource.CreateFromUri(uri);
+                    rangeStream = await HttpRangeStream.CreateAsync(uri, request.Headers, token);
+                    randomAccessStream = rangeStream.AsRandomAccessStream();
+                    source = MediaSource.CreateFromStream(randomAccessStream, rangeStream.ContentType);
                 }
+                else source = MediaSource.CreateFromUri(uri);
 
                 if (!IsCurrentOpen(generation, token)) return;
                 _mediaPlayer.Source = source;
+                _source = source;
+                _rangeStream = rangeStream;
+                _randomAccessStream = randomAccessStream;
+                _adaptiveHttpClient = adaptiveClient;
+                source = null;
+                rangeStream = null;
+                randomAccessStream = null;
+                adaptiveClient = null;
                 _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
                 _mediaPlayer.Play();
             }
@@ -138,6 +166,28 @@ namespace Nuvio.Playback
                 Log.Error("Native media source could not be opened", ex);
                 FailOpen(generation, ex.Message);
             }
+            finally
+            {
+                source?.Dispose();
+                randomAccessStream?.Dispose();
+                rangeStream?.Dispose();
+                adaptiveClient?.Dispose();
+            }
+        }
+
+        private static Windows.Web.Http.HttpClient CreateAdaptiveClient(IDictionary<string, string> headers)
+        {
+            var client = new Windows.Web.Http.HttpClient();
+            foreach (var header in headers)
+            {
+                if (string.IsNullOrWhiteSpace(header.Key)) continue;
+                if (!client.DefaultRequestHeaders.TryAppendWithoutValidation(header.Key, header.Value ?? string.Empty))
+                {
+                    client.Dispose();
+                    throw new InvalidOperationException("The media request header '" + header.Key + "' cannot be applied to this adaptive stream.");
+                }
+            }
+            return client;
         }
 
         private async Task WatchOpenTimeoutAsync(long generation)
@@ -177,11 +227,12 @@ namespace Nuvio.Playback
                 if (_mediaPlayer != null)
                 {
                     _mediaPlayer.Pause();
-                    _mediaPlayer.Source = null;
+                    ClearCurrentSource();
                 }
             }
             catch (Exception ex) { Log.Error("Clearing failed native media source failed", ex); }
             if (_view != null) _view.Opacity = 0;
+            ClearCurrentSource();
             RaiseState("error", message);
             RaiseEnded("error", message);
         }
@@ -196,13 +247,27 @@ namespace Nuvio.Playback
             cancellation.Dispose();
         }
 
+        private void ClearCurrentSource()
+        {
+            try { if (_mediaPlayer != null) _mediaPlayer.Source = null; }
+            catch (Exception ex) { Log.Error("Clearing native media source failed", ex); }
+            try { _source?.Dispose(); } catch (Exception ex) { Log.Error("Closing media source failed", ex); }
+            try { _randomAccessStream?.Dispose(); } catch (Exception ex) { Log.Error("Closing media stream failed", ex); }
+            try { _rangeStream?.Dispose(); } catch (Exception ex) { Log.Error("Closing HTTP range stream failed", ex); }
+            try { _adaptiveHttpClient?.Dispose(); } catch (Exception ex) { Log.Error("Closing adaptive HTTP client failed", ex); }
+            _source = null;
+            _randomAccessStream = null;
+            _rangeStream = null;
+            _adaptiveHttpClient = null;
+        }
+
         public void Stop()
         {
             Interlocked.Increment(ref _openGeneration);
             CancelPendingOpen();
             _openFailed = true;
             if (_mediaPlayer == null) return;
-            try { _mediaPlayer.Pause(); _mediaPlayer.Source = null; }
+            try { _mediaPlayer.Pause(); ClearCurrentSource(); }
             catch (Exception ex) { Log.Error("Stopping native playback failed", ex); }
             if (_view != null) _view.Opacity = 0;
             RaiseState("stopped", null);
@@ -255,7 +320,7 @@ namespace Nuvio.Playback
                 _mediaPlayer.PlaybackSession.PositionChanged -= OnPositionChanged;
                 _mediaPlayer.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
                 _mediaPlayer.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
-                try { _mediaPlayer.Pause(); _mediaPlayer.Source = null; _mediaPlayer.Dispose(); }
+                try { _mediaPlayer.Pause(); ClearCurrentSource(); _mediaPlayer.Dispose(); }
                 catch (Exception ex) { Log.Error("Disposing native playback failed", ex); }
                 _mediaPlayer = null;
             }
@@ -301,6 +366,7 @@ namespace Nuvio.Playback
         private void OnMediaEnded(MediaPlayer sender, object args)
         {
             if (_view != null) _view.Opacity = 0;
+            ClearCurrentSource();
             RaiseEnded("eof", null);
         }
         private void OnMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args)

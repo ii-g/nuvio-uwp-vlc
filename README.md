@@ -69,7 +69,7 @@ Optional: with a TMDB key (Settings → Integrations, or the `TMDB_API_KEY` secr
 The app keeps a log of starting up and playing: read it on the TV in **Settings → About → View log** (this session and the last one). To copy the whole file, download it from the Device Portal: **File explorer → LocalAppData →** the Nuvio package folder (`b7f0f2ee-…`) **→ LocalState → `nuvio-vlc.log`**. Include it when reporting a problem.
 
 Known limitations:
-- The native player supports direct HTTP(S) media and HLS/DASH streams. Links requiring custom headers, other protocols, or codecs unavailable to Xbox Windows Media Foundation cannot play.
+- The native player supports direct HTTP(S) media and HLS/DASH streams. Custom HTTP headers are applied to adaptive requests and to range requests for direct files. Non-HTTP protocols and codecs unavailable to Xbox Windows Media Foundation cannot play.
 - Track selection and audio/subtitle delay controls are not available for remote sources; addon subtitle styling remains available.
 - Streams that need browser DRM won't play.
 - On Xbox the controller's pointer is turned off (it's the browser engine's, and fought with the D-pad); Settings → Device → Controller cursor brings it back.

@@ -63,6 +63,7 @@
     <Compile Include="Bridge\AppBridge.cs" />
     <Compile Include="Diagnostics\Log.cs" />
     <Compile Include="Input\ControllerBridge.cs" />
+    <Compile Include="Playback\HttpRangeStream.cs" />
     <Compile Include="Playback\NativeMediaPlayer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
