@@ -147,6 +147,8 @@ export function playerView({ state }) {
     }
     if (s === 'buffering') loadingText.textContent = 'Reconnecting…';
     updateLoading();
+    if (controlsVisible) renderTimeline();
+    renderSubtitles();
   });
   engine.on('time', ({ time, duration: d }) => {
     lastTime = time;
@@ -154,6 +156,10 @@ export function playerView({ state }) {
     if (d > 0 && !duration) duration = d;
     maybeOfferNext();
     maybeSave();
+    // The native host coalesces position events to 4 Hz; render with those updates instead
+    // of running a full WebView animation frame while the video decoder is busy.
+    if (controlsVisible) renderTimeline();
+    renderSubtitles();
   });
   engine.on('duration', ({ duration: d }) => {
     duration = d;
@@ -177,6 +183,8 @@ export function playerView({ state }) {
     report('start');
     el.classList.add('ready');
     updateLoading();
+    renderTimeline();
+    renderSubtitles();
     // While loading only Back is on screen; now the playback controls are.
     if (!focus.current || focus.current === backButton || !el.contains(focus.current)) focus.set(playButton);
     scheduleHide();
@@ -465,10 +473,16 @@ export function playerView({ state }) {
     activeAddonSub = { sub, cues: null };
     try {
       const cues = await loadSubtitleCues(sub.url);
-      if (activeAddonSub && activeAddonSub.sub === sub) activeAddonSub.cues = cues;
+      if (activeAddonSub && activeAddonSub.sub === sub) {
+        activeAddonSub.cues = cues;
+        renderSubtitles();
+      }
     } catch (error) {
       toast('Couldn\'t load those subtitles', { kind: 'error' });
-      if (activeAddonSub && activeAddonSub.sub === sub) activeAddonSub = null;
+      if (activeAddonSub && activeAddonSub.sub === sub) {
+        activeAddonSub = null;
+        renderSubtitles();
+      }
     }
   }
 
@@ -897,16 +911,6 @@ export function playerView({ state }) {
 
   el.addEventListener('pointermove', () => poke(), { passive: true });
 
-  // ---------- Frame loop: timeline and subtitles ----------
-  let frame = 0;
-  const tick = () => {
-    if (closed) return;
-    if (controlsVisible) renderTimeline();
-    renderSubtitles();
-    frame = requestAnimationFrame(tick);
-  };
-  frame = requestAnimationFrame(tick);
-
   // Pause when the app goes to the background on the console.
   cleanups.push(events.on('native:app.visibility', ({ visible }) => {
     if (!visible && playState === 'playing') engine.pause();
@@ -935,7 +939,6 @@ export function playerView({ state }) {
       closed = true;
       save(true);
       report('stop');
-      cancelAnimationFrame(frame);
       clearTimeout(hideTimer);
       clearTimeout(scrubTimer);
       clearTimeout(openTimer);
