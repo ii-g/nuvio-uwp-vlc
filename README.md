@@ -69,7 +69,8 @@ Optional: with a TMDB key (Settings → Integrations, or the `TMDB_API_KEY` secr
 The app keeps a log of starting up and playing: read it on the TV in **Settings → About → View log** (this session and the last one). To copy the whole file, download it from the Device Portal: **File explorer → LocalAppData →** the Nuvio package folder (`b7f0f2ee-…`) **→ LocalState → `nuvio-vlc.log`**. Include it when reporting a problem.
 
 Known limitations:
-- Subtitle styling applies to addon subtitles; subtitles built into the video file use Windows' default style.
+- The native player supports direct HTTP(S) media and HLS/DASH streams. Links requiring custom headers, other protocols, or codecs unavailable to Xbox Windows Media Foundation cannot play.
+- Track selection and audio/subtitle delay controls are not available for remote sources; addon subtitle styling remains available.
 - Streams that need browser DRM won't play.
 - On Xbox the controller's pointer is turned off (it's the browser engine's, and fought with the D-pad); Settings → Device → Controller cursor brings it back.
 - Simkl, MDBList and Nuvio's JavaScript provider plugins aren't implemented yet.
@@ -103,4 +104,4 @@ For changes to the web app only, no reinstall is needed at all: run `node tools/
 - The UWP shell and packaging are based on Stremio UWP (GPL-3.0).
 - Some icons are Material Design icons (Apache-2.0).
 - Licensed under [GPLv3](LICENSE).
-- Unofficial. This project is not affiliated with NuvioMedia, Stremio or VideoLAN, and doesn't host or provide any content.
+- Unofficial. This project is not affiliated with NuvioMedia, Stremio , and doesn't host or provide any content.

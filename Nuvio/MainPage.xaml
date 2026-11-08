@@ -10,16 +10,10 @@
     Background="Black">
 
     <Grid Background="Black">
-        <!-- VLC draws the video here. The web app above turns transparent while a stream plays, so
-             Nuvio's player controls and subtitles sit on top of VLC's picture. Created only once
-             the web app has loaded (x:Load), so a VLC problem can't stop the app starting. -->
-        <vlc:VideoView x:Name="VideoView"
-                       x:Load="False"
-                       SizeChanged="VideoView_SizeChanged"
-                       Opacity="0"
-                       IsHitTestVisible="False"
-                       IsTabStop="False"
-                       FlowDirection="LeftToRight" />
+        <!-- Native Windows Media Foundation surface; controls are drawn by the web app above it. -->
+        <MediaPlayerElement x:Name="MediaElement" x:Load="False" SizeChanged="MediaElement_SizeChanged"
+                            Opacity="0" IsHitTestVisible="False" IsTabStop="False"
+                            FlowDirection="LeftToRight" AreTransportControlsEnabled="False" Stretch="Uniform" />
 
         <!-- The controller drives the page through AppBridge (see ControllerBridge). -->
         <controls:WebView2 x:Name="WebView" FlowDirection="LeftToRight" />
