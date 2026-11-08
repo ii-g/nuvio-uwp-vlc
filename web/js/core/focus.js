@@ -428,7 +428,7 @@ function focusInHorizontalRow(row, target, anchorSide = 'right') {
   const delta = itemEdge - anchor;
 
   focus.set(target, { scroll: false });
-  if (Math.abs(delta) > 1) row.scrollBy({ left: delta, behavior: 'smooth' });
+  if (Math.abs(delta) > 1) row.scrollTo({ left: row.scrollLeft + delta, behavior: 'auto' });
 }
 
 function findNext(from, direction, root) {
@@ -512,14 +512,14 @@ function scrollIntoView(el) {
     const style = getComputedStyle(row);
     const padLeft = parseFloat(style.scrollPaddingLeft) || r.width * 0.04;
     const padRight = parseFloat(style.scrollPaddingRight) || r.width * 0.04;
-    if (e.left < r.left + padLeft) row.scrollBy({ left: e.left - r.left - padLeft, behavior: 'smooth' });
-    else if (e.right > r.right - padRight) row.scrollBy({ left: e.right - r.right + padRight, behavior: 'smooth' });
+    if (e.left < r.left + padLeft) row.scrollTo({ left: row.scrollLeft + e.left - r.left - padLeft, behavior: 'auto' });
+    else if (e.right > r.right - padRight) row.scrollTo({ left: row.scrollLeft + e.right - r.right + padRight, behavior: 'auto' });
   }
   // The page: bring the item's section to a steady spot near the top, like a TV home screen.
   const page = el.closest('[data-scroll-y]');
   if (!page) return;
   if (el.closest('[data-scroll-top]')) {
-    page.scrollTo({ top: 0, behavior: 'smooth' });
+    page.scrollTo({ top: 0, behavior: 'auto' });
     return;
   }
   const section = el.closest('[data-nav-row]') || el;
@@ -530,6 +530,6 @@ function scrollIntoView(el) {
   const bottomMargin = p.height * 0.06;
   if (section.hasAttribute('data-nav-row') || s.top < p.top + topMargin || s.bottom > p.bottom - bottomMargin) {
     const delta = s.top - p.top - Math.max(topMargin, anchor);
-    if (Math.abs(delta) > 2) page.scrollBy({ top: delta, behavior: 'smooth' });
+    if (Math.abs(delta) > 2) page.scrollTo({ top: page.scrollTop + delta, behavior: 'auto' });
   }
 }
