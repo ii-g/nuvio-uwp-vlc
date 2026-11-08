@@ -123,6 +123,7 @@ html.sidebar-open .sidebar {
   transition: background .15s, color .15s;
 }
 .sidebar-item .icon { width: 1.7rem; height: 1.7rem; }
+.sidebar-profile-avatar { width: 1.7rem; height: 1.7rem; font-size: .72rem; }
 .sidebar-label { opacity: 0; transition: opacity .15s; font-weight: 600; font-size: 1.2rem; }
 html.sidebar-open .sidebar-label { opacity: 1; }
 .sidebar-item.active { color: var(--text); }
