@@ -1,4 +1,4 @@
-# Nuvio UWP Windows Media Foundation
+# Nuvio UWP VLC
 
 Nuvio for **Xbox Developer Mode** with **native Windows Media Foundation playback**, plus the same Nuvio web app for any browser.
 
@@ -21,7 +21,7 @@ Nuvio has no web or Xbox version, so this project is a Nuvio client written as a
 This app is for Xbox consoles in **Developer Mode**, which is how Xbox lets you install apps from outside the Store.
 
 1. **Turn on Developer Mode.** Follow Microsoft's guide: [Xbox Developer Mode activation](https://learn.microsoft.com/windows/uwp/xbox-apps/devkit-activation).
-2. **Download the app.** On your PC, open this repository's [Releases](../../releases/latest) page, download `NuvioUWPWindows Media Foundation-x64.zip` and unzip it. Inside is the app (`Nuvio_…_x64.msix`) and a `Dependencies` folder with its required dependency packages (`.appx`). Every build in the [Actions](../../actions) tab also has the same files as its `Nuvio-Native-x64` artifact.
+2. **Download the app.** On your PC, open this repository's [Releases](../../releases/latest) page, download `NuvioUWPVLC-x64.zip` and unzip it. Inside is the app (`Nuvio_…_x64.msix`) and a `Dependencies` folder with its required dependency packages (`.appx`). Every build in the [Actions](../../actions) tab also has the same files as its `Nuvio-Native-x64` artifact.
 3. **Open the Device Portal.** On the Xbox, in **Dev Home**, open **Remote Access Settings**, turn on the Xbox Device Portal and set a username and password. On your PC, open the address it shows, e.g. `https://192.168.1.20:11443` (a certificate warning is expected).
 4. **Install.** In the Device Portal, under **My games & apps**, choose **Add**:
    - Choose the `.msix` file and select **Next**.
