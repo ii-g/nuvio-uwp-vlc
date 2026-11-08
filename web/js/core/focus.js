@@ -186,6 +186,10 @@ export const focus = {
     if (carousel) {
       // The edge facing the sidebar leaves the hero immediately instead of changing titles
       // underneath the user's focus.
+      if (!rtl && direction === toSidebar) {
+        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
+        return true;
+      }
       if (direction === toSidebar && sidebar && isVisible(sidebar)) {
         focus.restore(sidebar);
         return true;
@@ -211,10 +215,17 @@ export const focus = {
       ? current.closest('[data-scroll-x]')
       : null;
     if (row) {
-      const rowTarget = horizontalRowNeighbor(row, current, direction, rtl);
+      const rowRtl = getComputedStyle(row).direction === 'rtl';
+      const mediaRow = row.matches('.row-track') && !rtl;
+      const rowTarget = horizontalRowNeighbor(row, current, direction, rowRtl);
       if (rowTarget) {
-        if (rtl) focusInHorizontalRow(row, rowTarget);
+        if (mediaRow) focusInHorizontalRow(row, rowTarget, 'left');
+        else if (rtl) focusInHorizontalRow(row, rowTarget);
         else focus.set(rowTarget);
+        return true;
+      }
+      if (mediaRow) {
+        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
         return true;
       }
       if (direction === toSidebar && sidebar && isVisible(sidebar)) {
@@ -240,13 +251,17 @@ export const focus = {
         focus.set(target);
         return true;
       }
+      if (!rtl) {
+        current.dispatchEvent(new CustomEvent('nav-edge', { bubbles: true, detail: { direction } }));
+        return true;
+      }
       if (sidebar && isVisible(sidebar)) {
         focus.restore(sidebar);
         return true;
       }
     }
 
-    const target = findNext(current, direction, scope.el);
+    const target = findNext(current, direction, !rtl && !inSidebar ? contentRoot : scope.el);
     if (target) {
       focus.set(target);
       return true;
@@ -402,13 +417,15 @@ function horizontalRowNeighbor(row, from, direction, rtl) {
   return items[index + step] || null;
 }
 
-function focusInHorizontalRow(row, target) {
+function focusInHorizontalRow(row, target, anchorSide = 'right') {
   const rowRect = row.getBoundingClientRect();
   const style = getComputedStyle(row);
-  const padRight = parseFloat(style.scrollPaddingRight) || rowRect.width * 0.04;
-  const targetRight = target.getBoundingClientRect().right;
-  const anchor = rowRect.right - padRight;
-  const delta = targetRight - anchor;
+  const targetRect = target.getBoundingClientRect();
+  const left = anchorSide === 'left';
+  const padding = parseFloat(left ? style.scrollPaddingLeft : style.scrollPaddingRight) || rowRect.width * 0.04;
+  const anchor = left ? rowRect.left + padding : rowRect.right - padding;
+  const itemEdge = left ? targetRect.left : targetRect.right;
+  const delta = itemEdge - anchor;
 
   focus.set(target, { scroll: false });
   if (Math.abs(delta) > 1) row.scrollBy({ left: delta, behavior: 'smooth' });
