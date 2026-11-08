@@ -184,6 +184,12 @@ export const focus = {
       ? current.closest('[data-nav-carousel]')
       : null;
     if (carousel) {
+      // The edge facing the sidebar leaves the hero immediately instead of changing titles
+      // underneath the user's focus.
+      if (direction === toSidebar && sidebar && isVisible(sidebar)) {
+        focus.restore(sidebar);
+        return true;
+      }
       const carouselTarget = findNext(current, direction, carousel);
       if (carouselTarget) {
         focus.set(carouselTarget);
