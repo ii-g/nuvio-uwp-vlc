@@ -142,7 +142,7 @@ jobs:
 
       - uses: actions/upload-artifact@v6
         with:
-          name: Nuvio-VLC-x64-${{ matrix.configuration }}
+          name: Nuvio-Native-x64-${{ matrix.configuration }}
           path: AppPackages/
           if-no-files-found: error
 

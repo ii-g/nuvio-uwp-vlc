@@ -107,7 +107,7 @@ if (webview) {
     if (message.type === 'app.hello') {
       bridge.platform = message.platform || 'desktop';
       bridge.appVersion = message.appVersion || null;
-      bridge.vlcVersion = message.mediaEngine || null;
+      bridge.mediaEngine = message.mediaEngine || null;
       bridge.webAppUrl = message.webAppUrl || null;
       bridge.bundled = message.bundled !== false;
     }

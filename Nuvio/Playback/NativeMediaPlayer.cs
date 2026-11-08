@@ -4,6 +4,7 @@ using Nuvio.Diagnostics;
 using Windows.Data.Json;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using Windows.Media.Streaming.Adaptive;
 using Windows.UI.Xaml.Controls;
 
 namespace Nuvio.Playback
@@ -68,9 +69,35 @@ namespace Nuvio.Playback
                     throw new NotSupportedException("This link requires custom HTTP headers, which the native UWP player cannot apply to direct media sources.");
                 _mediaPlayer.Pause();
                 _mediaPlayer.Source = null;
-                _mediaPlayer.Source = MediaSource.CreateFromUri(uri);
-                _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
                 RaiseState("opening", null);
+                OpenSourceAsync(request, uri);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Native media source could not be opened", ex);
+                RaiseState("error", ex.Message);
+                RaiseEnded("error", ex.Message);
+            }
+        }
+
+        private async void OpenSourceAsync(OpenRequest request, Uri uri)
+        {
+            try
+            {
+                MediaSource source;
+                var path = uri.AbsolutePath.ToLowerInvariant();
+                if (path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u"))
+                {
+                    var result = await AdaptiveMediaSource.CreateFromUriAsync(uri);
+                    if (result.Status != AdaptiveMediaSourceCreationStatus.Success)
+                        throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
+                    source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
+                }
+                else source = MediaSource.CreateFromUri(uri);
+
+                if (_mediaPlayer == null || _disposed) return;
+                _mediaPlayer.Source = MediaPlaybackItem.Create(source);
+                _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
                 _mediaPlayer.Play();
             }
             catch (Exception ex)

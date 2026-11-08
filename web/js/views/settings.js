@@ -319,7 +319,7 @@ function subtitlesPage() {
     settingChoice('subtitleColor', 'Colour', null, [['#ffffff', 'White'], ['#ffeb3b', 'Yellow'], ['#8be9fd', 'Cyan'], ['#a5d6a7', 'Green']]),
     settingChoice('subtitleBackground', 'Background', null, [['none', 'Outline'], ['shadow', 'Drop shadow'], ['box', 'Dark box']]),
     settingChoice('subtitleOffset', 'Position', 'Distance from the bottom of the screen', [[3, 'Lowest'], [8, 'Default'], [14, 'Higher'], [20, 'Highest']]),
-    h('p', { class: 'settings-hint' }, 'These apply to subtitles from addons. Subtitles built into a video file are drawn by VLC in its own style.'));
+    h('p', { class: 'settings-hint' }, 'These apply to subtitles from addons. Subtitles built into a video file use the style provided by Windows.'));
   el.__cleanup = events.on('settings', apply);
   return el;
 }

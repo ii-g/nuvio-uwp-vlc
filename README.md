@@ -2,9 +2,9 @@
 
 Nuvio for **Xbox Developer Mode** with **native Windows Media Foundation playback**, plus the same Nuvio web app for any browser.
 
-Nuvio has no web or Xbox version, so this project is a Nuvio client written as a web app (`web/`) and packaged in a UWP app (`Nuvio/`) that plays everything with Windows Media Foundation. Debrid links in any format play: MKV, HEVC/H.265, 4K, Dolby Vision/HDR10, AV1, and TrueHD/Atmos/DTS-HD/EAC3 audio, because VLC does the decoding instead of the Edge engine. Nothing is torrented on the console; it only plays HTTP links served by your addons or debrid service.
+Nuvio has no web or Xbox version, so this project is a Nuvio client written as a web app (`web/`) and packaged in a UWP app (`Nuvio/`). Native Windows Media Foundation handles compatible HTTP(S) media and adaptive HLS/DASH streams; supported codecs depend on the Xbox system codecs and stream format.
 
-> **VLC is wrapped into the app.** The package contains LibVLC (the engine behind VLC media player). You don't need to install anything else.
+
 
 ## Features
 - **Nuvio's layout for the TV**: Home with featured titles, Continue Watching (with Next Up) and your addons' catalogs; Search; Library; details with seasons and episodes; per-addon stream lists with quality, HDR/DV, audio and size badges.
@@ -13,7 +13,7 @@ Nuvio has no web or Xbox version, so this project is a Nuvio client written as a
 - **Built-in debrid**: connect TorBox, Real-Debrid or Premiumize and plain torrent results play too: the service fetches the torrent and the console plays the file it serves.
 - **Jellyfin and Emby**: your server's libraries on Home, its files played directly in original quality, and progress and watched marks kept in step with the server. See [Jellyfin and Emby](#jellyfin-and-emby).
 - **Trakt**: scrobbling, your history and paused progress, and your watchlist and recommendations on Home. See [Trakt](#trakt).
-- **Player**: VLC with Nuvio-style controls, audio track and subtitle menus, addon subtitles drawn by the app (size, colour, background, position, delay), speed, aspect ratio, switching sources, episode list, resume, and next episode with a countdown (same addon and release group).
+- **Player**: Native Windows Media Foundation playback with Nuvio-style controls, addon subtitles drawn by the app, speed, aspect ratio, switching sources, episode list, resume, and next episode with a countdown (same addon and release group).
 - If a stream's connection drops partway through, playback reconnects and carries on.
 - Full controller support, including typing with the on-screen keyboard.
 
@@ -21,11 +21,11 @@ Nuvio has no web or Xbox version, so this project is a Nuvio client written as a
 This app is for Xbox consoles in **Developer Mode**, which is how Xbox lets you install apps from outside the Store.
 
 1. **Turn on Developer Mode.** Follow Microsoft's guide: [Xbox Developer Mode activation](https://learn.microsoft.com/windows/uwp/xbox-apps/devkit-activation).
-2. **Download the app.** On your PC, open this repository's [Releases](../../releases/latest) page, download `NuvioUWPVLC-x64.zip` and unzip it. Inside is the app (`Nuvio_…_x64.msix`) and a `Dependencies` folder with its 5 dependency packages (`.appx`). Every build in the [Actions](../../actions) tab also has the same files as its `NuvioUWPVLC-x64` artifact.
+2. **Download the app.** On your PC, open this repository's [Releases](../../releases/latest) page, download `NuvioUWPVLC-x64.zip` and unzip it. Inside is the app (`Nuvio_…_x64.msix`) and a `Dependencies` folder with its required dependency packages (`.appx`). Every build in the [Actions](../../actions) tab also has the same files as its `Nuvio-Native-x64` artifact.
 3. **Open the Device Portal.** On the Xbox, in **Dev Home**, open **Remote Access Settings**, turn on the Xbox Device Portal and set a username and password. On your PC, open the address it shows, e.g. `https://192.168.1.20:11443` (a certificate warning is expected).
 4. **Install.** In the Device Portal, under **My games & apps**, choose **Add**:
    - Choose the `.msix` file and select **Next**.
-   - Add the 5 files from the `Dependencies` folder and select **Next**.
+   - Add the files from the `Dependencies` folder and select **Next**.
    - Select **Start** and wait for the install to finish.
 5. **Open it.** In Dev Home the app appears as **Nuvio**.
 
@@ -51,7 +51,7 @@ Sync is gentle with the server, like Nuvio's own apps: progress goes up at most 
 Settings → Integrations → **Add a server**, and enter the address you open your server at (e.g. `192.168.1.20:8096`). Sign in with **Quick Connect** (Jellyfin: approve the code in another Jellyfin app under Settings → Quick Connect) or with your username and password. Several servers can be added.
 
 - Each library is a row on Home (newest first, with View All), and the server is searched along with your addons.
-- Titles with an IMDb id open with the usual details, and the server's copy is listed with your other streams (e.g. "Jellyfin 2160p"), so you can pick it or a debrid link. VLC plays the original file; the server doesn't convert anything. External subtitle files on the server are offered too.
+- Titles with an IMDb id open with the usual details, and the server's copy is listed with your other streams (e.g. "Jellyfin 2160p"), so you can pick it or a debrid link. The native player requests the original file; the server doesn't convert anything. External subtitle files on the server are offered too.
 - Playback is reported to the server (it shows up in its dashboard and keeps your place), resume points from the server appear in Continue Watching, and watched marks go both ways.
 
 ## Trakt
@@ -69,7 +69,7 @@ Optional: with a TMDB key (Settings → Integrations, or the `TMDB_API_KEY` secr
 The app keeps a log of starting up and playing: read it on the TV in **Settings → About → View log** (this session and the last one). To copy the whole file, download it from the Device Portal: **File explorer → LocalAppData →** the Nuvio package folder (`b7f0f2ee-…`) **→ LocalState → `nuvio-vlc.log`**. Include it when reporting a problem.
 
 Known limitations:
-- Subtitle styling applies to addon subtitles; subtitles built into the video file use VLC's default style.
+- Subtitle styling applies to addon subtitles; subtitles built into the video file use Windows' default style.
 - Streams that need browser DRM won't play.
 - On Xbox the controller's pointer is turned off (it's the browser engine's, and fought with the D-pad); Settings → Device → Controller cursor brings it back.
 - Simkl, MDBList and Nuvio's JavaScript provider plugins aren't implemented yet.
@@ -94,14 +94,13 @@ For changes to the web app only, no reinstall is needed at all: run `node tools/
 
 ## How it works
 - The web app (`web/`) is packaged into the app and served to a WebView2 at `https://app.nuvio.local/`. It talks to the app through `window.chrome.webview` messages ([docs/bridge.md](docs/bridge.md); `Nuvio/Bridge/AppBridge.cs`).
-- VLC draws the video underneath the page (`Nuvio/Playback/VlcPlayer.cs`), and the page turns transparent while a stream plays, so the Nuvio controls and addon subtitles appear on top.
-- Streams are downloaded with Windows' own HTTP stack and fed to VLC (`Nuvio/Playback/HttpMediaInput.cs`): it handles TLS and the redirects debrid links use, and sends any request headers an addon asks for. HLS/DASH playlists use VLC's own networking.
+- `MediaPlayerElement` draws the video underneath the page (`Nuvio/Playback/NativeMediaPlayer.cs`), and the page turns transparent while a stream plays, so Nuvio controls and addon subtitles appear on top.
+- Windows Media Foundation handles direct HTTP(S) sources and adaptive HLS/DASH playlists using the Xbox's native media stack.
 - The controller is read natively (`Nuvio/Input/ControllerBridge.cs`) and handed to the page's spatial navigation (`web/js/core/focus.js`).
 
 ## Credits and license
 - Based on [Nuvio](https://github.com/NuvioMedia/NuvioMobile) by NuvioMedia (GPL-3.0): design, icons and the account and debrid protocols follow it.
-- The UWP shell, VLC playback and packaging come from Stremio UWP VLC (GPL-3.0).
-- Video playback by [LibVLC](https://www.videolan.org/vlc/libvlc.html) and [LibVLCSharp](https://code.videolan.org/videolan/LibVLCSharp) from VideoLAN (LGPL-2.1-or-later).
+- The UWP shell and packaging are based on Stremio UWP (GPL-3.0).
 - Some icons are Material Design icons (Apache-2.0).
 - Licensed under [GPLv3](LICENSE).
 - Unofficial. This project is not affiliated with NuvioMedia, Stremio or VideoLAN, and doesn't host or provide any content.
