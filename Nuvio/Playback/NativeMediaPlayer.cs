@@ -83,12 +83,6 @@ namespace Nuvio.Playback
                 FailOpen(generation, "This player accepts direct HTTP or HTTPS media links.");
                 return;
             }
-            if (request.Headers != null && request.Headers.Count > 0)
-            {
-                FailOpen(generation, "This link requires custom HTTP headers, which the native UWP player cannot apply to direct media sources.");
-                return;
-            }
-
             try
             {
                 _mediaPlayer.Pause();
@@ -180,7 +174,7 @@ namespace Nuvio.Playback
             var client = new Windows.Web.Http.HttpClient();
             foreach (var header in headers)
             {
-                if (string.IsNullOrWhiteSpace(header.Key)) continue;
+                if (string.IsNullOrWhiteSpace(header.Key) || header.Key.Equals("Range", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!client.DefaultRequestHeaders.TryAppendWithoutValidation(header.Key, header.Value ?? string.Empty))
                 {
                     client.Dispose();
@@ -224,11 +218,7 @@ namespace Nuvio.Playback
             CancelPendingOpen();
             try
             {
-                if (_mediaPlayer != null)
-                {
-                    _mediaPlayer.Pause();
-                    ClearCurrentSource();
-                }
+                if (_mediaPlayer != null) _mediaPlayer.Pause();
             }
             catch (Exception ex) { Log.Error("Clearing failed native media source failed", ex); }
             if (_view != null) _view.Opacity = 0;
@@ -377,6 +367,7 @@ namespace Nuvio.Playback
             _openFailed = true;
             CancelPendingOpen();
             if (_view != null) _view.Opacity = 0;
+            ClearCurrentSource();
             RaiseState("error", message);
             RaiseEnded("error", message);
         }
