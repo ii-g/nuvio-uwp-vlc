@@ -48,6 +48,17 @@ namespace Nuvio
         public MainPage()
         {
             Log.Write("Main page starting");
+            // The native MediaPlayerElement is intentionally behind WebView2. WinUI 2 UWP
+            // requires this environment setting before CoreWebView2 is created so transparent
+            // playback-page backgrounds reveal the native video surface on Xbox.
+            try
+            {
+                Environment.SetEnvironmentVariable("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "00FFFFFF");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Could not enable transparent WebView2 rendering for native video", ex);
+            }
             this.InitializeComponent();
             SetFlowDirection(string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "ar", StringComparison.OrdinalIgnoreCase));
             _player = new NativeMediaPlayer();
