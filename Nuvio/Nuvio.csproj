@@ -55,6 +55,17 @@
   <PropertyGroup>
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
+  <!-- VideoLAN.LibVLC.UWP's UWP targets flatten these linked Content files into the
+       package root. Pin the native payload to x64 and name every required asset group
+       explicitly so Release, Debug, and publish builds package the same complete runtime. -->
+  <PropertyGroup Condition="'$(Platform)' == 'x64'">
+    <VlcUWPX64Enabled>true</VlcUWPX64Enabled>
+    <VlcUWPX86Enabled>false</VlcUWPX86Enabled>
+    <VlcUWPARMEnabled>false</VlcUWPARMEnabled>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(Platform)' == 'x64'">
+    <VlcUWPX64IncludeFiles Include="libvlc.%2A;libvlccore.%2A;hrtfs\%2A%2A;locale\%2A%2A;lua\%2A%2A;plugins\%2A%2A" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
