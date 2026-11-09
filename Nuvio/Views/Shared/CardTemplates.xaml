@@ -7,6 +7,7 @@
     <views:PosterImageConverter x:Key="PosterImageConverter"/>
     <views:ShapeWidthConverter x:Key="ShapeWidthConverter"/>
     <views:ShapeHeightConverter x:Key="ShapeHeightConverter"/>
+    <views:CardArtHeightConverter x:Key="CardArtHeightConverter"/>
     <views:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
     <views:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
     <views:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
@@ -24,7 +25,15 @@
             <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#FF16171D" CornerRadius="6">
                 <Grid>
                     <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="8" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
-                    <Image Source="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
+                    <!-- Art as the Border background: Border.CornerRadius does not clip a child
+                         Image, so the poster's square corners poked out of the rounded frame.
+                         The background brush is clipped to the corners; the name text shows
+                         through only while the art is missing. -->
+                    <Border CornerRadius="6">
+                        <Border.Background>
+                            <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
+                        </Border.Background>
+                    </Border>
                     <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="15" Height="15" CornerRadius="8" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
                         <TextBlock Text="✓" Foreground="White" FontSize="8" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -64,15 +73,21 @@
             <Border Grid.Row="0" Height="99" Background="#FF16171D" CornerRadius="6">
                 <Grid>
                     <TextBlock Text="{Binding Title}" Foreground="#80FFFFFF" FontSize="10" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
-                    <Image Source="{Binding CardImage, Converter={StaticResource PosterImageConverter}, ConverterParameter=wide}" Stretch="UniformToFill"/>
-                    <Rectangle>
-                        <Rectangle.Fill>
+                    <!-- Art as the Border background (see PosterCardTemplate): the child Image
+                         was not clipped to the rounded corners. -->
+                    <Border CornerRadius="6">
+                        <Border.Background>
+                            <ImageBrush ImageSource="{Binding CardImage, Converter={StaticResource PosterImageConverter}, ConverterParameter=wide}" Stretch="UniformToFill"/>
+                        </Border.Background>
+                    </Border>
+                    <Border CornerRadius="6">
+                        <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Offset="0" Color="#00000000"/>
                                 <GradientStop Offset="1" Color="#BF000000"/>
                             </LinearGradientBrush>
-                        </Rectangle.Fill>
-                    </Rectangle>
+                        </Border.Background>
+                    </Border>
                     <Image Source="{Binding Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,0,13" MaxWidth="97" MaxHeight="32" Visibility="{Binding Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
                     <TextBlock Text="{Binding Title}" Foreground="White" FontSize="10" FontWeight="Bold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8,0,8,13" Visibility="{Binding Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
                     <ProgressBar Value="{Binding ProgressFraction}" Maximum="1" Visibility="{Binding Converter={StaticResource ContinueProgressVisibilityConverter}}" VerticalAlignment="Bottom" Margin="5,0,5,5" Height="2" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
@@ -98,13 +113,17 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="6" IsHitTestVisible="False"/>
+                        <!-- Web: the ring wraps the art only (.card.focused .card-art), 0.22rem
+                             (~1.75 epx) with the title outside it. Height is the art height, so
+                             the ring never swallows the title; Margin -1 puts it just outside
+                             the art like the web's box-shadow ring. -->
+                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}"/>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.25"/></ObjectAnimationUsingKeyFrames>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="#99FFFFFF"/></ObjectAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </VisualState>
@@ -115,7 +134,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="2"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </VisualState>
@@ -124,7 +143,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="2"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </VisualState>
