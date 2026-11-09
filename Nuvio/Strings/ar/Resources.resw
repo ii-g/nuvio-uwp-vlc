@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Milestone 1 strings only: sidebar, Home, common. Arabic is the authored language; translations come from web/js/core/i18n.js. -->
+  <data name="SidebarHomeLabel.Text" xml:space="preserve">
+    <value>الرئيسية</value>
+  </data>
+  <data name="SidebarSearchLabel.Text" xml:space="preserve">
+    <value>بحث</value>
+  </data>
+  <data name="SidebarLibraryLabel.Text" xml:space="preserve">
+    <value>المكتبة</value>
+  </data>
+  <data name="SidebarSettingsLabel.Text" xml:space="preserve">
+    <value>الإعدادات</value>
+  </data>
+  <data name="SidebarSwitchProfileLabel.Text" xml:space="preserve">
+    <value>تبديل الملف الشخصي</value>
+  </data>
+  <data name="HeroDetailsButton.Content" xml:space="preserve">
+    <value>التفاصيل</value>
+  </data>
+  <data name="ContinueWatchingTitle.Text" xml:space="preserve">
+    <value>متابعة المشاهدة</value>
+  </data>
+  <data name="ManageAddonsButton.Content" xml:space="preserve">
+    <value>إدارة الإضافات</value>
+  </data>
+  <data name="ViewAllLabel.Text" xml:space="preserve">
+    <value>عرض الكل</value>
+  </data>
+  <data name="BackButton.Content" xml:space="preserve">
+    <value>رجوع</value>
+  </data>
+  <data name="PressBackAgainToExit" xml:space="preserve">
+    <value>اضغط رجوع مرة أخرى للخروج</value>
+  </data>
+  <data name="HomeEmptyNoAddonsTitle" xml:space="preserve">
+    <value>خصّص Nuvio كما تحب.</value>
+  </data>
+  <data name="HomeEmptyNoAddonsMessage" xml:space="preserve">
+    <value>أضف مصدراً للبدء ببناء مكتبتك.</value>
+  </data>
+  <data name="HomeEmptyNoCatalogsTitle" xml:space="preserve">
+    <value>لا يتوفر محتوى في الصفحة الرئيسية</value>
+  </data>
+  <data name="HomeEmptyNoCatalogsMessage" xml:space="preserve">
+    <value>الإضافات المفعّلة لا توفّر قوائم لعرضها في الصفحة الرئيسية.</value>
+  </data>
+  <data name="Play" xml:space="preserve">
+    <value>تشغيل</value>
+  </data>
+  <data name="Watch" xml:space="preserve">
+    <value>مشاهدة</value>
+  </data>
+  <data name="NextUp" xml:space="preserve">
+    <value>التالي</value>
+  </data>
+  <data name="NewEpisode" xml:space="preserve">
+    <value>حلقة جديدة</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>إلغاء</value>
+  </data>
+  <data name="GoToDetails" xml:space="preserve">
+    <value>الانتقال إلى التفاصيل</value>
+  </data>
+  <data name="StartFromBeginning" xml:space="preserve">
+    <value>البدء من البداية</value>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>إزالة</value>
+  </data>
+  <data name="AlmostDone" xml:space="preserve">
+    <value>أوشك على الانتهاء</value>
+  </data>
+  <data name="Upcoming" xml:space="preserve">
+    <value>قادم</value>
+  </data>
+  <data name="AirsToday" xml:space="preserve">
+    <value>يعرض اليوم</value>
+  </data>
+  <data name="AirsTomorrow" xml:space="preserve">
+    <value>يعرض غداً</value>
+  </data>
+  <data name="AirsInDays" xml:space="preserve">
+    <value>يعرض بعد {0} أيام</value>
+  </data>
+  <data name="Airs" xml:space="preserve">
+    <value>موعد العرض</value>
+  </data>
+  <data name="TypeMovie" xml:space="preserve">
+    <value>فيلم</value>
+  </data>
+  <data name="TypeSeries" xml:space="preserve">
+    <value>مسلسلات</value>
+  </data>
+  <data name="TypeChannel" xml:space="preserve">
+    <value>القناة</value>
+  </data>
+  <data name="TypeTv" xml:space="preserve">
+    <value>TV</value>
+    <comment>TODO i18n: no Arabic translation in web/js/core/i18n.js; ships in English.</comment>
+  </data>
+  <data name="TypeAnime" xml:space="preserve">
+    <value>أنمي</value>
+  </data>
+</root>
