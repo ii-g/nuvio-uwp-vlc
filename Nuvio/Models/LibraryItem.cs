@@ -24,7 +24,7 @@ namespace Nuvio.Models
         /// <summary>ms epoch.</summary>
         public long AddedAt { get; set; }
 
-        public static LibraryItem FromJson(JsonValue value)
+        public static LibraryItem FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
