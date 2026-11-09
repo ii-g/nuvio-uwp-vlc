@@ -14,6 +14,10 @@
     <views:InverseStringToVisibilityConverter x:Key="InverseStringToVisibilityConverter"/>
     <views:DoubleToVisibilityConverter x:Key="DoubleToVisibilityConverter"/>
     <views:ContinueProgressVisibilityConverter x:Key="ContinueProgressVisibilityConverter"/>
+    <views:ViewAllArrowConverter x:Key="ViewAllArrowConverter"/>
+    <views:FlowDirectionToHorizontalAlignmentConverter x:Key="FlowDirectionToHorizontalAlignmentConverter"/>
+    <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
+    <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
 
     <!-- A poster card (components/cards.js posterCard): art, watched check, progress bar, title. -->
     <DataTemplate x:Key="PosterCardTemplate">
@@ -56,7 +60,7 @@
             </Grid.RowDefinitions>
             <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#0FFFFFFF" CornerRadius="6">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
-                    <FontIcon Glyph="&#xE76C;" FontSize="19" Foreground="#B8FFFFFF"/>
+                    <FontIcon Glyph="{Binding IsViewAll, Converter={StaticResource ViewAllArrowConverter}}" FontSize="19" Foreground="#B8FFFFFF"/>
                     <TextBlock x:Uid="ViewAllLabel" Text="View All" Foreground="#B8FFFFFF" FontSize="8" FontWeight="SemiBold"/>
                 </StackPanel>
             </Border>
