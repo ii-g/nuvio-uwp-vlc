@@ -1,3 +1,6 @@
+<!-- XYFocus keyboard navigation is off: the controller poll owns every move
+     (see MainPage.OnPreviewKeyDown); otherwise the framework moves focus a
+     second step per D-pad press on top of the router's move. -->
 <Page
     x:Class="Nuvio.Views.PlaceholderPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -5,9 +8,6 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    <!-- XYFocus keyboard navigation is off: the controller poll owns every move
-         (see MainPage.OnPreviewKeyDown); otherwise the framework moves focus a
-         second step per D-pad press on top of the router's move. -->
     XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
 
