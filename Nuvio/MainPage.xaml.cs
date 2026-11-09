@@ -404,7 +404,8 @@ namespace Nuvio
 
         /// <summary>
         /// Collapsing sidebar (web: 6rem icons-only, expands to 17rem on focus/hover).
-        /// Collapsed: 72px, labels hidden, icons centered. Expanded: 204px, labels shown.
+        /// XAML on Xbox is scaled 200%, so 6rem/17rem are 48/136 epx.
+        /// Collapsed: 48 epx, labels hidden, icons centered. Expanded: 136 epx, labels shown.
         /// Only the column width, label visibility and content alignment change - the
         /// button template and its RootGrid/TargetName focus states are untouched, so
         /// expand/collapse cannot reintroduce the 0x800F1000 animation crash.
@@ -413,7 +414,7 @@ namespace Nuvio
         {
             if (_sidebarExpanded) return;
             _sidebarExpanded = true;
-            SidebarColumn.Width = new GridLength(204);
+            SidebarColumn.Width = new GridLength(136);
             SetSidebarLabelsVisible(true);
             SetSidebarContentAlignment(HorizontalAlignment.Left);
         }
@@ -422,7 +423,7 @@ namespace Nuvio
         {
             if (!_sidebarExpanded) return;
             _sidebarExpanded = false;
-            SidebarColumn.Width = new GridLength(72);
+            SidebarColumn.Width = new GridLength(48);
             SetSidebarLabelsVisible(false);
             SetSidebarContentAlignment(HorizontalAlignment.Center);
         }
