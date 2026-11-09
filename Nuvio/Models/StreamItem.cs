@@ -53,7 +53,7 @@ namespace Nuvio.Models
         public string AddonName { get; set; }
         public JellyfinRef Jellyfin { get; set; }
 
-        public static StreamItem FromJson(JsonValue value)
+        public static StreamItem FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
