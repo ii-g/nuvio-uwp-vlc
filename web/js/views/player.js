@@ -116,6 +116,7 @@ export function playerView({ state }) {
   let controlsVisible = true;
   let menuOpen = false;
   let sessionStarted = false; // a "playback" start was announced for the current stream
+  let automaticFallbackNoticeShown = false;
 
   function osdButton(iconName, label, onClick, cls) {
     return h('button', { class: ['osd-btn', 'focusable', cls], type: 'button', 'aria-label': label, title: label, onClick: (e) => {
@@ -199,6 +200,18 @@ export function playerView({ state }) {
       report('stop');
       if (isSeries && settings.get('autoplayNext') && !nextDismissed) startNextCountdown(true);
       else exit();
+      return;
+    }
+
+    const currentIndex = sources.findIndex((source) => source.url === stream.url);
+    const nextSource = sources.slice(currentIndex + 1).find(isPlayable);
+    if (nextSource && !closed) {
+      save(true);
+      if (!automaticFallbackNoticeShown) {
+        automaticFallbackNoticeShown = true;
+        toast('This source failed. Trying the next available source.');
+      }
+      start(nextSource, ready ? currentTime() : lastTime);
       return;
     }
     showError(message || 'This stream could not be played.');
