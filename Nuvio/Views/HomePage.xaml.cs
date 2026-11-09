@@ -36,12 +36,20 @@ namespace Nuvio.Views
         private string _backdropCurrentUrl;
         private string _backdropPendingUrl;
         private string _lastFocusedKey;
+        private GridView _lastAnchoredRow;
 
         public HomePage()
         {
             NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Required;
             InitializeComponent();
             var shell = MainPage.Current;
+            // The page has no parent yet at construction time, so the inherited FlowDirection
+            // still reads as the LTR default here. Set it explicitly from the language
+            // setting, so the padding and hero alignment below (which read FlowDirection)
+            // use the real direction instead of always taking the LTR branch.
+            FlowDirection = AppSettings.IsRightToLeft(shell.Settings.AppLanguage)
+                ? FlowDirection.RightToLeft
+                : FlowDirection.LeftToRight;
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
             DataContext = _viewModel;
             // Page content starts after the sidebar; in RTL the start edge is the right one.
@@ -175,20 +183,49 @@ namespace Nuvio.Views
             if (IsDescendantOf(focused, HeroSection))
             {
                 // Hero: the page belongs at the top (web: [data-scroll-top]).
+                _lastAnchoredRow = null;
                 Scroller.ChangeView(null, 0, null, false);
                 return;
             }
-            // 0.0 is the row's start edge (right in RTL, left in LTR): on-device, with
-            // 0.0 the focused card lands at the right edge while scrolling an RTL row.
-            // A hair inside the edge leaves room for the 1.06 focus zoom, so the card's
-            // outer edge is never clipped by the row viewport.
+            // The row the focused card belongs to (null when focus is not in a row).
+            var row = FindAncestorGridView(focused);
+            // BringIntoView alignment ratios are fractions of the viewport's physical
+            // extent (0 = left/top, 1 = right/bottom): on build 155 the 0.01 ratio
+            // pinned the card to the LEFT, not the right. The web UI pins the focused
+            // card to the row's start edge, which is the physical right in RTL, so the
+            // ratio is 0.99 there (a hair inside the edge, for the 1.06 focus zoom)
+            // and 0.01 in LTR. The direction is read at runtime from the row itself.
+            var rtl = row != null
+                ? row.FlowDirection == FlowDirection.RightToLeft
+                : FlowDirection == FlowDirection.RightToLeft;
+            var horizontalRatio = rtl ? 0.99 : 0.01;
+            // One scroll per move: re-aligning the page vertically on every horizontal
+            // move made the page bob while the row glided (the "two scrolls" feeling).
+            // The 16% pin applies only when the focused row changes; inside a row the
+            // page does not move vertically at all (NaN = only scroll if not visible).
+            var verticalRatio = double.NaN;
+            if (row == null || !ReferenceEquals(row, _lastAnchoredRow))
+            {
+                verticalRatio = 0.16;
+                _lastAnchoredRow = row;
+            }
             var options = new BringIntoViewOptions
             {
                 AnimationDesired = true,
-                HorizontalAlignmentRatio = 0.01,
-                VerticalAlignmentRatio = 0.16,
+                HorizontalAlignmentRatio = horizontalRatio,
+                VerticalAlignmentRatio = verticalRatio,
             };
             element.StartBringIntoView(options);
+        }
+
+        private static GridView FindAncestorGridView(DependencyObject element)
+        {
+            for (var node = element; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                var grid = node as GridView;
+                if (grid != null) return grid;
+            }
+            return null;
         }
 
         // ---------- Backdrop ----------
