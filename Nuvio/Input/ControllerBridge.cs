@@ -15,11 +15,11 @@ namespace Nuvio.Input
         // One tap must move exactly once: a deliberate D-pad press lasts up to ~700 ms,
         // so the first repeat waits 800 ms. Holding then accelerates like a TV UI:
         // the first repeats are slow enough to read each card (~2 moves/sec) and speed
-        // up to ~5/sec for long lists. (Was a fixed 300 ms: 3.3 moves/sec from the first
-        // repeat, too fast to follow with the highlight jumping card to card.)
+        // up to ~3/sec for long lists. (Was a 200 ms floor: ~5/sec with the highlight
+        // jumping card to card, too fast to follow.)
         private static readonly TimeSpan FirstRepeatDelay = TimeSpan.FromMilliseconds(800);
         private static readonly TimeSpan RepeatIntervalStart = TimeSpan.FromMilliseconds(500);
-        private static readonly TimeSpan RepeatIntervalFloor = TimeSpan.FromMilliseconds(200);
+        private static readonly TimeSpan RepeatIntervalFloor = TimeSpan.FromMilliseconds(300);
         private static readonly TimeSpan RepeatAcceleration = TimeSpan.FromMilliseconds(50);
         private const double StickThreshold = 0.6;
         private const double TriggerThreshold = 0.5;
