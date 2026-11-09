@@ -29,7 +29,10 @@
                          Image, so the poster's square corners poked out of the rounded frame.
                          The background brush is clipped to the corners; the name text shows
                          through only while the art is missing. -->
-                    <Border CornerRadius="6">
+                    <!-- The art host is pinned LeftToRight: an ImageBrush inherits the page's
+                         RTL flow and mirrors the poster (build 162 showed every poster
+                         flipped); the title text below stays RTL. -->
+                    <Border CornerRadius="6" FlowDirection="LeftToRight">
                         <Border.Background>
                             <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
                         </Border.Background>
@@ -75,7 +78,9 @@
                     <TextBlock Text="{Binding Title}" Foreground="#80FFFFFF" FontSize="10" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
                     <!-- Art as the Border background (see PosterCardTemplate): the child Image
                          was not clipped to the rounded corners. -->
-                    <Border CornerRadius="6">
+                    <!-- Art host pinned LeftToRight (see PosterCardTemplate): the brush must
+                         not mirror in RTL. -->
+                    <Border CornerRadius="6" FlowDirection="LeftToRight">
                         <Border.Background>
                             <ImageBrush ImageSource="{Binding CardImage, Converter={StaticResource PosterImageConverter}, ConverterParameter=wide}" Stretch="UniformToFill"/>
                         </Border.Background>
