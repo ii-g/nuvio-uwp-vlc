@@ -4,6 +4,7 @@ using Windows.ApplicationModel.Resources;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
+using Windows.UI.Xaml.Media;
 
 namespace Nuvio.Input
 {
@@ -95,7 +96,8 @@ namespace Nuvio.Input
 
         private void MoveFocus(FocusNavigationDirection direction)
         {
-            if (FocusManager.GetFocusedElement() == null)
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null)
             {
                 var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
                 if (first != null)
@@ -104,7 +106,55 @@ namespace Nuvio.Input
                     return;
                 }
             }
+            if (focused != null && IsEdgeMove(focused, direction)) return;
             FocusManager.TryMoveFocus(direction);
+        }
+
+        /// <summary>
+        /// Moves that must stop dead instead of letting XYFocus carry focus somewhere else:
+        /// past the last card of a row (the old code dropped to the next row) and past
+        /// either end of the sidebar (which also collapsed the strip and threw focus into
+        /// the content). The row's start edge is left open on purpose: pressing toward the
+        /// sidebar there returns to the sidebar, as in the web UI.
+        /// </summary>
+        private bool IsEdgeMove(DependencyObject focused, FocusNavigationDirection direction)
+        {
+            if (direction == FocusNavigationDirection.Left || direction == FocusNavigationDirection.Right)
+            {
+                var item = FindAncestorGridViewItem(focused);
+                if (item != null)
+                {
+                    var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+                    if (grid != null)
+                    {
+                        var index = grid.IndexFromContainer(item);
+                        var rtl = grid.FlowDirection == FlowDirection.RightToLeft;
+                        var forward = rtl ? direction == FocusNavigationDirection.Left : direction == FocusNavigationDirection.Right;
+                        if (forward && index >= 0 && index == grid.Items.Count - 1) return true;
+                    }
+                }
+            }
+            if (direction == FocusNavigationDirection.Up || direction == FocusNavigationDirection.Down)
+            {
+                bool isFirst;
+                bool isLast;
+                if (_shell.IsSidebarButton(focused, out isFirst, out isLast))
+                {
+                    if (direction == FocusNavigationDirection.Up && isFirst) return true;
+                    if (direction == FocusNavigationDirection.Down && isLast) return true;
+                }
+            }
+            return false;
+        }
+
+        private static GridViewItem FindAncestorGridViewItem(DependencyObject element)
+        {
+            for (var node = element; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                var item = node as GridViewItem;
+                if (item != null) return item;
+            }
+            return null;
         }
 
         private void HandleBack()
