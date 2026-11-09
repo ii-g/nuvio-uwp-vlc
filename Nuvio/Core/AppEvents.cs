@@ -6,14 +6,14 @@ namespace Nuvio.Core
     /// <summary>Emitted when a setting changes (replaces the JS event bus 'settings' event for this cross-cutting case).</summary>
     internal sealed class SettingsChangedEventArgs : EventArgs
     {
-        public SettingsChangedEventArgs(string name, JsonValue value)
+        public SettingsChangedEventArgs(string name, IJsonValue value)
         {
             Name = name;
             Value = value;
         }
 
         public string Name { get; }
-        public JsonValue Value { get; }
+        public IJsonValue Value { get; }
     }
 
     /// <summary>Emitted when the shell navigates to another root (replaces the JS event bus 'route' event).</summary>
@@ -36,7 +36,7 @@ namespace Nuvio.Core
         public static event EventHandler<SettingsChangedEventArgs> SettingsChanged;
         public static event EventHandler<RouteChangedEventArgs> RouteChanged;
 
-        public static void RaiseSettingsChanged(string name, JsonValue value)
+        public static void RaiseSettingsChanged(string name, IJsonValue value)
         {
             var handler = SettingsChanged;
             if (handler != null) handler(null, new SettingsChangedEventArgs(name, value));
