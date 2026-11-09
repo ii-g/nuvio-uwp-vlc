@@ -105,11 +105,11 @@ export function sortStreams(entries, mode) {
   return entries;
 }
 
-// How likely the native (WMF) player is to open this stream first try. Lower is
+// How likely the primary (FFmpegInteropX) player is to open this stream first try. Lower is
 // tried earlier. mp4/H.264 and adaptive HLS/DASH go first; mkv and streams whose
-// titles promise HEVC/AV1/DTS/TrueHD/REMUX go last, because WMF on Xbox often
-// rejects those codecs (SourceNotSupported/DecodingError) while LibVLC can play
-// them. Deferred sources are never removed, only tried later.
+// titles promise HEVC/AV1/DTS/TrueHD/REMUX go last: FFmpeg can play those codecs,
+// but they are heavier to decode, so the lighter streams are still tried first.
+// Deferred sources are never removed, only tried later.
 const RISKY_BADGES = { HEVC: 3, AV1: 3, 'DTS-HD': 2, DTS: 2, TrueHD: 2, DV: 2, 'HDR10+': 1, REMUX: 2 };
 export function playbackScore(stream, info) {
   let score = 0;
@@ -118,7 +118,7 @@ export function playbackScore(stream, info) {
   else if (/\.mp4$|\.m4v$/.test(path)) score += 0;
   else if (/\.mkv$/.test(path)) score += 3;
   else if (/\.webm$/.test(path)) score += 2;
-  else score += 2; // No recognizable extension (e.g. /redirect): WMF cannot guess the container.
+  else score += 2; // No recognizable extension (e.g. /redirect): the container cannot be guessed from the URL.
   for (const badge of (info && info.badges) || []) score += RISKY_BADGES[badge] || 0;
   if (info && info.cached) score -= 1;
   return score;
