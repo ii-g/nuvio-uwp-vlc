@@ -123,6 +123,12 @@ namespace Nuvio.Playback
 
         private void OpenWithVlc(OpenRequest request, double startSeconds, bool announce)
         {
+            if (request == null || string.IsNullOrEmpty(request.Url))
+            {
+                RaiseState("error", "This player accepts direct HTTP or HTTPS media links.");
+                RaiseEnded("error", "This player accepts direct HTTP or HTTPS media links.");
+                return;
+            }
             if (_vlcUnavailable)
             {
                 Log.Write("VLC is unavailable; cannot fall back for host " + HostOf(request.Url));
@@ -201,6 +207,13 @@ namespace Nuvio.Playback
 
         private void TryFallbackToVlc(JsonObject nativeEnded)
         {
+            // Nothing to fall back to without a URL (e.g. an empty link the
+            // native player already rejected): report the failure as-is.
+            if (_currentRequest == null || string.IsNullOrEmpty(_currentRequest.Url))
+            {
+                EventRaised?.Invoke("player.ended", nativeEnded);
+                return;
+            }
             if (_fellBack)
             {
                 EventRaised?.Invoke("player.ended", nativeEnded);
