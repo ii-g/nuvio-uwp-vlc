@@ -13,11 +13,14 @@ namespace Nuvio.Input
     {
         private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
         // One tap must move exactly once: a deliberate D-pad press lasts up to ~700 ms,
-        // so the first repeat waits 800 ms; holding then repeats at ~3 moves/sec.
-        // (Was 400 ms / 110 ms, then 650 ms / 200 ms: a normal press crossed the repeat
-        // threshold and jumped 2-3 items, and held navigation machine-gunned through lists.)
+        // so the first repeat waits 800 ms. Holding then accelerates like a TV UI:
+        // the first repeats are slow enough to read each card (~2 moves/sec) and speed
+        // up to ~5/sec for long lists. (Was a fixed 300 ms: 3.3 moves/sec from the first
+        // repeat, too fast to follow with the highlight jumping card to card.)
         private static readonly TimeSpan FirstRepeatDelay = TimeSpan.FromMilliseconds(800);
-        private static readonly TimeSpan RepeatInterval = TimeSpan.FromMilliseconds(300);
+        private static readonly TimeSpan RepeatIntervalStart = TimeSpan.FromMilliseconds(500);
+        private static readonly TimeSpan RepeatIntervalFloor = TimeSpan.FromMilliseconds(200);
+        private static readonly TimeSpan RepeatAcceleration = TimeSpan.FromMilliseconds(50);
         private const double StickThreshold = 0.6;
         private const double TriggerThreshold = 0.5;
 
@@ -40,6 +43,7 @@ namespace Nuvio.Input
         private bool _previousRightTrigger;
         private string _heldDirection;
         private DateTime _nextRepeat;
+        private int _repeatCount;
 
         /// <param name="send">Called on the UI thread with an action name and whether it is a held-down repeat.</param>
         public ControllerBridge(Action<string, bool> send)
@@ -82,6 +86,7 @@ namespace Nuvio.Input
             if (reading.Direction != _heldDirection)
             {
                 _heldDirection = reading.Direction;
+                _repeatCount = 0;
                 if (reading.Direction != null)
                 {
                     _send(reading.Direction, false);
@@ -91,7 +96,14 @@ namespace Nuvio.Input
             else if (reading.Direction != null && now >= _nextRepeat)
             {
                 _send(reading.Direction, true);
-                _nextRepeat = now + RepeatInterval;
+                _repeatCount++;
+                var intervalMs = RepeatIntervalStart.TotalMilliseconds
+                    - RepeatAcceleration.TotalMilliseconds * _repeatCount;
+                if (intervalMs < RepeatIntervalFloor.TotalMilliseconds)
+                {
+                    intervalMs = RepeatIntervalFloor.TotalMilliseconds;
+                }
+                _nextRepeat = now + TimeSpan.FromMilliseconds(intervalMs);
             }
 
             foreach (var button in Buttons)
