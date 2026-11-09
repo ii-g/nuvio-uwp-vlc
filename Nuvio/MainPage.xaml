@@ -69,41 +69,41 @@
 
         <Grid x:Name="ShellGrid" Background="#FF0D0E13">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="204"/>
+                <ColumnDefinition x:Name="SidebarColumn" Width="72"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Fixed sidebar (the web sidebar expands 6rem to 17rem; native M1 keeps it open). -->
-            <Border Grid.Column="0" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
-                <StackPanel Margin="12,36,12,24" Spacing="6">
-                    <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
+            <!-- Collapsing sidebar: icons only (72px), expands to 204px when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem). -->
+            <Border x:Name="SidebarBorder" Grid.Column="0" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
+                <StackPanel Margin="6,36,6,24" Spacing="6">
+                    <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE80F;" FontSize="17"/>
-                            <TextBlock x:Uid="SidebarHomeLabel" Text="Home" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="SearchButton" Style="{StaticResource SidebarButtonStyle}" Tag="search" Click="SidebarButton_Click">
+                    <Button x:Name="SearchButton" Style="{StaticResource SidebarButtonStyle}" Tag="search" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE721;" FontSize="17"/>
-                            <TextBlock x:Uid="SidebarSearchLabel" Text="Search" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="LibraryButton" Style="{StaticResource SidebarButtonStyle}" Tag="library" Click="SidebarButton_Click">
+                    <Button x:Name="LibraryButton" Style="{StaticResource SidebarButtonStyle}" Tag="library" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE8F1;" FontSize="17"/>
-                            <TextBlock x:Uid="SidebarLibraryLabel" Text="Library" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="SettingsButton" Style="{StaticResource SidebarButtonStyle}" Tag="settings" Click="SidebarButton_Click">
+                    <Button x:Name="SettingsButton" Style="{StaticResource SidebarButtonStyle}" Tag="settings" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE713;" FontSize="17"/>
-                            <TextBlock x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
-                    <Button x:Name="ProfileButton" Style="{StaticResource SidebarButtonStyle}" Tag="profile" Visibility="Collapsed" Click="SidebarButton_Click">
+                    <Button x:Name="ProfileButton" Style="{StaticResource SidebarButtonStyle}" Tag="profile" Visibility="Collapsed" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE77B;" FontSize="17"/>
-                            <TextBlock x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="14" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
