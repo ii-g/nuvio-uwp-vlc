@@ -63,6 +63,7 @@
     <Compile Include="Bridge\AppBridge.cs" />
     <Compile Include="Diagnostics\Log.cs" />
     <Compile Include="Input\ControllerBridge.cs" />
+    <Compile Include="Playback\FfmpegPlayer.cs" />
     <Compile Include="Playback\HttpMediaInput.cs" />
     <Compile Include="Playback\HttpRangeStream.cs" />
     <Compile Include="Playback\HybridMediaPlayer.cs" />
@@ -96,6 +97,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform">
       <Version>6.2.14</Version>
+    </PackageReference>
+    <PackageReference Include="FFmpegInteropX.UWP">
+      <Version>2.1.0.81200</Version>
     </PackageReference>
     <PackageReference Include="LibVLCSharp.UWP">
       <Version>3.10.1</Version>
