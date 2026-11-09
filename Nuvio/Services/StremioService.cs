@@ -265,7 +265,8 @@ namespace Nuvio.Services
                 tasks.Add(InstallDefaultAsync(url, installed));
             }
             await Task.WhenAll(tasks).ConfigureAwait(false);
-            installed.Sort((a, b) => DefaultAddonUrls.IndexOf(a.TransportUrl).CompareTo(DefaultAddonUrls.IndexOf(b.TransportUrl)));
+            var urlOrder = new List<string>(DefaultAddonUrls);
+            installed.Sort((a, b) => urlOrder.IndexOf(a.TransportUrl).CompareTo(urlOrder.IndexOf(b.TransportUrl)));
             _addons = installed;
             _hasStoredAddons = true;
             SaveAndNotifyAsync();
