@@ -6,12 +6,19 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
     xmlns:shared="using:Nuvio.Views.Shared"
+    xmlns:views="using:Nuvio.Views"
     xmlns:vlc="using:LibVLCSharp.Platforms.Windows"
     mc:Ignorable="d"
     FlowDirection="RightToLeft"
     Background="Black">
 
     <Page.Resources>
+        <!-- Flow converters shared with the home page (classes in HomePage.xaml.cs): the
+             sidebar divider, logo alignment and logo padding are bound to each element's
+             own FlowDirection so they track RTL without a code-behind set (build 180
+             showed those sets not reaching the render while the log proved RTL). -->
+        <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
+        <views:FlowDirectionToHorizontalAlignmentConverter x:Key="FlowDirectionToHorizontalAlignmentConverter"/>
         <Style x:Key="SidebarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
@@ -24,7 +31,12 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
-                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
+                            <!-- A TemplateBinding is evaluated once when the template is applied,
+                                 before SetFlowDirection sets HorizontalContentAlignment to Right in
+                                 RTL — so the content stayed Left (build 180: labels left-aligned,
+                                 icons floating after each label). A TemplatedParent binding tracks
+                                 the property live, so the content hugs the start edge. -->
+                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="{Binding HorizontalContentAlignment, RelativeSource={RelativeSource TemplatedParent}}" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -82,8 +94,11 @@
                  position absolute, z-index 20), so expanding it never moves the content. -->
             <Frame x:Name="ContentFrame" Grid.Column="0" Grid.ColumnSpan="2" Navigated="ContentFrame_Navigated" NavigationFailed="ContentFrame_NavigationFailed"/>
 
-            <!-- Collapsing sidebar: icons only (48 epx), expands to 136 epx when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem, width .22s). -->
-            <Border x:Name="SidebarBorder" Grid.Column="0" Width="48" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
+            <!-- Collapsing sidebar: icons only (48 epx), expands to 136 epx when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem, width .22s).
+                 The divider is bound to the border's own FlowDirection ("divider"): it sits
+                 on the content-facing edge (left in RTL), never on the outer edge against
+                 the screen — build 180 showed a line and a gap on the outer edge. -->
+            <Border x:Name="SidebarBorder" Grid.Column="0" Width="48" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=divider}">
                 <!-- Logo on top (web: .sidebar-logo, 2.8rem icon, 3rem below it) and the
                      nav buttons vertically centered in the strip (web: .sidebar-items
                      flex 1, justify-content center, margin-top -6rem). The logo icon sits
@@ -95,13 +110,15 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Padding="8,0" Margin="0,0,0,24">
+                    <Grid Grid.Row="0" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=logo}" Margin="0,0,0,24">
                         <!-- The wordmark already contains the triangle, so the icon and the
                              wordmark share one cell and cross-fade (AnimateSidebar): collapsed
                              shows the icon alone, expanded shows the full lockup once — never
-                             triangle + nuvio + triangle as in build 162. -->
-                        <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                        <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0"/>
+                             triangle + nuvio + triangle as in build 162. Both images are bound to
+                             their own FlowDirection so they sit at the start edge like the button
+                             icons (build 180: the logo looked centred, not on the icon column). -->
+                        <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center"/>
+                        <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center" Opacity="0"/>
                     </Grid>
                     <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
                     <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
