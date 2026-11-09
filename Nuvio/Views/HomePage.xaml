@@ -20,14 +20,14 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                             <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#FF3C7BFF"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#FF3C7BFF"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed"/>
@@ -35,7 +35,7 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -59,14 +59,14 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                             <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#4DFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#4DFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed"/>
@@ -74,7 +74,7 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
