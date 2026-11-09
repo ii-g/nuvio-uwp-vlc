@@ -561,7 +561,12 @@ namespace Nuvio.ViewModels
         public void OpenCatalog(CatalogRowViewModel row)
         {
             if (row == null) return;
-            _navigation.NavigatePlaceholder(row.Title, "Catalogs land in Milestone 2.", "Milestone 2");
+            _navigation.NavigateCatalog(new CatalogNavigation
+            {
+                TransportUrl = row.Addon.TransportUrl,
+                Type = row.Catalog.Type,
+                Id = row.Catalog.Id,
+            });
         }
 
         public void ResumeEntry(ProgressEntry entry)
