@@ -2,6 +2,11 @@
 
 A release's notes come from its section here (the heading must match the tag), and the app shows them when it offers the update.
 
+## v1.5.0
+- **FFmpegInteropX is now the primary player:** it decodes MKV/HEVC/AV1/DTS and other formats Windows Media Foundation rejects, with D3D11 hardware decoding, straight into the same MediaPlayer surface — so sources that used to fail first on WMF and then switch to VLC now play on the first try. Audio and subtitle tracks from the file are now selectable, and stalled streams use FFmpeg's reconnect and read-ahead buffer.
+- **LibVLC stays as the fallback:** if FFmpeg cannot play a source, playback still switches automatically to VLC for the same source from the same position.
+- **VLC slow frames:** hardware decoding is now forced to D3D11 (`:avcodec-hw=d3d11va`) instead of leaving it to VLC's default, which left high-bitrate HEVC on slow software decoding on Xbox. The `vlc error [mem] Invalid get/release function pointers` line in the log is benign VLC 3.0.16 noise (imem probing, removed upstream in 2021), not a broken input — the Windows HTTP input that feeds VLC is unchanged, because VLC's own HTTPS cannot open links on Xbox.
+
 ## v1.4.0
 - **LibVLC fallback player:** Windows Media Foundation stays the primary player, but when it cannot play a source (SourceNotSupported, DecodingError, or an adaptive manifest it cannot open), playback now switches automatically to LibVLC for the same source from the same position, and tells you it switched. Sources WMF already rejected start with VLC next time, and sources both players rejected are not retried in the same session.
 - **Tougher HTTP streams:** the range reader no longer fails when a server rejects HEAD or a range probe (including 403), streams with an unknown length now play instead of erroring, and a default User-Agent is sent. Extension-less links are now checked by Content-Type, so HLS/DASH links without an extension are detected, and a failed adaptive open falls back to the platform resolver.
