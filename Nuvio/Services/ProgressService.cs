@@ -84,7 +84,7 @@ namespace Nuvio.Services
             }
         }
 
-        private static Dictionary<string, ProgressEntry> ReadEntries(JsonValue value)
+        private static Dictionary<string, ProgressEntry> ReadEntries(IJsonValue value)
         {
             var result = new Dictionary<string, ProgressEntry>();
             var obj = JsonHelpers.GetObject(value);
@@ -97,7 +97,7 @@ namespace Nuvio.Services
             return result;
         }
 
-        private static Dictionary<string, WatchedMark> ReadWatched(JsonValue value)
+        private static Dictionary<string, WatchedMark> ReadWatched(IJsonValue value)
         {
             var result = new Dictionary<string, WatchedMark>();
             var obj = JsonHelpers.GetObject(value);
