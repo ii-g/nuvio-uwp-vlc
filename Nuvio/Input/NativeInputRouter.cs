@@ -30,9 +30,9 @@ namespace Nuvio.Input
         private DateTime _lastBackPress = DateTime.MinValue;
         // Web focus.js dedupes the same action arriving twice within 150 ms (one physical
         // press can reach the app through the poll and through native key handling); mirror
-        // it here so a single tap can never move focus twice. Held repeats arrive every
-        // 500 ms at first, accelerating to 200 ms (ControllerBridge), so they always
-        // pass this window.
+        // it here so a single tap can never move focus twice. The window applies to the
+        // initial press only: held repeats arrive every 110 ms (ControllerBridge, like
+        // the web UI), so throttling them would stop a hold after the first card.
         private const double DirectionDedupeMs = 150;
         private string _lastDirection;
         private DateTime _lastDirectionTime = DateTime.MinValue;
@@ -47,7 +47,7 @@ namespace Nuvio.Input
         public void Handle(string action, bool repeat)
         {
             if (_shell.DialogOpen) return;
-            if (action == "up" || action == "down" || action == "left" || action == "right")
+            if (!repeat && (action == "up" || action == "down" || action == "left" || action == "right"))
             {
                 var now = DateTime.UtcNow;
                 if (action == _lastDirection && (now - _lastDirectionTime).TotalMilliseconds < DirectionDedupeMs)
@@ -107,7 +107,50 @@ namespace Nuvio.Input
                 }
             }
             if (focused != null && IsEdgeMove(focused, direction)) return;
+            // Sidebar → content is a geometric XYFocus move (the page's HandleAction has
+            // no row to index from while focus sits in the strip), and the geometry skips
+            // the row's first card: the strip is expanded (136 epx) while a sidebar button
+            // has focus, so the button (832..952) overlaps the first card (798..886) and
+            // the first card is not strictly to the left of it — XYFocus takes the second
+            // card instead (the web restores the first element instead of measuring).
+            // Pin the landing to index 0 of whatever row the framework picked.
+            bool fromSidebar = false;
+            if (focused != null)
+            {
+                bool sidebarFirst;
+                bool sidebarLast;
+                fromSidebar = _shell.IsSidebarButton(focused, out sidebarFirst, out sidebarLast);
+            }
             FocusManager.TryMoveFocus(direction);
+            if (fromSidebar)
+            {
+                FocusFirstCardOfEnteredRow();
+            }
+        }
+
+        /// <summary>
+        /// After a sidebar → content move, the focus may sit on any card of the row the
+        /// framework picked; move it to that row's first card (index 0 in flow order).
+        /// No-op when focus did not land in a row (e.g. the hero) or is already on the
+        /// first card. Scrolls the row to the start first when the first container is
+        /// virtualized away.
+        /// </summary>
+        private void FocusFirstCardOfEnteredRow()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            var item = focused != null ? FindAncestorGridViewItem(focused) : null;
+            if (item == null) return;
+            var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+            if (grid == null || grid.Items.Count == 0) return;
+            if (grid.IndexFromContainer(item) == 0) return;
+            var first = grid.ContainerFromIndex(0) as GridViewItem;
+            if (first == null)
+            {
+                grid.ScrollIntoView(grid.Items[0]);
+                grid.UpdateLayout();
+                first = grid.ContainerFromIndex(0) as GridViewItem;
+            }
+            if (first != null) first.Focus(FocusState.Programmatic);
         }
 
         /// <summary>
