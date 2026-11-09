@@ -45,7 +45,7 @@ namespace Nuvio.Services
             return ReadJsonFileAsync(ProfileKey(name));
         }
 
-        public Task WriteProfileJsonAsync(string name, JsonValue value)
+        public Task WriteProfileJsonAsync(string name, IJsonValue value)
         {
             return WriteJsonFileAsync(ProfileKey(name), value);
         }
@@ -68,7 +68,7 @@ namespace Nuvio.Services
             }
         }
 
-        public async Task WriteJsonFileAsync(string relativePath, JsonValue value)
+        public async Task WriteJsonFileAsync(string relativePath, IJsonValue value)
         {
             try
             {
