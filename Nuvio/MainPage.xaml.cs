@@ -17,6 +17,7 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Markup;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Navigation;
 
 namespace Nuvio
@@ -41,6 +42,7 @@ namespace Nuvio
         private bool _videoViewStarting;
         private bool _dialogOpen;
         private bool _sidebarExpanded;
+        private Storyboard _sidebarStoryboard;
 
         internal AppSettings Settings { get; private set; }
         internal LocalStore Store { get; private set; }
@@ -104,6 +106,18 @@ namespace Nuvio
             FlowDirection = rightToLeft
                 ? Windows.UI.Xaml.FlowDirection.RightToLeft
                 : Windows.UI.Xaml.FlowDirection.LeftToRight;
+            // The sidebar is an overlay (web: position absolute): it docks to the
+            // flow-start edge, its divider faces the content, and its buttons' content
+            // sits at the start edge in both states (web: icon at the start, labels fade),
+            // so the icons never move when the strip widens.
+            SidebarBorder.HorizontalAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            SidebarBorder.BorderThickness = rightToLeft ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
+            var contentAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            HomeButton.HorizontalContentAlignment = contentAlignment;
+            SearchButton.HorizontalContentAlignment = contentAlignment;
+            LibraryButton.HorizontalContentAlignment = contentAlignment;
+            SettingsButton.HorizontalContentAlignment = contentAlignment;
+            ProfileButton.HorizontalContentAlignment = contentAlignment;
         }
 
         /// <summary>Handles media surface initialization failure without taking down the app.</summary>
@@ -403,48 +417,116 @@ namespace Nuvio
         }
 
         /// <summary>
-        /// Collapsing sidebar (web: 6rem icons-only, expands to 17rem on focus/hover).
-        /// XAML on Xbox is scaled 200%, so 6rem/17rem are 48/136 epx.
-        /// Collapsed: 48 epx, labels hidden, icons centered. Expanded: 136 epx, labels shown.
-        /// Only the column width, label visibility and content alignment change - the
-        /// button template and its RootGrid/TargetName focus states are untouched, so
-        /// expand/collapse cannot reintroduce the 0x800F1000 animation crash.
+        /// Collapsing sidebar (web: 6rem icons-only, expands to 17rem on focus/hover,
+        /// width .22s, labels fade .15s). XAML on Xbox is scaled 200%, so 6rem/17rem
+        /// are 48/136 epx. The strip is an overlay over the content, so the width
+        /// animates and the labels fade; the icons sit at the flow-start edge in both
+        /// states and never move. The button template and its RootGrid/TargetName focus
+        /// states are untouched, so expand/collapse cannot reintroduce the 0x800F1000
+        /// animation crash.
         /// </summary>
         private void ExpandSidebar()
         {
             if (_sidebarExpanded) return;
             _sidebarExpanded = true;
-            SidebarColumn.Width = new GridLength(136);
-            SetSidebarLabelsVisible(true);
-            SetSidebarContentAlignment(HorizontalAlignment.Left);
+            AnimateSidebar(136, true);
         }
 
         private void CollapseSidebar()
         {
             if (!_sidebarExpanded) return;
             _sidebarExpanded = false;
-            SidebarColumn.Width = new GridLength(48);
-            SetSidebarLabelsVisible(false);
-            SetSidebarContentAlignment(HorizontalAlignment.Center);
+            AnimateSidebar(48, false);
         }
 
-        private void SetSidebarLabelsVisible(bool visible)
+        private void AnimateSidebar(double targetWidth, bool labelsVisible)
         {
-            var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-            HomeLabel.Visibility = visibility;
-            SearchLabel.Visibility = visibility;
-            LibraryLabel.Visibility = visibility;
-            SettingsLabel.Visibility = visibility;
-            ProfileLabel.Visibility = visibility;
+            var storyboard = new Storyboard();
+            var widthAnimation = new DoubleAnimation
+            {
+                To = targetWidth,
+                Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            Storyboard.SetTarget(widthAnimation, SidebarBorder);
+            Storyboard.SetTargetProperty(widthAnimation, "Width");
+            storyboard.Children.Add(widthAnimation);
+            // Labels fade (web: opacity .15s): delayed until the strip is wide enough
+            // to hold them when expanding, and at once when collapsing.
+            var labels = new[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel };
+            foreach (var label in labels)
+            {
+                var fade = new DoubleAnimation
+                {
+                    To = labelsVisible ? 1 : 0,
+                    Duration = TimeSpan.FromMilliseconds(150),
+                    BeginTime = labelsVisible ? TimeSpan.FromMilliseconds(70) : TimeSpan.Zero,
+                };
+                Storyboard.SetTarget(fade, label);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+                storyboard.Children.Add(fade);
+            }
+            storyboard.Completed += (s, e) =>
+            {
+                // A newer animation supersedes this one; only the latest pins the end state.
+                if (!ReferenceEquals(_sidebarStoryboard, storyboard)) return;
+                _sidebarStoryboard = null;
+                SidebarBorder.Width = targetWidth;
+                foreach (var label in labels)
+                {
+                    label.Opacity = labelsVisible ? 1 : 0;
+                }
+            };
+            _sidebarStoryboard = storyboard;
+            storyboard.Begin();
         }
 
-        private void SetSidebarContentAlignment(HorizontalAlignment alignment)
+        /// <summary>
+        /// True when the focused element is a sidebar button; also reports whether it is
+        /// the first or last visible one, so the input router can stop at the strip's ends
+        /// instead of letting focus fall out into the content (which collapses the strip).
+        /// </summary>
+        internal bool IsSidebarButton(DependencyObject focused, out bool isFirst, out bool isLast)
         {
-            HomeButton.HorizontalContentAlignment = alignment;
-            SearchButton.HorizontalContentAlignment = alignment;
-            LibraryButton.HorizontalContentAlignment = alignment;
-            SettingsButton.HorizontalContentAlignment = alignment;
-            ProfileButton.HorizontalContentAlignment = alignment;
+            isFirst = false;
+            isLast = false;
+            if (focused == null) return false;
+            Button button = null;
+            for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                var candidate = node as Button;
+                if (candidate != null)
+                {
+                    button = candidate;
+                    break;
+                }
+                if (node == SidebarBorder) break;
+            }
+            if (button == null) return false;
+            var inSidebar = false;
+            for (var node = (DependencyObject)button; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (node == SidebarBorder)
+                {
+                    inSidebar = true;
+                    break;
+                }
+            }
+            if (!inSidebar) return false;
+            var panel = SidebarBorder.Child as StackPanel;
+            if (panel == null) return false;
+            Button first = null;
+            Button last = null;
+            foreach (var child in panel.Children)
+            {
+                var childButton = child as Button;
+                if (childButton == null || childButton.Visibility != Visibility.Visible) continue;
+                if (first == null) first = childButton;
+                last = childButton;
+            }
+            isFirst = ReferenceEquals(button, first);
+            isLast = ReferenceEquals(button, last);
+            return true;
         }
 
         private bool IsFocusInSidebar()
