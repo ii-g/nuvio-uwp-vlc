@@ -16,7 +16,9 @@ namespace Nuvio.Playback
     /// </summary>
     internal sealed class HttpRangeStream : Stream
     {
-        private const int RangeSize = 512 * 1024;
+        // Larger sequential ranges reduce request/round-trip stalls on high-bitrate Xbox playback.
+        // The response body is streamed, so this does not buffer the whole range in memory.
+        private const int RangeSize = 4 * 1024 * 1024;
         private readonly HttpClient _client;
         private readonly Uri _uri;
         private readonly SemaphoreSlim _readGate = new SemaphoreSlim(1, 1);
