@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading.Tasks;
 using Nuvio.Diagnostics;
 using Windows.ApplicationModel;
@@ -88,7 +89,7 @@ namespace Nuvio
             var text = new TextBlock
             {
                 Text = "Nuvio hit an error and can't continue. Please send this to the developer:" +
-                    Environment.NewLine + Environment.NewLine + "Version " + VersionText() + Environment.NewLine + error,
+                    Environment.NewLine + Environment.NewLine + "Version " + VersionText() + Environment.NewLine + FormatException(error),
                 Foreground = new SolidColorBrush(Colors.White),
                 TextWrapping = TextWrapping.Wrap,
                 IsTextSelectionEnabled = true,
@@ -100,6 +101,24 @@ namespace Nuvio
                 Background = new SolidColorBrush(Colors.Black),
             };
             Window.Current.Activate();
+        }
+
+        // Full exception chain with type, HRESULT, message and stack trace per level, so the
+        // next crash is diagnosable from a photo: a WinRT error (e.g. a bad storyboard target)
+        // often arrives with no managed stack trace, and the detail that identifies it lives
+        // in the message / inner exception, which the old one-line format hid.
+        private static string FormatException(Exception error)
+        {
+            var text = new StringBuilder();
+            var level = 0;
+            for (var e = error; e != null; e = e.InnerException)
+            {
+                text.AppendLine("[" + level + "] " + e.GetType().FullName + " (HRESULT 0x" + e.HResult.ToString("X8") + ")");
+                text.AppendLine("Message: " + e.Message);
+                text.AppendLine("Stack trace: " + (string.IsNullOrEmpty(e.StackTrace) ? "(no managed stack trace)" : e.StackTrace));
+                level++;
+            }
+            return text.ToString();
         }
 
         private static string VersionText()
