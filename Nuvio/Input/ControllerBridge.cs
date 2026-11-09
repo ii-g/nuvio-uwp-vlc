@@ -12,8 +12,12 @@ namespace Nuvio.Input
     internal sealed class ControllerBridge : IDisposable
     {
         private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
-        private static readonly TimeSpan FirstRepeatDelay = TimeSpan.FromMilliseconds(400);
-        private static readonly TimeSpan RepeatInterval = TimeSpan.FromMilliseconds(110);
+        // One tap must move exactly once: a deliberate D-pad press lasts up to ~600 ms,
+        // so the first repeat waits 650 ms; holding then repeats at a calm 5 moves/sec.
+        // (Was 400 ms / 110 ms: a normal press crossed the repeat threshold and jumped
+        // 2-3 items, and held navigation machine-gunned through lists.)
+        private static readonly TimeSpan FirstRepeatDelay = TimeSpan.FromMilliseconds(650);
+        private static readonly TimeSpan RepeatInterval = TimeSpan.FromMilliseconds(200);
         private const double StickThreshold = 0.6;
         private const double TriggerThreshold = 0.5;
 
