@@ -98,16 +98,17 @@
                  The divider is bound to the border's own FlowDirection ("divider"): it sits
                  on the content-facing edge (left in RTL), never on the outer edge against
                  the screen — build 180 showed a line and a gap on the outer edge.
-                 Frosted glass: in-app acrylic (BackgroundSource="Backdrop") blurs the home
-                 backdrop and rows behind the strip when it expands over them. HostBackdrop
-                 (the default) is NOT supported on Xbox and would render only the fallback,
-                 so it must stay Backdrop. Tint is bg-elevated (#16171D) at 0.8 so the
-                 white icons/labels keep full contrast; FallbackColor is the old solid
-                 #111218, so the strip looks identical whenever acrylic cannot render
-                 (battery saver, high contrast). -->
+                 Frosted glass: a custom Composition backdrop blur
+                 (SidebarBackdropBlurBrush) — GaussianBlur 20 over the home backdrop
+                 and rows behind the strip, with a dark tint composited on top.
+                 Chosen over AcrylicBrush by Mohammed's call: full control of the
+                 blur amount and tint, and a documented Xbox-compatible path
+                 (HostBackdrop acrylic would render only the fallback on Xbox).
+                 If the blur cannot be built, the brush falls back to the old
+                 solid #111218 and logs, so the sidebar never breaks startup. -->
             <Border x:Name="SidebarBorder" Grid.Column="0" Width="48" BorderBrush="#14FFFFFF" BorderThickness="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=divider}">
                 <Border.Background>
-                    <AcrylicBrush BackgroundSource="Backdrop" TintColor="#FF16171D" TintOpacity="0.8" FallbackColor="#FF111218"/>
+                    <shared:SidebarBackdropBlurBrush/>
                 </Border.Background>
                 <!-- Logo on top (web: .sidebar-logo, 2.8rem icon, 3rem below it) and the
                      nav buttons vertically centered in the strip (web: .sidebar-items
