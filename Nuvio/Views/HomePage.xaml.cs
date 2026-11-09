@@ -39,7 +39,7 @@ namespace Nuvio.Views
 
         public HomePage()
         {
-            NavigationCacheMode = NavigationCacheMode.Required;
+            NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Required;
             InitializeComponent();
             var shell = MainPage.Current;
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
