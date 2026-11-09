@@ -354,12 +354,20 @@ namespace Nuvio
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
             // natively, and while a dialog is open, where ContentDialog handles keys natively.
+            // The console also delivers the D-pad as plain arrow keys (VirtualKey.Left/Right/Up/
+            // Down): the old web UI proved it — its key map only ever saw arrows, and its
+            // cross-source dedupe existed because the same press arrived both through the poll
+            // and as a key. Arrows are NOT in the ranges below, so they reached the framework's
+            // XYFocus navigation and moved focus a second card per press (system move + router
+            // move = "pressing twice"). The poll owns every move now, so swallow them too.
             if (DialogOpen) return;
             if (e.Key == VirtualKey.GamepadA) return;
             var key = (int)e.Key;
             var isController = (key >= (int)VirtualKey.GamepadA && key <= (int)VirtualKey.GamepadRightThumbstickLeft) ||
                 (key >= (int)VirtualKey.NavigationView && key <= (int)VirtualKey.NavigationCancel);
-            if (isController)
+            var isArrow = key == (int)VirtualKey.Left || key == (int)VirtualKey.Right ||
+                key == (int)VirtualKey.Up || key == (int)VirtualKey.Down;
+            if (isController || isArrow)
             {
                 e.Handled = true;
             }
