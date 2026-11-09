@@ -100,11 +100,15 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: focus ring + zoom (web: scale 1.06 + white ring). Selection is off; click is via IsItemClickEnabled. -->
+    <!-- Card containers: focus ring + zoom (web: scale 1.06 + white ring). Selection is off; click is via IsItemClickEnabled.
+         The framework also draws its own focus rectangle around the whole item (art + title) unless
+         UseSystemFocusVisuals is off; with the template's art-only ring that made two overlapping
+         rings, so the system one is disabled and the template ring is the only one. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
         <Setter Property="Margin" Value="0,0,9,0"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="GridViewItem">
