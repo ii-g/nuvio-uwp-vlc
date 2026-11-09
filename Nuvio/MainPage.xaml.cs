@@ -16,12 +16,13 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Markup;
+using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
 namespace Nuvio
 {
     /// <summary>
-    /// Native app shell (Milestone 1): a fixed sidebar plus a Frame that hosts the native pages
+    /// Native app shell (Milestone 1): a collapsing sidebar plus a Frame that hosts the native pages
     /// (Home first; the rest land in later milestones). The media surfaces stay here — a
     /// MediaPlayerElement driven by FFmpegInteropX with a LibVLC VideoView as fallback — and the
     /// player is wired up in Milestone 4. The WebView2 control is kept collapsed and never
@@ -39,6 +40,7 @@ namespace Nuvio
         private bool _videoViewRequested;
         private bool _videoViewStarting;
         private bool _dialogOpen;
+        private bool _sidebarExpanded;
 
         internal AppSettings Settings { get; private set; }
         internal LocalStore Store { get; private set; }
@@ -85,6 +87,16 @@ namespace Nuvio
             SetPointerMode(false);
             PreviewKeyDown += OnPreviewKeyDown;
             Loaded += OnLoaded;
+            // Collapsing sidebar (web: icons only, expands on focus/hover): expand when
+            // a sidebar button gains focus, collapse when focus enters the page content.
+            HomeButton.GotFocus += (s, e) => ExpandSidebar();
+            SearchButton.GotFocus += (s, e) => ExpandSidebar();
+            LibraryButton.GotFocus += (s, e) => ExpandSidebar();
+            SettingsButton.GotFocus += (s, e) => ExpandSidebar();
+            ProfileButton.GotFocus += (s, e) => ExpandSidebar();
+            ContentFrame.GotFocus += (s, e) => CollapseSidebar();
+            SidebarBorder.PointerEntered += (s, e) => ExpandSidebar();
+            SidebarBorder.PointerExited += (s, e) => { if (!IsFocusInSidebar()) CollapseSidebar(); };
         }
 
         public void SetFlowDirection(bool rightToLeft)
@@ -388,6 +400,60 @@ namespace Nuvio
             button.Background = active
                 ? new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF))
                 : new Windows.UI.Xaml.Media.SolidColorBrush(Colors.Transparent);
+        }
+
+        /// <summary>
+        /// Collapsing sidebar (web: 6rem icons-only, expands to 17rem on focus/hover).
+        /// Collapsed: 72px, labels hidden, icons centered. Expanded: 204px, labels shown.
+        /// Only the column width, label visibility and content alignment change - the
+        /// button template and its RootGrid/TargetName focus states are untouched, so
+        /// expand/collapse cannot reintroduce the 0x800F1000 animation crash.
+        /// </summary>
+        private void ExpandSidebar()
+        {
+            if (_sidebarExpanded) return;
+            _sidebarExpanded = true;
+            SidebarColumn.Width = new GridLength(204);
+            SetSidebarLabelsVisible(true);
+            SetSidebarContentAlignment(HorizontalAlignment.Left);
+        }
+
+        private void CollapseSidebar()
+        {
+            if (!_sidebarExpanded) return;
+            _sidebarExpanded = false;
+            SidebarColumn.Width = new GridLength(72);
+            SetSidebarLabelsVisible(false);
+            SetSidebarContentAlignment(HorizontalAlignment.Center);
+        }
+
+        private void SetSidebarLabelsVisible(bool visible)
+        {
+            var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            HomeLabel.Visibility = visibility;
+            SearchLabel.Visibility = visibility;
+            LibraryLabel.Visibility = visibility;
+            SettingsLabel.Visibility = visibility;
+            ProfileLabel.Visibility = visibility;
+        }
+
+        private void SetSidebarContentAlignment(HorizontalAlignment alignment)
+        {
+            HomeButton.HorizontalContentAlignment = alignment;
+            SearchButton.HorizontalContentAlignment = alignment;
+            LibraryButton.HorizontalContentAlignment = alignment;
+            SettingsButton.HorizontalContentAlignment = alignment;
+            ProfileButton.HorizontalContentAlignment = alignment;
+        }
+
+        private bool IsFocusInSidebar()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (node == SidebarBorder) return true;
+            }
+            return false;
         }
 
         private void OnBackRequested(object sender, BackRequestedEventArgs e)
