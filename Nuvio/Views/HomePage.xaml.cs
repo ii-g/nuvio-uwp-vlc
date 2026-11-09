@@ -47,11 +47,21 @@ namespace Nuvio.Views
             // Page content starts after the sidebar; in RTL the start edge is the right one.
             // Web content insets are 8.5rem (136 physical px) at the start and 4rem
             // (64 physical px) at the end; XAML on Xbox is scaled 200%, so those are
-            // 68 and 32 epx from the screen edge, and the 48 epx sidebar column already
-            // covers 96 of the start inset: the pad is 20 epx at the start, 32 at the end.
+            // 68 and 32 epx from the screen edge. The sidebar is an overlay now (it no
+            // longer takes a grid column), so the pad is the full inset: 68 at the
+            // start (clear of the collapsed 48 epx strip), 32 at the end.
             ContentStack.Padding = FlowDirection == FlowDirection.RightToLeft
-                ? new Thickness(32, 0, 20, 0)
-                : new Thickness(20, 0, 32, 0);
+                ? new Thickness(32, 0, 68, 0)
+                : new Thickness(68, 0, 32, 0);
+            // Hero content sits on the row's start edge (RTL: right), like the web rows:
+            // the logo/title/description were physically left-aligned, so the hero read
+            // as LTR while the rows start at the right. The dots sit at the flow end
+            // (web: inset-inline-end). Meta/genre/button rows already flow RTL.
+            var rtl = FlowDirection == FlowDirection.RightToLeft;
+            HeroLogo.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            HeroTitle.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
+            HeroDescription.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
+            HeroDots.HorizontalAlignment = rtl ? HorizontalAlignment.Left : HorizontalAlignment.Right;
             _heroTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HeroIntervalMs) };
             _heroTimer.Tick += OnHeroTimerTick;
             _backdropTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BackdropDebounceMs) };
@@ -168,10 +178,14 @@ namespace Nuvio.Views
                 Scroller.ChangeView(null, 0, null, false);
                 return;
             }
+            // 0.0 is the row's start edge (right in RTL, left in LTR): on-device, with
+            // 0.0 the focused card lands at the right edge while scrolling an RTL row.
+            // A hair inside the edge leaves room for the 1.06 focus zoom, so the card's
+            // outer edge is never clipped by the row viewport.
             var options = new BringIntoViewOptions
             {
                 AnimationDesired = true,
-                HorizontalAlignmentRatio = 0.0,
+                HorizontalAlignmentRatio = 0.01,
                 VerticalAlignmentRatio = 0.16,
             };
             element.StartBringIntoView(options);
@@ -496,6 +510,37 @@ namespace Nuvio.Views
                 case "extraLarge": return 180;
                 default: return 132;
             }
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>Card art height for the focus ring (web: the ring wraps the art only, not the title).</summary>
+    internal sealed class CardArtHeightConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            var card = value as CatalogCardItem;
+            if (card != null)
+            {
+                var shape = (card.Meta != null ? card.Meta.PosterShape : null) ?? "poster";
+                shape = shape.ToLowerInvariant();
+                if (shape == "landscape") return 90;
+                if (shape == "square") return 104;
+                var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
+                switch (size)
+                {
+                    case "compact": return 102;
+                    case "large": return 156;
+                    case "extraLarge": return 180;
+                    default: return 132;
+                }
+            }
+            if (value is ProgressEntry) return 99;
+            return 132;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
