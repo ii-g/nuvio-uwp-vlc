@@ -91,7 +91,7 @@ namespace Nuvio.Services
                     NavigateHome();
                     break;
                 case "search":
-                    NavigatePlaceholder("Search", "Search lands in Milestone 2.", "Milestone 2", "search");
+                    NavigateSearch(null);
                     break;
                 case "library":
                     NavigatePlaceholder("Library", "Library lands in Milestone 5.", "Milestone 5", "library");
@@ -103,6 +103,21 @@ namespace Nuvio.Services
                     NavigateHome();
                     break;
             }
+        }
+
+        /// <summary>Sidebar root: the real Search page (M2). Query null = fresh search (recent searches).</summary>
+        public void NavigateSearch(string query)
+        {
+            _frame.BackStack.Clear();
+            _frame.Navigate(typeof(SearchPage), query);
+            AppEvents.RaiseRouteChanged("search");
+        }
+
+        /// <summary>"View All" from a Home row (M2): a push, so back returns to Home.</summary>
+        public void NavigateCatalog(CatalogNavigation navigation)
+        {
+            _frame.Navigate(typeof(CatalogPage), navigation);
+            AppEvents.RaiseRouteChanged("catalog");
         }
 
         public void NavigatePlaceholder(string title, string message, string milestone, string sidebarRoot = null)
