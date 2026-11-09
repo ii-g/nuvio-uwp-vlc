@@ -40,6 +40,8 @@ namespace Nuvio.Views
             _viewModel.SearchCompleted += OnSearchCompleted;
             SearchBox.TextChanged += OnSearchBoxTextChanged;
             SearchBox.KeyDown += OnSearchBoxKeyDown;
+            SearchBox.GotFocus += OnSearchBoxGotFocus;
+            SearchBox.LostFocus += OnSearchBoxLostFocus;
             GotFocus += OnGotFocus;
         }
 
@@ -153,6 +155,23 @@ namespace Nuvio.Views
         {
             var card = e.ClickedItem as CatalogCardItem;
             if (card != null && card.Meta != null) _viewModel.OpenTitle(card.Meta);
+        }
+
+        // Search-bar focus state: the native single ring is the accent border —
+        // focused = 2 epx accent, unfocused = 1 epx --border. The TextBox's own
+        // system focus visuals are off (XAML), so this border is the only focus
+        // indicator; the web's white inversion was not ported (it would break the
+        // dark bar the redesign just made consistent).
+        private void OnSearchBoxGotFocus(object sender, RoutedEventArgs e)
+        {
+            SearchBarBorder.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x2F, 0x6F, 0xED));
+            SearchBarBorder.BorderThickness = new Thickness(2);
+        }
+
+        private void OnSearchBoxLostFocus(object sender, RoutedEventArgs e)
+        {
+            SearchBarBorder.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+            SearchBarBorder.BorderThickness = new Thickness(1);
         }
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
