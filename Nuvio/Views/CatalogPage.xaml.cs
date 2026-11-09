@@ -124,14 +124,47 @@ namespace Nuvio.Views
         }
     }
 
-    /// <summary>Genre chip: selected is the blue primary, unselected the translucent surface.</summary>
+    /// <summary>Genre chip states, ported from web .chip: selected is surface-3
+    /// (#29FFFFFF) with white text and a transparent border; unselected is the
+    /// surface (#0FFFFFFF) with text-2 and the --border hairline. (The old code
+    /// used a solid accent fill for selected, which the web never does.)</summary>
     internal sealed class ChipSelectedBackgroundConverter : Windows.UI.Xaml.Data.IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             return value is bool && (bool)value
-                ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x2F, 0x6F, 0xED))
+                ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x29, 0xFF, 0xFF, 0xFF))
+                : new SolidColorBrush(Windows.UI.Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF));
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    internal sealed class ChipSelectedBorderConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            return value is bool && (bool)value
+                ? new SolidColorBrush(Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00))
                 : new SolidColorBrush(Windows.UI.Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    internal sealed class ChipSelectedForegroundConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            return value is bool && (bool)value
+                ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF))
+                : new SolidColorBrush(Windows.UI.Color.FromArgb(0xB8, 0xFF, 0xFF, 0xFF));
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
