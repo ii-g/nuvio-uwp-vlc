@@ -131,7 +131,7 @@ export function playerView({ state }) {
   let stallReconnects = 0; // reopens of the same source after a stall (max 1)
 
   // Playback-attempt order: the source the user picked stays first, the rest are
-  // ordered so WMF-friendly streams are tried before mkv/HEVC/DTS/REMUX ones.
+  // ordered so the lightest streams are tried before mkv/HEVC/DTS/REMUX ones.
   // (The Sources menu keeps the original list order.)
   const playbackSources = sources.length > 1
     ? [sources[0], ...[...sources.slice(1)].sort((a, b) =>
@@ -198,7 +198,7 @@ export function playerView({ state }) {
       applyTrackPreferences();
     }
   });
-  // The native side switched engines mid-stream (WMF could not play this
+  // The native side switched engines mid-stream (FFmpeg could not play this
   // source, so it moved to VLC from the same position). Tell the user; the
   // spinner already shows while the fallback opens.
   engine.on('engine', ({ engine: name, message }) => {
@@ -287,7 +287,7 @@ export function playerView({ state }) {
       loading.hidden = true;
       return;
     }
-    // WMF BufferingProgress is the fraction buffered ahead for the current
+    // BufferingProgress is the fraction buffered ahead for the current
     // segment, not the fraction of the whole file: it rarely reaches 100%
     // while a stream is playing, so it must not drive the spinner.
     // Show the spinner only while opening or genuinely buffering.
