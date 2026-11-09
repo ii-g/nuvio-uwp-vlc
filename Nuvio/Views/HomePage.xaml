@@ -12,10 +12,10 @@
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FF2F6FED"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Padding" Value="17,0"/>
-            <Setter Property="CornerRadius" Value="17"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="FontSize" Value="9"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -51,10 +51,10 @@
         <Style x:Key="HeroActionButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#33FFFFFF"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Padding" Value="17,0"/>
-            <Setter Property="CornerRadius" Value="17"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="FontSize" Value="9"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -110,42 +110,42 @@
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled">
             <StackPanel x:Name="ContentStack">
                 <!-- Hero carousel -->
-                <Grid x:Name="HeroSection" Visibility="{Binding HasHero, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="300" Height="360">
-                    <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="0,0,0,24" MaxWidth="422">
-                        <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" MaxWidth="288" MaxHeight="96" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
-                        <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="32" FontWeight="ExtraBold" LineHeight="34" TextWrapping="Wrap" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="11" Margin="0,11,0,0">
-                            <TextBlock Text="{Binding HeroYear}" FontSize="11" Foreground="#B8FFFFFF"/>
-                            <TextBlock Text="{Binding HeroRating}" FontSize="11" Foreground="White"/>
-                            <TextBlock Text="{Binding HeroType}" FontSize="11" Foreground="#B8FFFFFF"/>
+                <Grid x:Name="HeroSection" Visibility="{Binding HasHero, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="272" Height="356">
+                    <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="0,0,0,20" MaxWidth="352">
+                        <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" MaxWidth="240" MaxHeight="80" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
+                        <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,9,0,0">
+                            <TextBlock Text="{Binding HeroYear}" FontSize="9" Foreground="#B8FFFFFF"/>
+                            <TextBlock Text="{Binding HeroRating}" FontSize="9" Foreground="White"/>
+                            <TextBlock Text="{Binding HeroType}" FontSize="9" Foreground="#B8FFFFFF"/>
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding HeroGenres}" Margin="0,7,0,0">
+                        <ItemsControl ItemsSource="{Binding HeroGenres}" Margin="0,9,0,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="8"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="3"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Background="#1FFFFFFF" CornerRadius="10" Padding="7,2">
-                                        <TextBlock Text="{Binding}" FontSize="10"/>
+                                    <Border Background="#1FFFFFFF" CornerRadius="8" Padding="6,1">
+                                        <TextBlock Text="{Binding}" FontSize="8"/>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock Text="{Binding HeroDescription}" FontSize="11" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Margin="0,7,0,0"/>
-                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,14,0,0">
+                        <TextBlock Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Margin="0,9,0,0"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,13,0,0">
                             <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
                             <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
                         </StackPanel>
                     </StackPanel>
-                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="5" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,28"/>
+                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,24"/>
                 </Grid>
 
                 <!-- Continue Watching -->
-                <StackPanel x:Name="ContinueSection" Visibility="{Binding HasContinueItems, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,5,0,16">
-                    <TextBlock x:Uid="ContinueWatchingTitle" Text="Continue Watching" FontSize="14" FontWeight="Bold" Margin="0,0,0,2"/>
-                    <GridView x:Name="ContinueGridView" ItemsSource="{Binding ContinueItems}" ItemTemplate="{StaticResource ContinueCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="ContinueGridView_ItemClick" Padding="11,11,11,14" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                <StackPanel x:Name="ContinueSection" Visibility="{Binding HasContinueItems, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,13">
+                    <TextBlock x:Uid="ContinueWatchingTitle" Text="Continue Watching" FontSize="12" FontWeight="Bold" Margin="0,0,0,0"/>
+                    <GridView x:Name="ContinueGridView" ItemsSource="{Binding ContinueItems}" ItemTemplate="{StaticResource ContinueCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="ContinueGridView_ItemClick" Padding="0,9,0,12" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                         <GridView.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <ItemsStackPanel Orientation="Horizontal"/>
@@ -158,13 +158,13 @@
                 <ItemsControl ItemsSource="{Binding CatalogRows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="0,0,0,16">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding Subtitle}" FontSize="10" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
-                                    <ProgressRing IsActive="{Binding IsLoading}" Width="12" Height="12" Foreground="White"/>
+                            <StackPanel Margin="0,0,0,13">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    <ProgressRing IsActive="{Binding IsLoading}" Width="8" Height="8" Foreground="White"/>
                                 </StackPanel>
-                                <GridView ItemsSource="{Binding Items}" ItemTemplateSelector="{StaticResource CatalogCardSelector}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogRowGridView_ItemClick" Padding="11,11,11,14" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                                <GridView ItemsSource="{Binding Items}" ItemTemplateSelector="{StaticResource CatalogCardSelector}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogRowGridView_ItemClick" Padding="0,9,0,12" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                                     <GridView.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <ItemsStackPanel Orientation="Horizontal"/>
@@ -177,13 +177,13 @@
                 </ItemsControl>
 
                 <!-- Loading -->
-                <ProgressRing IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="28" Height="28" Foreground="White" HorizontalAlignment="Center" Margin="0,28,0,28"/>
+                <ProgressRing IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" Margin="0,24,0,24"/>
 
                 <!-- Empty state -->
-                <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="300">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" MaxWidth="460">
-                        <TextBlock Text="{Binding EmptyTitle}" FontSize="18" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding EmptyMessage}" FontSize="11" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
+                <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="432">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="384">
+                        <TextBlock Text="{Binding EmptyTitle}" FontSize="14" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding EmptyMessage}" FontSize="9" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
                         <Button x:Name="ManageAddonsButton" x:Uid="ManageAddonsButton" Content="Manage Addons" Style="{StaticResource HeroPrimaryButtonStyle}" HorizontalAlignment="Center" Click="ManageAddonsButton_Click"/>
                     </StackPanel>
                 </Grid>
