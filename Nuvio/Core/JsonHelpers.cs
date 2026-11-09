@@ -35,7 +35,7 @@ namespace Nuvio.Core
             return value != null && value.ValueType == JsonValueType.Object ? value.GetObject() : null;
         }
 
-        public static JsonObject GetObject(JsonValue value)
+        public static JsonObject GetObject(IJsonValue value)
         {
             return value != null && value.ValueType == JsonValueType.Object ? value.GetObject() : null;
         }
@@ -54,7 +54,7 @@ namespace Nuvio.Core
         }
 
         /// <summary>Reads a string value; numbers are returned in invariant form (imdbRating is string|number).</summary>
-        public static string GetString(JsonValue value, string fallback = null)
+        public static string GetString(IJsonValue value, string fallback = null)
         {
             if (value == null) return fallback;
             switch (value.ValueType)
@@ -74,7 +74,7 @@ namespace Nuvio.Core
             return GetInt(obj.GetNamedValue(name));
         }
 
-        public static int? GetInt(JsonValue value)
+        public static int? GetInt(IJsonValue value)
         {
             var number = GetNumber(value);
             if (number.HasValue) return (int)number.Value;
@@ -87,7 +87,7 @@ namespace Nuvio.Core
             return GetLong(obj.GetNamedValue(name));
         }
 
-        public static long? GetLong(JsonValue value)
+        public static long? GetLong(IJsonValue value)
         {
             var number = GetNumber(value);
             if (number.HasValue) return (long)number.Value;
@@ -100,7 +100,7 @@ namespace Nuvio.Core
             return GetNumber(obj.GetNamedValue(name));
         }
 
-        public static double? GetNumber(JsonValue value)
+        public static double? GetNumber(IJsonValue value)
         {
             if (value == null) return null;
             if (value.ValueType == JsonValueType.Number) return value.GetNumber();
