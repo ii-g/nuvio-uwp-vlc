@@ -165,4 +165,42 @@
   <data name="TypeAnime" xml:space="preserve">
     <value>أنمي</value>
   </data>
+  <!-- Milestone 2 strings: search + catalog. Arabic is the authored language; translations come from web/js/core/i18n.js. -->
+  <data name="SearchBox.PlaceholderText" xml:space="preserve">
+    <value>ابحث عن أفلام ومسلسلات</value>
+  </data>
+  <data name="RecentSearchesTitle.Text" xml:space="preserve">
+    <value>عمليات البحث الأخيرة</value>
+  </data>
+  <data name="SearchNoProvidersTitle.Text" xml:space="preserve">
+    <value>لا تتوفر مصادر للبحث</value>
+  </data>
+  <data name="SearchNoProvidersMessage.Text" xml:space="preserve">
+    <value>لا يدعم أي من مصادرك البحث حالياً. يدعمه Cinemeta المثبّت افتراضياً.</value>
+  </data>
+  <data name="SearchNoResultsTitle.Text" xml:space="preserve">
+    <value>لا توجد نتائج</value>
+  </data>
+  <data name="SearchNoResultsMessage" xml:space="preserve">
+    <value>Nothing found for "{0}".</value>
+    <comment>TODO i18n: no Arabic translation in web/js/core/i18n.js; ships in English.</comment>
+  </data>
+  <data name="CatalogUnavailableTitle" xml:space="preserve">
+    <value>القائمة غير متاحة</value>
+  </data>
+  <data name="CatalogUnavailableMessage" xml:space="preserve">
+    <value>مصدر هذه القائمة لم يعد مثبتاً أو مفعّلاً.</value>
+  </data>
+  <data name="CatalogNoTitlesTitle" xml:space="preserve">
+    <value>لم يتم العثور على عناوين</value>
+  </data>
+  <data name="CatalogNoTitlesMessage" xml:space="preserve">
+    <value>لم تُرجع هذه القائمة أي عناصر.</value>
+  </data>
+  <data name="CatalogLoadFailedTitle" xml:space="preserve">
+    <value>تعذّر تحميل هذه القائمة.</value>
+  </data>
+  <data name="GenreAll" xml:space="preserve">
+    <value>الكل</value>
+  </data>
 </root>
