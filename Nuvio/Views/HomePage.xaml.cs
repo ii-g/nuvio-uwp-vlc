@@ -227,15 +227,21 @@ namespace Nuvio.Views
             // The row the focused card belongs to (null when focus is not in a row).
             var row = FindAncestorGridView(focused);
             var item = FindAncestorGridViewItem(focused);
+            var rowChanged = row == null || !ReferenceEquals(row, _lastAnchoredRow);
             if (row != null && item != null)
             {
-                AnchorRow(row, item);
+                // Within a row the focused card is pinned to the start edge (web
+                // focusInHorizontalRow); entering a row from elsewhere only keeps the
+                // card inside the padded viewport (web scrollIntoView) instead of
+                // yanking the strip to the anchor.
+                if (rowChanged) KeepCardInView(row, item);
+                else AnchorRow(row, item);
             }
             // One vertical move per row change: re-aligning the page on every horizontal
             // move made the page bob while the row glided (the "two scrolls" feeling).
             // The 16% pin applies only when the focused row changes; inside a row the
             // page does not move vertically at all.
-            if (row == null || !ReferenceEquals(row, _lastAnchoredRow))
+            if (rowChanged)
             {
                 _lastAnchoredRow = row;
                 if (row != null)
@@ -243,6 +249,32 @@ namespace Nuvio.Views
                     AnchorPageVertical(row);
                 }
             }
+        }
+
+        /// <summary>Keeps a newly entered row's focused card inside the padded viewport
+        /// (web scrollIntoView's row part): scrolls only when the card sticks out past
+        /// the 6 epx row padding, never yanks it to the anchor. The anchor is for moves
+        /// inside the row (AnchorRow). The offset signs mirror AnchorRow: in RTL the
+        /// offset grows as content moves right, in LTR as it moves left.</summary>
+        private void KeepCardInView(GridView row, GridViewItem item)
+        {
+            var viewer = FindScrollViewer(row);
+            if (viewer == null || item == null) return;
+            var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            const double pad = 6;
+            double? target = null;
+            if (rtl)
+            {
+                if (rect.Left < pad) target = viewer.HorizontalOffset + (pad - rect.Left);
+                else if (rect.Right > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + ((viewer.ViewportWidth - pad) - rect.Right);
+            }
+            else
+            {
+                if (rect.Left < pad) target = viewer.HorizontalOffset + (rect.Left - pad);
+                else if (rect.Right > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + (rect.Right - (viewer.ViewportWidth - pad));
+            }
+            if (target.HasValue) SmoothScrollTo(viewer, target.Value, null);
         }
 
         /// <summary>Anchors a focused card to the row's flow-start edge (web
@@ -649,6 +681,39 @@ namespace Nuvio.Views
                 }
                 return true;
             }
+            // Row moves by DOM index, like web focus.js horizontalRowNeighbor: the index
+            // is stable while the strip glides, while XYFocus measures moving cards (and
+            // the 1.06 focus zoom) and can skip or mis-pick a neighbour mid-glide. Falls
+            // through to XYFocus when the neighbour is not realized yet.
+            if (action == "left" || action == "right")
+            {
+                var item = FindAncestorGridViewItem(focused);
+                var grid = item != null ? ItemsControl.ItemsControlFromItemContainer(item) as GridView : null;
+                if (grid != null)
+                {
+                    var index = grid.IndexFromContainer(item);
+                    var rtl = grid.FlowDirection == FlowDirection.RightToLeft;
+                    var step = action == "left" ? (rtl ? 1 : -1) : (rtl ? -1 : 1);
+                    var target = index + step;
+                    if (target >= 0 && target < grid.Items.Count)
+                    {
+                        var container = grid.ContainerFromIndex(target) as GridViewItem;
+                        if (container != null)
+                        {
+                            container.Focus(FocusState.Programmatic);
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        // Past the row's end. Forward stops dead (build 148: the row must
+                        // not drop to the row below); toward the sidebar falls through so
+                        // the router can move focus into the strip, as in the web UI.
+                        var forward = rtl ? action == "left" : action == "right";
+                        if (forward) return true;
+                    }
+                }
+            }
             // Y / Menu on a Continue Watching card → the card's choice menu.
             if (action == "y" || action == "menu")
             {
@@ -888,6 +953,66 @@ namespace Nuvio.Views
         {
             // E76B = ChevronLeft, E76C = ChevronRight.
             return AppSettings.EffectiveIsRightToLeft() ? "\uE76B" : "\uE76C";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>Flow direction → physical alignment (XAML has no logical "start"
+    /// alignment): RTL docks to the right, LTR to the left. Parameter "invert" flips
+    /// it (the hero dots sit at the flow end). Bound to the element's own inherited
+    /// FlowDirection, so the hero follows the page's rendered direction instead of
+    /// a constructor-time flag — build 170 proved the flag can be right while the
+    /// constructor-time assignments do not render (hero LTR, dots right, padding LTR).</summary>
+    internal sealed class FlowDirectionToHorizontalAlignmentConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
+            if (parameter as string == "invert") rtl = !rtl;
+            return rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>Flow direction → text alignment (TextAlignment has no "start" value):
+    /// RTL aligns right, LTR aligns left. Bound to the element's own inherited
+    /// FlowDirection, like the alignment converter above.</summary>
+    internal sealed class FlowDirectionToTextAlignmentConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
+            return rtl ? TextAlignment.Right : TextAlignment.Left;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>Flow direction → content insets. Parameter "content": the page padding
+    /// (web --content-left/right: 68 at the start, 32 at the end). Parameter "hero":
+    /// the hero's start margin — in RTL the web reserves --rtl-safe-start (156 epx:
+    /// the expanded sidebar's footprint) so the hero never slides under the open
+    /// strip, i.e. 88 past the 68 page pad; in LTR the hero aligns with the first
+    /// card (6 past the pad).</summary>
+    internal sealed class FlowDirectionToThicknessConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
+            if (parameter as string == "hero")
+                return rtl ? new Thickness(0, 0, 88, 20) : new Thickness(6, 0, 0, 20);
+            return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
