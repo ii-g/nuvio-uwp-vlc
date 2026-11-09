@@ -48,7 +48,7 @@ namespace Nuvio.Models
         /// <summary>The serving addon, attached by FetchMetaAsync — not part of the server payload.</summary>
         public Addon ServingAddon { get; set; }
 
-        public static Meta FromJson(JsonValue value)
+        public static Meta FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
