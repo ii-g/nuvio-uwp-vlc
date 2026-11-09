@@ -68,6 +68,10 @@ namespace Nuvio.Playback
         public void SetVlcSwapChainOptions(string[] options)
         {
             _vlcSwapChainOptions = options;
+            // VLC may already be running (fallback happened before the view
+            // reported its options): push them to the live player too, so
+            // the stored value is not the only place they take effect.
+            if (_vlc != null) _vlc.ApplySwapChainOptions(options);
         }
 
         /// <summary>Marks the FFmpeg surface unusable (its creation failed).</summary>
@@ -140,6 +144,10 @@ namespace Nuvio.Playback
             }
             _active = ActiveEngine.Vlc;
             EnsureVlc();
+            // Mirror of the FFmpeg open log: which decoder VLC was asked for.
+            // (VlcPlayer itself logs the software case again when it builds
+            // its options; this line covers both modes in one place.)
+            Log.Write("VLC decoder: " + (request.HardwareDecoding ? "D3D11 hardware (hwdec=true)" : "software (hwdec=false)"));
             var vlcRequest = new OpenRequest
             {
                 Id = request.Id,
