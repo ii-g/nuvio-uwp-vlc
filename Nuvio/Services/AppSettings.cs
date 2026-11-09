@@ -2,6 +2,7 @@ using System;
 using Nuvio.Core;
 using Nuvio.Diagnostics;
 using Windows.Data.Json;
+using Windows.Globalization;
 using Windows.Storage;
 
 namespace Nuvio.Services
@@ -164,15 +165,65 @@ namespace Nuvio.Services
         }
 
         // Typed conveniences for the keys Milestone 1 reads.
-        public string AppLanguage { get { return GetString("appLanguage", "ar"); } }
+        public string AppLanguage { get { return NormalizeLanguageTag(GetString("appLanguage", "ar")); } }
+
+        /// <summary>Normalizes a stored language tag so a stray separator or whitespace
+        /// cannot silently flip the layout: "ar_EG" and " ar " both mean Arabic, and an
+        /// empty tag means the Arabic default.</summary>
+        public static string NormalizeLanguageTag(string language)
+        {
+            if (string.IsNullOrWhiteSpace(language)) return "ar";
+            var tag = language.Trim().Replace('_', '-');
+            return tag.Length == 0 ? "ar" : tag;
+        }
 
         /// <summary>True for Arabic language tags ("ar", "ar-SA", ...): the app reads RTL then.
         /// An absent value means the Arabic default.</summary>
         public static bool IsRightToLeft(string language)
         {
-            if (string.IsNullOrEmpty(language)) return true;
-            return language.Equals("ar", StringComparison.OrdinalIgnoreCase)
-                || language.StartsWith("ar-", StringComparison.OrdinalIgnoreCase);
+            var tag = NormalizeLanguageTag(language);
+            return tag.Equals("ar", StringComparison.OrdinalIgnoreCase)
+                || tag.StartsWith("ar-", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>RTL from the UI language the resource system actually resolved
+        /// (ApplicationLanguages.Languages[0], after PrimaryLanguageOverride), falling back
+        /// to the stored setting. The stored tag and the rendered language can disagree —
+        /// a stored tag the override rejects leaves the resources in the system language —
+        /// so the direction must follow what is actually rendered, not only what is stored.
+        /// (Build 162 on the Xbox rendered Arabic labels while the shell landed LTR, which
+        /// is exactly the disagreement this guards against.)</summary>
+        public static bool EffectiveIsRightToLeft()
+        {
+            string stored = null;
+            try
+            {
+                if (Current != null) stored = Current.AppLanguage;
+            }
+            catch (Exception)
+            {
+                stored = null;
+            }
+
+            try
+            {
+                var languages = ApplicationLanguages.Languages;
+                if (languages != null && languages.Count > 0)
+                {
+                    var resolved = languages[0];
+                    if (!string.IsNullOrWhiteSpace(resolved))
+                    {
+                        Log.Write("Effective direction: resolved language '" + resolved + "', stored '" + (stored ?? "?") + "'");
+                        return IsRightToLeft(resolved);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Reading the resolved UI language failed", ex);
+            }
+
+            return IsRightToLeft(stored);
         }
         public bool ShowHero { get { return GetBool("showHero", true); } }
         public bool ShowCatalogType { get { return GetBool("showCatalogType", true); } }
