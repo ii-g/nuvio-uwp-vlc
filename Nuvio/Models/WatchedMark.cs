@@ -14,7 +14,7 @@ namespace Nuvio.Models
         public long WatchedAt { get; set; }
         public string Title { get; set; }
 
-        public static WatchedMark FromJson(JsonValue value)
+        public static WatchedMark FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
