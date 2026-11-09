@@ -129,9 +129,9 @@ namespace Nuvio.Views
                 var active = i == _viewModel.HeroIndex;
                 HeroDots.Children.Add(new Border
                 {
-                    Width = active ? 26 : 9,
-                    Height = 9,
-                    CornerRadius = new CornerRadius(4.5),
+                    Width = active ? 21 : 7,
+                    Height = 7,
+                    CornerRadius = new CornerRadius(3.5),
                     Background = new SolidColorBrush(active
                         ? Windows.UI.Colors.White
                         : Windows.UI.Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF)),
@@ -390,10 +390,10 @@ namespace Nuvio.Views
             int width;
             switch (kind)
             {
-                case "landscape": width = 640; break;
-                case "square": width = 416; break;
-                case "wide": width = 704; break;
-                case "logo": width = 600; break;
+                case "landscape": width = 512; break;
+                case "square": width = 333; break;
+                case "wide": width = 563; break;
+                case "logo": width = 480; break;
                 default: width = PosterDecodeWidth(); break;
             }
             try
@@ -414,10 +414,10 @@ namespace Nuvio.Views
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 272;
-                case "large": return 416;
-                case "extraLarge": return 480;
-                default: return 352;
+                case "compact": return 218;
+                case "large": return 333;
+                case "extraLarge": return 384;
+                default: return 282;
             }
         }
 
@@ -433,15 +433,15 @@ namespace Nuvio.Views
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var shape = (value as string ?? "poster").ToLowerInvariant();
-            if (shape == "landscape") return 240;
-            if (shape == "square") return 156;
+            if (shape == "landscape") return 192;
+            if (shape == "square") return 125;
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 102;
-                case "large": return 156;
-                case "extraLarge": return 180;
-                default: return 132;
+                case "compact": return 82;
+                case "large": return 125;
+                case "extraLarge": return 144;
+                default: return 106;
             }
         }
 
@@ -457,15 +457,15 @@ namespace Nuvio.Views
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var shape = (value as string ?? "poster").ToLowerInvariant();
-            if (shape == "landscape") return 135;
-            if (shape == "square") return 156;
+            if (shape == "landscape") return 108;
+            if (shape == "square") return 125;
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 153;
-                case "large": return 234;
-                case "extraLarge": return 270;
-                default: return 198;
+                case "compact": return 122;
+                case "large": return 187;
+                case "extraLarge": return 216;
+                default: return 158;
             }
         }
 
