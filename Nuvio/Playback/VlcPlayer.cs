@@ -73,6 +73,18 @@ namespace Nuvio.Playback
         private int _viewWidth;
         private int _viewHeight;
 
+        // Swap-chain options from the VideoView's Initialized event. They must be passed to the
+        // LibVLC constructor so VLC renders into the VideoView's swap chain instead of creating
+        // its own D3D11 device — on Xbox its own device fails with DXGI_ERROR_DEVICE_REMOVED
+        // (hr=0x887A0005) and playback is a black screen. The options can arrive after LibVLC
+        // has already started (see ApplySwapChainOptions), so the last real set is kept here.
+        private readonly object _swapChainLock = new object();
+        private string[] _swapChainOptions;
+        private bool _swapChainOptionsApplied;
+        private bool _coreInitialized;
+        private bool _unavailable;
+        private bool _disposed;
+
         // Shared between VLC callback threads, the worker and the UI thread.
         private long _workerLoadSeq;
         private long _lastTimeMs;
@@ -98,7 +110,130 @@ namespace Nuvio.Playback
 
         public void Initialize(string[] swapChainOptions)
         {
-            var options = new List<string>(swapChainOptions)
+            var options = CopySwapChainOptions(swapChainOptions);
+            lock (_swapChainLock)
+            {
+                // Prefer real options wherever they came from: EnsureVlc can call this with an
+                // empty array when the VideoView has not fired Initialized yet, while
+                // ApplySwapChainOptions may already have stored the real ones.
+                if (options != null)
+                {
+                    _swapChainOptions = options;
+                }
+                else
+                {
+                    options = _swapChainOptions;
+                }
+            }
+            if (Interlocked.Exchange(ref _initStarted, 1) == 1)
+            {
+                return;
+            }
+            // Not on the worker queue: a load that arrives first waits on the worker for this.
+            Task.Run(() => CreateLibVlc(options));
+        }
+
+        /// <summary>
+        /// Applies the VideoView's swap-chain options when they arrive after LibVLC has already
+        /// started. Called on the UI thread (from HybridMediaPlayer.SetVlcSwapChainOptions).
+        /// If LibVLC has not started yet the options are just stored for Initialize. If it
+        /// started without real options and nothing is playing, LibVLC is re-created with them
+        /// on the worker queue; the new MediaPlayer is published through MediaPlayerCreated so
+        /// the VideoView re-attaches. If playback is active the options are only stored: tearing
+        /// LibVLC down mid-stream would break the playing stream, and the re-create happens
+        /// at the next Stop or Open instead (see MaybeRecreateWithSwapChainOptions).
+        /// </summary>
+        public void ApplySwapChainOptions(string[] options)
+        {
+            var copy = CopySwapChainOptions(options);
+            if (copy == null || _disposed)
+            {
+                return;
+            }
+            lock (_swapChainLock)
+            {
+                _swapChainOptions = copy;
+            }
+            if (Interlocked.CompareExchange(ref _initStarted, 0, 0) == 0)
+            {
+                // Not started yet; Initialize picks the stored options up.
+                return;
+            }
+            Enqueue(() => ApplySwapChainOptionsOnWorker());
+        }
+
+        // Worker. Waits out an in-flight first start (it runs on its own task, not this queue,
+        // so waiting here cannot deadlock), then re-creates LibVLC only while idle.
+        private void ApplySwapChainOptionsOnWorker()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            if (!_ready.Wait(StartupTimeout))
+            {
+                Log.Write("LibVLC did not finish starting; keeping the swap-chain options for the next start");
+                return;
+            }
+            lock (_swapChainLock)
+            {
+                if (_swapChainOptionsApplied)
+                {
+                    return;
+                }
+            }
+            if (_request != null || _hasPlayed)
+            {
+                Log.Write("LibVLC swap-chain options arrived while VLC is playing; keeping them for the next start");
+                return;
+            }
+            MaybeRecreateWithSwapChainOptions();
+        }
+
+        // Worker. Re-creates LibVLC with the stored swap-chain options, if it was started
+        // without them. Call only after playback has been stopped: StopPlayer has already run
+        // in Stop/Open, and ApplySwapChainOptionsOnWorker checks for active playback itself.
+        // The new MediaPlayer is published through MediaPlayerCreated (inside CreateLibVlc),
+        // so the VideoView re-attaches; volume/mute/rate/track preferences live in fields
+        // and are re-applied when the next stream plays.
+        private void MaybeRecreateWithSwapChainOptions()
+        {
+            if (_disposed || _unavailable)
+            {
+                return;
+            }
+            string[] stored;
+            lock (_swapChainLock)
+            {
+                stored = _swapChainOptions;
+                if (stored == null || _swapChainOptionsApplied)
+                {
+                    return;
+                }
+            }
+            Log.Write("Recreating LibVLC with the video surface swap-chain options");
+            StopPlayer();
+            if (_libVlc != null)
+            {
+                _libVlc.Log -= OnLibVlcLog;
+            }
+            _mediaPlayer?.Dispose();
+            _mediaPlayer = null;
+            _libVlc?.Dispose();
+            _libVlc = null;
+            _initError = null;
+            Interlocked.Exchange(ref _vlcLogLines, 0);
+            // _ready stays set and _initStarted stays 1: creation below runs synchronously on
+            // this queue, so any Open queued after this sees the new instance without waiting.
+            CreateLibVlc(stored);
+        }
+
+        // Runs on a worker thread: Initialize's Task.Run, or the serial worker queue for a
+        // re-create (where it runs synchronously). Creates LibVLC with the given swap-chain
+        // options and publishes the new MediaPlayer through MediaPlayerCreated.
+        private void CreateLibVlc(string[] swapChainOptions)
+        {
+            var options = new List<string>(swapChainOptions ?? new string[0])
             {
                 "--no-video-title-show",
                 "--no-osd",
@@ -106,54 +241,78 @@ namespace Nuvio.Playback
                 "--http-reconnect",
                 "--network-caching=" + NetworkCachingMs,
             };
-            if (Interlocked.Exchange(ref _initStarted, 1) == 1)
+            try
             {
-                return;
-            }
-            // Not on the worker queue: a load that arrives first waits on the worker for this.
-            Task.Run(() =>
-            {
-                try
+                if (_disposed)
                 {
-                    Log.Write("Starting LibVLC");
+                    return;
+                }
+                Log.Write("Starting LibVLC");
+                if (!_coreInitialized)
+                {
                     Core.Initialize();
+                    _coreInitialized = true;
+                }
 #if DEBUG
-                    _libVlc = new LibVLC(true, options.ToArray());
+                _libVlc = new LibVLC(true, options.ToArray());
 #else
-                    _libVlc = new LibVLC(false, options.ToArray());
+                _libVlc = new LibVLC(false, options.ToArray());
 #endif
-                    _mediaPlayer = new MediaPlayer(_libVlc);
-                    Subscribe(_mediaPlayer);
-                    _libVlc.Log += OnLibVlcLog;
-                    Log.Write("LibVLC " + _libVlc.Version + " ready");
-                }
-                catch (Exception ex)
+                _mediaPlayer = new MediaPlayer(_libVlc);
+                Subscribe(_mediaPlayer);
+                _libVlc.Log += OnLibVlcLog;
+                lock (_swapChainLock)
                 {
-                    Log.Error("LibVLC failed to start", ex);
-                    _initError = ex.Message;
-                    _mediaPlayer = null;
-                    _libVlc = null;
+                    _swapChainOptionsApplied = swapChainOptions != null && swapChainOptions.Length > 0;
                 }
-                finally
+                Log.Write("LibVLC " + _libVlc.Version + " ready");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("LibVLC failed to start", ex);
+                _initError = ex.Message;
+                _mediaPlayer = null;
+                _libVlc = null;
+                lock (_swapChainLock)
                 {
-                    _ready.Set();
+                    _swapChainOptionsApplied = false;
                 }
-                var mediaPlayer = _mediaPlayer;
-                if (mediaPlayer != null)
+            }
+            finally
+            {
+                _ready.Set();
+            }
+            var mediaPlayer = _mediaPlayer;
+            if (mediaPlayer != null)
+            {
+                var version = _libVlc.Version;
+                RunOnUi(() =>
                 {
-                    var version = _libVlc.Version;
-                    RunOnUi(() =>
-                    {
-                        Version = version;
-                        MediaPlayerCreated?.Invoke(mediaPlayer);
-                    });
-                }
-            });
+                    Version = version;
+                    MediaPlayerCreated?.Invoke(mediaPlayer);
+                });
+            }
+        }
+
+        // Defensive copy of swap-chain options; null when there are no real options to apply.
+        // Option values are never logged.
+        private static string[] CopySwapChainOptions(string[] options)
+        {
+            if (options == null || options.Length == 0)
+            {
+                return null;
+            }
+            var copy = new string[options.Length];
+            Array.Copy(options, copy, options.Length);
+            return copy;
         }
 
         /// <summary>Marks VLC as unusable so loads fail with a message instead of waiting.</summary>
         public void SetUnavailable(string reason)
         {
+            // Set even when LibVLC already started: the surface is gone, so a later
+            // swap-chain re-create must not resurrect VLC against it.
+            _unavailable = true;
             if (Interlocked.Exchange(ref _initStarted, 1) == 1)
             {
                 return;
@@ -187,18 +346,18 @@ namespace Nuvio.Playback
             {
                 if (!_ready.Wait(StartupTimeout) || _mediaPlayer == null)
                 {
-                    var message = "VLC failed to start" + (_initError != null ? ": " + _initError : " (timed out).");
-                    Log.Write(message);
-                    RunOnUi(() =>
-                    {
-                        if (seq == _loadSeq)
-                        {
-                            RaiseEnded("error", message);
-                        }
-                    });
+                    ReportStartFailure(seq);
                     return;
                 }
                 StopPlayer();
+                // A swap-chain re-create deferred while a previous stream was playing takes
+                // effect here, before the new stream starts on the fresh instance.
+                MaybeRecreateWithSwapChainOptions();
+                if (_mediaPlayer == null)
+                {
+                    ReportStartFailure(seq);
+                    return;
+                }
                 Interlocked.Exchange(ref _workerLoadSeq, seq);
                 Interlocked.Exchange(ref _lengthMs, 0);
                 _request = request;
@@ -227,6 +386,9 @@ namespace Nuvio.Playback
                 Interlocked.Exchange(ref _workerLoadSeq, seq);
                 _request = null;
                 _hasPlayed = false;
+                // A swap-chain re-create deferred while a stream was playing takes effect now
+                // that playback has stopped; the next Open uses the fresh instance.
+                MaybeRecreateWithSwapChainOptions();
             });
         }
 
@@ -393,6 +555,7 @@ namespace Nuvio.Playback
 
         public void Dispose()
         {
+            _disposed = true;
             EventRaised = null;
             MediaPlayerCreated = null;
             VideoVisibleChanged = null;
@@ -403,6 +566,21 @@ namespace Nuvio.Playback
                 _mediaPlayer = null;
                 _libVlc?.Dispose();
                 _libVlc = null;
+            });
+        }
+
+        // Worker. Reports a LibVLC start failure (including a failed swap-chain re-create)
+        // for the load that is waiting on it.
+        private void ReportStartFailure(long seq)
+        {
+            var message = "VLC failed to start" + (_initError != null ? ": " + _initError : " (timed out).");
+            Log.Write(message);
+            RunOnUi(() =>
+            {
+                if (seq == _loadSeq)
+                {
+                    RaiseEnded("error", message);
+                }
             });
         }
 
