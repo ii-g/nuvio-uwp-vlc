@@ -27,6 +27,13 @@ namespace Nuvio.Input
         private readonly NavigationService _navigation;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private DateTime _lastBackPress = DateTime.MinValue;
+        // Web focus.js dedupes the same action arriving twice within 150 ms (one physical
+        // press can reach the app through the poll and through native key handling); mirror
+        // it here so a single tap can never move focus twice. Held repeats arrive every
+        // 200 ms (ControllerBridge), so they always pass this window.
+        private const double DirectionDedupeMs = 150;
+        private string _lastDirection;
+        private DateTime _lastDirectionTime = DateTime.MinValue;
 
         public NativeInputRouter(MainPage shell, Frame frame, NavigationService navigation)
         {
@@ -38,6 +45,16 @@ namespace Nuvio.Input
         public void Handle(string action, bool repeat)
         {
             if (_shell.DialogOpen) return;
+            if (action == "up" || action == "down" || action == "left" || action == "right")
+            {
+                var now = DateTime.UtcNow;
+                if (action == _lastDirection && (now - _lastDirectionTime).TotalMilliseconds < DirectionDedupeMs)
+                {
+                    return;
+                }
+                _lastDirection = action;
+                _lastDirectionTime = now;
+            }
             var page = _frame.Content as Page;
             var handler = page as IPageInputHandler;
             if (handler != null && handler.HandleAction(action, repeat)) return;
