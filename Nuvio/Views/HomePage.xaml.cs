@@ -10,6 +10,7 @@ using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
 using Windows.ApplicationModel.Resources;
+using Windows.Foundation;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
