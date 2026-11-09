@@ -1,5 +1,5 @@
 // Playback engines with one interface. In the app, NativeEngine plays through the
-// hybrid native player (WMF first, LibVLC fallback, drawn under the page); in a
+// hybrid native player (FFmpegInteropX first, LibVLC fallback, drawn under the page); in a
 // browser, Html5Engine uses a <video> element.
 //
 // Events: state {state: opening|buffering|playing|paused}, time {time, duration}, duration
