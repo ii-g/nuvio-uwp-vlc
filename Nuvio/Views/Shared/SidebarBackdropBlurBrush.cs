@@ -1,4 +1,6 @@
 using System;
+using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Effects;
 using Nuvio.Diagnostics;
 using Windows.UI;
 using Windows.UI.Composition;
@@ -46,13 +48,32 @@ namespace Nuvio.Views.Shared
             {
                 compositor = Window.Current.Compositor;
                 _backdropBrush = compositor.CreateBackdropBrush();
-                const string effect =
-                    "<Effect>" +
-                    "<GaussianBlur Name=\"Blur\" Source=\"Backdrop\" BlurAmount=\"20\" BorderMode=\"Hard\" Optimization=\"Speed\"/>" +
-                    "<ColorSource Name=\"Tint\" Color=\"#CC16171D\"/>" +
-                    "<Composite Name=\"Out\" Mode=\"SourceOver\" Source=\"Tint\" Destination=\"Blur\"/>" +
-                    "</Effect>";
-                var factory = compositor.CreateEffectFactory(effect);
+                // CreateEffectFactory takes an IGraphicsEffect graph, not an
+                // effect-description string (no string overload exists — that
+                // was the CS1503 at (55,62)), so the graph is built with
+                // Win2D effect objects. Every source is an IGraphicsEffect:
+                // the backdrop enters through a CompositionEffectSourceParameter
+                // named "Backdrop", and the tint is a ColorSourceEffect.
+                var blur = new GaussianBlurEffect
+                {
+                    Name = "Blur",
+                    Source = new CompositionEffectSourceParameter("Backdrop"),
+                    BlurAmount = BlurAmount,
+                    BorderMode = EffectBorderMode.Hard,
+                    Optimization = EffectOptimization.Speed
+                };
+                var tint = new ColorSourceEffect
+                {
+                    Name = "Tint",
+                    Color = Tint
+                };
+                var composite = new CompositeEffect
+                {
+                    Name = "Out",
+                    Mode = CanvasComposite.SourceOver,
+                    Sources = { tint, blur }
+                };
+                var factory = compositor.CreateEffectFactory(composite);
                 _effectBrush = factory.CreateBrush();
                 _effectBrush.SetSourceParameter("Backdrop", _backdropBrush);
                 CompositionBrush = _effectBrush;
