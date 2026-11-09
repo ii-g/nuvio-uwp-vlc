@@ -20,7 +20,7 @@ namespace Nuvio.Models
         public string Released { get; set; }
         public string Thumbnail { get; set; }
 
-        public static Video FromJson(JsonValue value)
+        public static Video FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
