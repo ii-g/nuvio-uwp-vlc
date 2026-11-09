@@ -51,11 +51,17 @@ namespace Nuvio.Views
             DataContext = _viewModel;
             // The page has no parent yet at construction time, so the inherited FlowDirection
             // still reads as the LTR default here. Apply the direction from the UI language
-            // actually rendered, and re-apply it in OnNavigatedTo from the page's effective
-            // FlowDirection once the frame has parented the page — build 162 proved the
-            // constructor-time direction is not the rendered one (hero left, dots right,
-            // yet the rows render RTL), so a one-time constructor value is not enough.
+            // actually rendered, and re-apply it in OnNavigatedTo and on Loaded from the
+            // stored language — build 162 proved the constructor-time direction is not the
+            // rendered one (hero left, dots right, yet the rows render RTL), and build 170
+            // proved OnNavigatedTo alone does not heal it either: the rows rendered RTL
+            // while the hero's constructor-time LTR locals stayed put, so the page's
+            // FlowDirection must have flipped after OnNavigatedTo (the frame parents the
+            // hosted page). The Loaded re-assert runs after parenting, when the frame has
+            // had its say, and re-derives from the stored tag instead of trusting the
+            // page's own possibly-decoupled value.
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
+            Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             _heroTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HeroIntervalMs) };
             _heroTimer.Tick += OnHeroTimerTick;
             _backdropTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BackdropDebounceMs) };
@@ -99,9 +105,11 @@ namespace Nuvio.Views
         protected override async void OnNavigatedTo(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            // Re-apply from the effective flow direction: by now the frame has parented
-            // the page, so FlowDirection is the one the rows actually render in.
-            ApplyFlowDirection(FlowDirection == FlowDirection.RightToLeft);
+            // Re-derive from the stored language, never from this.FlowDirection: the
+            // frame can set the hosted page's FlowDirection after construction (build
+            // 170: rows RTL, hero LTR), so reading the page's own value here would copy
+            // the decoupled value back onto the hero instead of healing it.
+            ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Log.Write("Home page flow direction: " + (FlowDirection == FlowDirection.RightToLeft ? "RTL" : "LTR"));
             _heroTimer.Start();
             // The page is cached, so this runs once; addons/progress events drive later refreshes.
