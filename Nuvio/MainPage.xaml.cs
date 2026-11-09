@@ -40,12 +40,12 @@ namespace Nuvio
         private bool _videoViewStarting;
         private bool _dialogOpen;
 
-        public AppSettings Settings { get; private set; }
-        public LocalStore Store { get; private set; }
-        public StremioService Stremio { get; private set; }
-        public LibraryService Library { get; private set; }
-        public ProgressService Progress { get; private set; }
-        public NavigationService Navigation { get; private set; }
+        internal AppSettings Settings { get; private set; }
+        internal LocalStore Store { get; private set; }
+        internal StremioService Stremio { get; private set; }
+        internal LibraryService Library { get; private set; }
+        internal ProgressService Progress { get; private set; }
+        internal NavigationService Navigation { get; private set; }
 
         /// <summary>True while a ContentDialog is open; pauses the controller (see NativeInputRouter).</summary>
         public bool DialogOpen
@@ -177,7 +177,7 @@ namespace Nuvio
 
         // Lets the user type into a text box with the console's on-screen keyboard,
         // which reliably works with a XAML text box.
-        public async Task<TextEntryResult> RequestTextAsync(TextEntryRequest request)
+        internal async Task<TextEntryResult> RequestTextAsync(TextEntryRequest request)
         {
             if (DialogOpen)
             {
