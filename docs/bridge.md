@@ -44,7 +44,7 @@ for development.
 
 | type | fields | |
 | --- | --- | --- |
-| `app.hello` | `platform` (`xbox` or `desktop`), `appVersion`, `mediaEngine` (e.g. `Windows Media Foundation + LibVLC`), `webAppUrl`, `bundled` | |
+| `app.hello` | `platform` (`xbox` or `desktop`), `appVersion`, `mediaEngine` (e.g. `FFmpegInteropX + LibVLC`), `webAppUrl`, `bundled` | |
 | `input` | `action`, `repeat` | A controller button: `up`, `down`, `left`, `right` (D-pad or left stick, repeated while held), `select` (A), `back` (B), `x`, `y`, `menu`, `view`, `lb`, `rb`, `lt`, `rt`. |
 | `app.visibility` | `visible` | The app went to or came back from the background. |
 | `response` | `requestId`, `result`, `error` | Answer to `app.textInput` and `net.fetch`. |
@@ -55,5 +55,5 @@ for development.
 | `player.tracks` | `id`, `audio`, `subtitles` (arrays of `{ id, name, lang, title, codec, selected }`), `audioId`, `subtitleId` | Whenever the tracks change. |
 | `player.video` | `id`, `width`, `height` | |
 | `player.ready` | `id` | The first frame is showing (or, for audio, playback started); the page turns transparent. |
-| `player.ended` | `id`, `reason` (`eof` or `error`), `message`, `errorKind` (WMF failures only: `SourceNotSupported`, `DecodingError`, `ManifestDownloadFailure`, …) | A stream that ends before it ever played is reported as an error. Dropped connections are retried (up to 5 times) before anything is reported. |
-| `player.engine` | `id`, `engine` (`LibVLC`), `message` | The hybrid player switched engines for the current source (WMF could not play it, VLC takes over from the same position). |
+| `player.ended` | `id`, `reason` (`eof` or `error`), `message`, `errorKind` (primary FFmpeg failures only: `DecodingError`, `SourceNotSupported`, `NetworkError`, …) | A stream that ends before it ever played is reported as an error. Dropped connections are retried (up to 5 times) before anything is reported. |
+| `player.engine` | `id`, `engine` (`LibVLC`), `message` | The hybrid player switched engines for the current source (FFmpeg could not play it, VLC takes over from the same position). |
