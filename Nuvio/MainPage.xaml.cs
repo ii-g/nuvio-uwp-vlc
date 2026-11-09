@@ -24,7 +24,7 @@ namespace Nuvio
 {
     /// <summary>
     /// The Nuvio web app (web/ in the repository, packaged into the app) runs in a WebView2 on top
-    /// of a native MediaPlayerElement (with a LibVLC VideoView as fallback), and plays streams
+    /// of a MediaPlayerElement driven by FFmpegInteropX (with a LibVLC VideoView as fallback), and plays streams
     /// through <see cref="AppBridge"/>.
     /// </summary>
     public sealed partial class MainPage : Page, IAppHost
@@ -441,7 +441,7 @@ namespace Nuvio
         }
 
         // Realize the media surfaces after WebView loads so startup remains independent of playback.
-        // The native surface and the VLC fallback surface are created independently: if one fails,
+        // The FFmpeg surface and the VLC fallback surface are created independently: if one fails,
         // the other can still play.
         private void CreateVideoView()
         {
