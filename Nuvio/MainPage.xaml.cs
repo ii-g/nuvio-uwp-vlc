@@ -82,7 +82,7 @@ namespace Nuvio
                 Log.Error("Setting the app language failed", ex);
             }
             InitializeComponent();
-            SetFlowDirection(string.Equals(language, "ar", StringComparison.OrdinalIgnoreCase));
+            SetFlowDirection(AppSettings.IsRightToLeft(language));
             _player = new HybridMediaPlayer();
             // The page has its own focus navigation for the controller; the console's mouse-mode
             // cursor would only get in the way.
@@ -106,11 +106,16 @@ namespace Nuvio
             FlowDirection = rightToLeft
                 ? Windows.UI.Xaml.FlowDirection.RightToLeft
                 : Windows.UI.Xaml.FlowDirection.LeftToRight;
+            // Hosted pages inherit through the frame; set it explicitly too, so a page
+            // constructed before it is parented still lands in the right direction.
+            if (ContentFrame != null) ContentFrame.FlowDirection = FlowDirection;
             // The sidebar is an overlay (web: position absolute): it docks to the
             // flow-start edge, its divider faces the content, and its buttons' content
             // sits at the start edge in both states (web: icon at the start, labels fade),
             // so the icons never move when the strip widens.
-            SidebarBorder.HorizontalAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            SidebarBorder.HorizontalAlignment = FlowDirection == Windows.UI.Xaml.FlowDirection.RightToLeft
+                ? HorizontalAlignment.Right
+                : HorizontalAlignment.Left;
             SidebarBorder.BorderThickness = rightToLeft ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
             var contentAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             HomeButton.HorizontalContentAlignment = contentAlignment;
@@ -118,6 +123,7 @@ namespace Nuvio
             LibraryButton.HorizontalContentAlignment = contentAlignment;
             SettingsButton.HorizontalContentAlignment = contentAlignment;
             ProfileButton.HorizontalContentAlignment = contentAlignment;
+            Log.Write("Shell flow direction: " + (rightToLeft ? "RightToLeft" : "LeftToRight"));
         }
 
         /// <summary>Handles media surface initialization failure without taking down the app.</summary>
