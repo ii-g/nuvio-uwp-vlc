@@ -250,7 +250,7 @@ namespace Nuvio.Playback
                 Log.Write("Starting LibVLC");
                 if (!_coreInitialized)
                 {
-                    Core.Initialize();
+                    LibVLCSharp.Shared.Core.Initialize();
                     _coreInitialized = true;
                 }
 #if DEBUG
