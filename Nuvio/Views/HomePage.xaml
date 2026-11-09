@@ -5,7 +5,10 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    XYFocusKeyboardNavigation="Enabled"
+    <!-- XYFocus keyboard navigation is off on purpose: the controller poll owns
+         every move (see MainPage.OnPreviewKeyDown). Left on, the framework moves
+         focus a second card per D-pad press on top of the router's move. -->
+    XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
 
     <Page.Resources>
@@ -89,7 +92,7 @@
         </Style>
     </Page.Resources>
 
-    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Enabled">
+    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <!-- Backdrop: two cross-fading layers following the focused card, plus a shade. -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
