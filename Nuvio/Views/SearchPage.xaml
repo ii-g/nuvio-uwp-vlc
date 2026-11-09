@@ -27,7 +27,9 @@
                     <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="1" PlaceholderText="Search movies &amp; series" FontSize="12" Background="Transparent" BorderThickness="0" Foreground="White" Height="40" Padding="8,0,12,0" VerticalAlignment="Center" IsSpellCheckEnabled="False">
                         <TextBox.InputScope>
                             <InputScope>
-                                <InputScopeName NameValue="Search"/>
+                                <InputScope.Names>
+                                    <InputScopeName NameValue="Search"/>
+                                </InputScope.Names>
                             </InputScope>
                         </TextBox.InputScope>
                     </TextBox>
