@@ -2,6 +2,12 @@
 
 A release's notes come from its section here (the heading must match the tag), and the app shows them when it offers the update.
 
+## v1.5.1
+- **VLC fallback black screen fixed:** the VideoView swapchain options could arrive after LibVLC had already initialized, so LibVLC created its own D3D11 device, which failed on Xbox (DXGI_ERROR_DEVICE_REMOVED, hr=0x887A0005) and left a black screen. The swapchain options are now applied to LibVLC when they arrive.
+- **Better diagnostics:** the real FFmpeg failure reason is now carried through to the fallback log line instead of showing "unknown", open exceptions log their type and HResult with the playback position, and both engines log the actual decoder mode (D3D11 hardware or software) on every open.
+- **Lighter FFmpeg buffering:** the read-ahead buffer is reduced from 30 seconds to 10 seconds to lighten memory and CPU load.
+- **Hardware decoding follows the in-app setting:** if hardware decoding is off in Settings, both engines use software decoding — expect slow frames on Xbox.
+
 ## v1.5.0
 - **FFmpegInteropX is now the primary player:** it decodes MKV/HEVC/AV1/DTS and other formats Windows Media Foundation rejects, with D3D11 hardware decoding, straight into the same MediaPlayer surface — so sources that used to fail first on WMF and then switch to VLC now play on the first try. Audio and subtitle tracks from the file are now selectable, and stalled streams use FFmpeg's reconnect and read-ahead buffer.
 - **LibVLC stays as the fallback:** if FFmpeg cannot play a source, playback still switches automatically to VLC for the same source from the same position.
