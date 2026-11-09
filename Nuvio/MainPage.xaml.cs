@@ -190,7 +190,10 @@ namespace Nuvio
             // RTL). Re-assert it from the UI language actually rendered, once the page
             // is in the visual tree, and log the strip's on-screen side after layout.
             SetFlowDirection(AppSettings.EffectiveIsRightToLeft());
-            var _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => VerifySidebarSide());
+            // Fire-and-forget: no local captures the IAsyncAction, otherwise the
+            // `var _` would shadow the discard and line 224's `_ = Task` would fail
+            // with CS0266 (Task cannot convert to IAsyncAction).
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => VerifySidebarSide());
 
             Store = new LocalStore();
             Library = new LibraryService(Store);
