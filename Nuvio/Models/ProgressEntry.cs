@@ -45,7 +45,7 @@ namespace Nuvio.Models
         /// <summary>Position / Duration, 0–1.</summary>
         public double ProgressFraction { get; set; }
 
-        public static ProgressEntry FromJson(JsonValue value)
+        public static ProgressEntry FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
