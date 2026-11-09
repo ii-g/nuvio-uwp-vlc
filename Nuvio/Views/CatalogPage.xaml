@@ -16,6 +16,8 @@
 
     <Page.Resources>
         <views:ChipSelectedBackgroundConverter x:Key="ChipSelectedBackgroundConverter"/>
+        <views:ChipSelectedBorderConverter x:Key="ChipSelectedBorderConverter"/>
+        <views:ChipSelectedForegroundConverter x:Key="ChipSelectedForegroundConverter"/>
     </Page.Resources>
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
@@ -26,9 +28,9 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title -->
+        <!-- Title (web .page-title: 2.6rem = 21 epx, top padding 3rem = 24 epx). -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,24,0,0">
-            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold"/>
+            <TextBlock Text="{Binding Title}" FontSize="21" FontWeight="Bold"/>
             <TextBlock Text="{Binding Subtitle}" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
         </StackPanel>
 
@@ -41,13 +43,16 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
-                    <Button Content="{Binding DisplayName}" Click="GenreChip_Click" Background="{Binding IsSelected, Converter={StaticResource ChipSelectedBackgroundConverter}}" Foreground="White" Padding="12,4" CornerRadius="8" FontSize="9" MinHeight="28" Margin="0,0,8,0"/>
+                    <!-- Web .chip: height 2.7rem = 22 epx, radius 1.35rem = 11 epx,
+                         surface bg + 1 epx border token, text-2, SemiBold, gap .8rem = 6 epx;
+                         selected = surface-3 bg, white text, transparent border. -->
+                    <Button Content="{Binding DisplayName}" Click="GenreChip_Click" Background="{Binding IsSelected, Converter={StaticResource ChipSelectedBackgroundConverter}}" BorderBrush="{Binding IsSelected, Converter={StaticResource ChipSelectedBorderConverter}}" BorderThickness="1" Foreground="{Binding IsSelected, Converter={StaticResource ChipSelectedForegroundConverter}}" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0"/>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
 
         <!-- Poster grid -->
-        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,12,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
+        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,7,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
                     <ItemsWrapGrid Orientation="Horizontal"/>
@@ -63,7 +68,7 @@
             </StackPanel>
         </Grid>
 
-        <!-- Footer spinner -->
-        <ProgressRing Grid.Row="3" IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" Margin="0,12,0,12"/>
+        <!-- Footer spinner (web .grid-footer padding 1rem = 8 epx). -->
+        <ProgressRing Grid.Row="3" IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" Margin="0,8,0,8"/>
     </Grid>
 </Page>
