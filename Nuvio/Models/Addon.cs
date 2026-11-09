@@ -11,7 +11,7 @@ namespace Nuvio.Models
         public bool IsRequired { get; set; }
         public List<string> Options { get; set; }
 
-        public static CatalogExtraEntry FromJson(JsonValue value)
+        public static CatalogExtraEntry FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
@@ -51,7 +51,7 @@ namespace Nuvio.Models
         public List<string> ExtraSupported { get; set; }
         public List<string> ExtraRequired { get; set; }
 
-        public static Catalog FromJson(JsonValue value)
+        public static Catalog FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
@@ -104,7 +104,7 @@ namespace Nuvio.Models
         public List<string> Types { get; set; }
         public List<string> IdPrefixes { get; set; }
 
-        public static ManifestResource FromJson(JsonValue value)
+        public static ManifestResource FromJson(IJsonValue value)
         {
             if (value == null) return null;
             if (value.ValueType == JsonValueType.String) return new ManifestResource { Name = value.GetString() };
@@ -118,7 +118,7 @@ namespace Nuvio.Models
             };
         }
 
-        public JsonValue ToJson()
+        public IJsonValue ToJson()
         {
             if ((Types == null || Types.Count == 0) && (IdPrefixes == null || IdPrefixes.Count == 0))
             {
@@ -156,7 +156,7 @@ namespace Nuvio.Models
         public List<Catalog> Catalogs { get; set; }
         public bool BehaviorHintsConfigurable { get; set; }
 
-        public static AddonManifest FromJson(JsonValue value)
+        public static AddonManifest FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
@@ -260,7 +260,7 @@ namespace Nuvio.Models
             get { return Enabled != false && Manifest != null; }
         }
 
-        public static Addon FromJson(JsonValue value)
+        public static Addon FromJson(IJsonValue value)
         {
             var obj = JsonHelpers.GetObject(value);
             if (obj == null) return null;
