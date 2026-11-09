@@ -51,14 +51,20 @@
         </Grid>
     </DataTemplate>
 
-    <!-- The trailing "View All" card at the end of a row (components/cards.js viewAllCard). -->
+    <!-- The trailing "View All" card at the end of a row (components/cards.js viewAllCard):
+         a full poster-sized empty card, transparent so the hero shows through (the web
+         surface token is rgba(255,255,255,.06), exactly #0FFFFFFF), chevron + label centred.
+         It binds the item's own PosterShape, not Meta.PosterShape: the View All item
+         has no Meta, so the Meta binding failed and the card collapsed to a small
+         content-sized chip in build 180. The arrow is chevron-right in either direction
+         (web icon('chevron-right'), unconditional). -->
     <DataTemplate x:Key="ViewAllCardTemplate">
-        <Grid Width="{Binding Meta.PosterShape, Converter={StaticResource ShapeWidthConverter}}" Background="Transparent">
+        <Grid Width="{Binding PosterShape, Converter={StaticResource ShapeWidthConverter}}" Background="Transparent">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#0FFFFFFF" CornerRadius="6">
+            <Border Grid.Row="0" Height="{Binding PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#0FFFFFFF" CornerRadius="6">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5">
                     <FontIcon Glyph="{Binding IsViewAll, Converter={StaticResource ViewAllArrowConverter}}" FontSize="19" Foreground="#B8FFFFFF"/>
                     <TextBlock x:Uid="ViewAllLabel" Text="View All" Foreground="#B8FFFFFF" FontSize="8" FontWeight="SemiBold"/>
