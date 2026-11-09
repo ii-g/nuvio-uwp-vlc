@@ -40,6 +40,7 @@ namespace Nuvio.Views
         private string _backdropPendingUrl;
         private string _lastFocusedKey;
         private GridView _lastAnchoredRow;
+        private bool _rowDirectionLogged;
 
         public HomePage()
         {
@@ -248,6 +249,14 @@ namespace Nuvio.Views
             if (viewer == null || item == null) return;
             var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
             var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            // The rows inherit the page direction, so this line proves in the Xbox log
+            // which way the rows actually render (build 170: Arabic labels with an LTR
+            // layout left the user unable to tell whether the rows were RTL or LTR).
+            if (!_rowDirectionLogged)
+            {
+                _rowDirectionLogged = true;
+                Log.Write("Row flow direction: " + (rtl ? "RTL" : "LTR"));
+            }
             // The row's own padding: the anchor sits where the first card rests (the web's
             // scroll-padding), and the 1.06 focus zoom only overflows ~2.6 epx past it.
             const double startInset = 6;
