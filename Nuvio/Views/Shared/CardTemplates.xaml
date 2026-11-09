@@ -21,17 +21,17 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#FF16171D" CornerRadius="9">
+            <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#FF16171D" CornerRadius="7">
                 <Grid>
-                    <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="9"/>
+                    <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="10" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="7"/>
                     <Image Source="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
-                    <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="22" Height="22" CornerRadius="11" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7">
-                        <TextBlock Text="✓" Foreground="White" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="18" Height="18" CornerRadius="9" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                        <TextBlock Text="✓" Foreground="White" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
-                    <ProgressBar Value="{Binding Progress}" Maximum="1" Visibility="{Binding Progress, Converter={StaticResource DoubleToVisibilityConverter}}" VerticalAlignment="Bottom" Margin="8,0,8,8" Height="4" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
+                    <ProgressBar Value="{Binding Progress}" Maximum="1" Visibility="{Binding Progress, Converter={StaticResource DoubleToVisibilityConverter}}" VerticalAlignment="Bottom" Margin="6,0,6,6" Height="3" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
                 </Grid>
             </Border>
-            <TextBlock Grid.Row="1" Text="{Binding Meta.Name}" Foreground="#B8FFFFFF" FontSize="12" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+            <TextBlock Grid.Row="1" Text="{Binding Meta.Name}" Foreground="#B8FFFFFF" FontSize="10" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
         </Grid>
     </DataTemplate>
 
@@ -42,13 +42,13 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#0FFFFFFF" CornerRadius="9">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                    <FontIcon Glyph="&#xE76C;" FontSize="28" Foreground="#B8FFFFFF"/>
-                    <TextBlock x:Uid="ViewAllLabel" Text="View All" Foreground="#B8FFFFFF" FontSize="12" FontWeight="SemiBold"/>
+            <Border Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}" Background="#0FFFFFFF" CornerRadius="7">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                    <FontIcon Glyph="&#xE76C;" FontSize="22" Foreground="#B8FFFFFF"/>
+                    <TextBlock x:Uid="ViewAllLabel" Text="View All" Foreground="#B8FFFFFF" FontSize="10" FontWeight="SemiBold"/>
                 </StackPanel>
             </Border>
-            <TextBlock Grid.Row="1" Text=" " FontSize="12" Margin="0,7,0,0"/>
+            <TextBlock Grid.Row="1" Text=" " FontSize="10" Margin="0,6,0,0"/>
         </Grid>
     </DataTemplate>
 
@@ -56,14 +56,14 @@
 
     <!-- A Continue Watching card (components/cards.js continueCard): wide art, logo-or-title, progress, Next Up tag, sub-line. -->
     <DataTemplate x:Key="ContinueCardTemplate">
-        <Grid Width="264" Background="Transparent">
+        <Grid Width="211" Background="Transparent">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <Border Grid.Row="0" Height="148" Background="#FF16171D" CornerRadius="9">
+            <Border Grid.Row="0" Height="118" Background="#FF16171D" CornerRadius="7">
                 <Grid>
-                    <TextBlock Text="{Binding Title}" Foreground="#80FFFFFF" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="9"/>
+                    <TextBlock Text="{Binding Title}" Foreground="#80FFFFFF" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="7"/>
                     <Image Source="{Binding CardImage, Converter={StaticResource PosterImageConverter}, ConverterParameter=wide}" Stretch="UniformToFill"/>
                     <Rectangle>
                         <Rectangle.Fill>
@@ -73,21 +73,21 @@
                             </LinearGradientBrush>
                         </Rectangle.Fill>
                     </Rectangle>
-                    <Image Source="{Binding Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,0,20" MaxWidth="142" MaxHeight="48" Visibility="{Binding Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
-                    <TextBlock Text="{Binding Title}" Foreground="White" FontSize="15" FontWeight="Bold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,12,20" Visibility="{Binding Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
-                    <ProgressBar Value="{Binding ProgressFraction}" Maximum="1" Visibility="{Binding Converter={StaticResource ContinueProgressVisibilityConverter}}" VerticalAlignment="Bottom" Margin="8,0,8,8" Height="4" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
-                    <Border Visibility="{Binding NextUp, Converter={StaticResource BooleanToVisibilityConverter}}" Background="#FF2F6FED" CornerRadius="5" Padding="8,3" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
-                        <TextBlock Text="{Binding TagText}" Foreground="White" FontSize="11" FontWeight="Bold"/>
+                    <Image Source="{Binding Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,16" MaxWidth="114" MaxHeight="38" Visibility="{Binding Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
+                    <TextBlock Text="{Binding Title}" Foreground="White" FontSize="12" FontWeight="Bold" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,10,16" Visibility="{Binding Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
+                    <ProgressBar Value="{Binding ProgressFraction}" Maximum="1" Visibility="{Binding Converter={StaticResource ContinueProgressVisibilityConverter}}" VerticalAlignment="Bottom" Margin="6,0,6,6" Height="3" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
+                    <Border Visibility="{Binding NextUp, Converter={StaticResource BooleanToVisibilityConverter}}" Background="#FF2F6FED" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6">
+                        <TextBlock Text="{Binding TagText}" Foreground="White" FontSize="9" FontWeight="Bold"/>
                     </Border>
                 </Grid>
             </Border>
-            <TextBlock Grid.Row="1" Text="{Binding DisplaySubLine}" Foreground="#80FFFFFF" FontSize="11" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+            <TextBlock Grid.Row="1" Text="{Binding DisplaySubLine}" Foreground="#80FFFFFF" FontSize="9" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
         </Grid>
     </DataTemplate>
 
     <!-- Card containers: focus ring + zoom (web: scale 1.06 + white ring). Selection is off; click is via IsItemClickEnabled. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
-        <Setter Property="Margin" Value="0,0,14,0"/>
+        <Setter Property="Margin" Value="0,0,11,0"/>
         <Setter Property="Padding" Value="0"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Template">
@@ -98,7 +98,7 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="9" IsHitTestVisible="False"/>
+                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" IsHitTestVisible="False"/>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
