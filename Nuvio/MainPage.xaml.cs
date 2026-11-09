@@ -123,6 +123,12 @@ namespace Nuvio
             LibraryButton.HorizontalContentAlignment = contentAlignment;
             SettingsButton.HorizontalContentAlignment = contentAlignment;
             ProfileButton.HorizontalContentAlignment = contentAlignment;
+            // The logo images are pinned Left in XAML (physical): in RTL they must sit
+            // at the start edge like the buttons' content (build 170: the logo looked
+            // off-centre next to the icon column while the buttons sat at the right).
+            var logoAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            SidebarLogoIcon.HorizontalAlignment = logoAlignment;
+            SidebarLogoWordmark.HorizontalAlignment = logoAlignment;
             Log.Write("Shell flow direction: " + (rightToLeft ? "RightToLeft" : "LeftToRight"));
         }
 
@@ -135,10 +141,13 @@ namespace Nuvio
             try
             {
                 var rtl = FlowDirection == Windows.UI.Xaml.FlowDirection.RightToLeft;
-                var content = Window.Current != null ? Window.Current.Content : null;
-                if (content == null) return;
-                var origin = SidebarBorder.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point(0, 0));
-                var windowWidth = Window.Current.Bounds.Width;
+                // Measure against the shell grid, not the window content: the grid shares
+                // the strip's RTL context, so the transform is a plain translation. Against
+                // Window.Current.Content (an LTR root frame) the RTL mirroring folds into
+                // the result — build 170 logged sidebarX=960 (= windowWidth) for a strip
+                // visibly at 912..960, i.e. the right edge instead of the left.
+                var origin = SidebarBorder.TransformToVisual(ShellGrid).TransformPoint(new Windows.Foundation.Point(0, 0));
+                var windowWidth = ShellGrid.ActualWidth;
                 var onRight = origin.X + SidebarBorder.ActualWidth / 2 > windowWidth / 2;
                 Log.Write("Sidebar side check: rtl=" + rtl + ", sidebarX=" + origin.X + ", sidebarWidth=" + SidebarBorder.ActualWidth + ", windowWidth=" + windowWidth + ", onRight=" + onRight);
             }
