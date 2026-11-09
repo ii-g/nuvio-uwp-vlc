@@ -45,9 +45,13 @@ namespace Nuvio.Views
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
             DataContext = _viewModel;
             // Page content starts after the sidebar; in RTL the start edge is the right one.
+            // Web content insets are 8.5rem (136 physical px) at the start and 4rem
+            // (64 physical px) at the end; XAML on Xbox is scaled 200%, so those are
+            // 68 and 32 epx from the screen edge, and the 48 epx sidebar column already
+            // covers 96 of the start inset: the pad is 20 epx at the start, 32 at the end.
             ContentStack.Padding = FlowDirection == FlowDirection.RightToLeft
-                ? new Thickness(64, 0, 136, 0)
-                : new Thickness(136, 0, 64, 0);
+                ? new Thickness(32, 0, 20, 0)
+                : new Thickness(20, 0, 32, 0);
             _heroTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HeroIntervalMs) };
             _heroTimer.Tick += OnHeroTimerTick;
             _backdropTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BackdropDebounceMs) };
@@ -129,9 +133,9 @@ namespace Nuvio.Views
                 var active = i == _viewModel.HeroIndex;
                 HeroDots.Children.Add(new Border
                 {
-                    Width = active ? 21 : 7,
-                    Height = 7,
-                    CornerRadius = new CornerRadius(3.5),
+                    Width = active ? 13 : 4,
+                    Height = 4,
+                    CornerRadius = new CornerRadius(2),
                     Background = new SolidColorBrush(active
                         ? Windows.UI.Colors.White
                         : Windows.UI.Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF)),
@@ -390,10 +394,10 @@ namespace Nuvio.Views
             int width;
             switch (kind)
             {
-                case "landscape": width = 512; break;
-                case "square": width = 333; break;
-                case "wide": width = 563; break;
-                case "logo": width = 480; break;
+                case "landscape": width = 425; break;
+                case "square": width = 277; break;
+                case "wide": width = 468; break;
+                case "logo": width = 398; break;
                 default: width = PosterDecodeWidth(); break;
             }
             try
@@ -414,10 +418,10 @@ namespace Nuvio.Views
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 218;
-                case "large": return 333;
-                case "extraLarge": return 384;
-                default: return 282;
+                case "compact": return 181;
+                case "large": return 277;
+                case "extraLarge": return 319;
+                default: return 234;
             }
         }
 
@@ -433,15 +437,15 @@ namespace Nuvio.Views
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var shape = (value as string ?? "poster").ToLowerInvariant();
-            if (shape == "landscape") return 192;
-            if (shape == "square") return 125;
+            if (shape == "landscape") return 160;
+            if (shape == "square") return 104;
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 82;
-                case "large": return 125;
-                case "extraLarge": return 144;
-                default: return 106;
+                case "compact": return 68;
+                case "large": return 104;
+                case "extraLarge": return 120;
+                default: return 88;
             }
         }
 
@@ -457,15 +461,15 @@ namespace Nuvio.Views
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var shape = (value as string ?? "poster").ToLowerInvariant();
-            if (shape == "landscape") return 108;
-            if (shape == "square") return 125;
+            if (shape == "landscape") return 90;
+            if (shape == "square") return 104;
             var size = AppSettings.Current != null ? AppSettings.Current.PosterSize : "standard";
             switch (size)
             {
-                case "compact": return 122;
-                case "large": return 187;
-                case "extraLarge": return 216;
-                default: return 158;
+                case "compact": return 102;
+                case "large": return 156;
+                case "extraLarge": return 180;
+                default: return 132;
             }
         }
 
