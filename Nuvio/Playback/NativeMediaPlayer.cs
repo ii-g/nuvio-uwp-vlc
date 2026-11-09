@@ -39,6 +39,8 @@ namespace Nuvio.Playback
         private bool _disposed;
         private long _openGeneration;
         private long _lastPositionEventTicks;
+        private double _pendingStartSeconds;
+        private bool _playWhenOpened;
         private CancellationTokenSource _openCancellation;
         private static readonly TimeSpan OpenTimeout = TimeSpan.FromSeconds(30);
 
@@ -62,9 +64,11 @@ namespace Nuvio.Playback
             var player = new MediaPlayer { AutoPlay = false, IsMuted = false, Volume = 1.0 };
             player.MediaFailed += OnMediaFailed;
             player.MediaEnded += OnMediaEnded;
+            player.MediaOpened += OnMediaOpened;
             player.PlaybackSession.PlaybackStateChanged += OnPlaybackStateChanged;
             player.PlaybackSession.PositionChanged += OnPositionChanged;
             player.PlaybackSession.NaturalDurationChanged += OnNaturalDurationChanged;
+            player.PlaybackSession.NaturalVideoSizeChanged += OnNaturalVideoSizeChanged;
             player.PlaybackSession.BufferingProgressChanged += OnBufferingProgressChanged;
             try
             {
@@ -76,9 +80,11 @@ namespace Nuvio.Playback
             {
                 player.MediaFailed -= OnMediaFailed;
                 player.MediaEnded -= OnMediaEnded;
+                player.MediaOpened -= OnMediaOpened;
                 player.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
                 player.PlaybackSession.PositionChanged -= OnPositionChanged;
                 player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
+                player.PlaybackSession.NaturalVideoSizeChanged -= OnNaturalVideoSizeChanged;
                 player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
                 player.Dispose();
                 throw;
@@ -118,6 +124,8 @@ namespace Nuvio.Playback
             _pageId = request == null ? null : request.Id;
             _readySent = false;
             _openFailed = false;
+            _playWhenOpened = false;
+            _pendingStartSeconds = 0;
             if (_view == null)
             {
                 FailOpen(generation, "The native media player is not ready.");
@@ -164,34 +172,30 @@ namespace Nuvio.Playback
                 var hasHeaders = request.Headers != null && request.Headers.Count > 0;
                 var path = uri.AbsolutePath.ToLowerInvariant();
                 var adaptive = path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u");
-                if (adaptive)
+                if (adaptive && !hasHeaders)
+                {
+                    // MediaSource.CreateFromUri invokes the platform's adaptive URI resolver.
+                    // This is the recommended simple path for HLS/DASH when no custom headers
+                    // are needed, and avoids false manifest-download failures in explicit parsing.
+                    Log.Write("Opening adaptive media through the platform URI resolver");
+                    source = MediaSource.CreateFromUri(uri);
+                }
+                else if (adaptive)
                 {
                     AdaptiveMediaSourceCreationResult result;
-                    if (hasHeaders)
-                    {
-                        adaptiveClient = CreateAdaptiveClient(request.Headers);
-                        result = await AdaptiveMediaSource.CreateFromUriAsync(uri, adaptiveClient).AsTask(token);
-                    }
-                    else result = await AdaptiveMediaSource.CreateFromUriAsync(uri).AsTask(token);
-
+                    adaptiveClient = CreateAdaptiveClient(request.Headers);
+                    result = await AdaptiveMediaSource.CreateFromUriAsync(uri, adaptiveClient).AsTask(token);
                     token.ThrowIfCancellationRequested();
                     if (result.Status != AdaptiveMediaSourceCreationStatus.Success)
                     {
-                        // MediaSource.CreateFromUri uses the platform's normal format converter
-                        // and can recognize manifests that AdaptiveMediaSource rejects during
-                        // explicit parsing. Preserve authenticated adaptive handling; this fallback
-                        // is only safe when the URL needs no custom request headers.
-                        if (!hasHeaders && result.Status == AdaptiveMediaSourceCreationStatus.ManifestParseFailure)
-                        {
-                            Log.Write("Adaptive manifest parsing failed; retrying with the platform URI source");
-                            source = MediaSource.CreateFromUri(uri);
-                        }
-                        else
-                        {
-                            throw new InvalidOperationException("Windows Media Foundation could not open this adaptive stream (" + result.Status + ").");
-                        }
+                        var httpStatus = result.HttpResponseMessage == null
+                            ? string.Empty
+                            : " HTTP " + (int)result.HttpResponseMessage.StatusCode;
+                        Log.Write("Adaptive stream creation failed: " + result.Status + httpStatus);
+                        throw new InvalidOperationException(
+                            "Windows Media Foundation could not open this adaptive stream (" + result.Status + httpStatus + ").");
                     }
-                    else source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
+                    source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
                 }
                 else if (hasHeaders)
                 {
@@ -202,7 +206,7 @@ namespace Nuvio.Playback
                 else source = MediaSource.CreateFromUri(uri);
 
                 if (!IsCurrentOpen(generation, token)) return;
-                _mediaPlayer.Source = source;
+                var activePlayer = _mediaPlayer;
                 _source = source;
                 _rangeStream = rangeStream;
                 _randomAccessStream = randomAccessStream;
@@ -211,8 +215,9 @@ namespace Nuvio.Playback
                 rangeStream = null;
                 randomAccessStream = null;
                 adaptiveClient = null;
-                _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Max(0, request.StartSeconds));
-                _mediaPlayer.Play();
+                _pendingStartSeconds = Math.Max(0, request.StartSeconds);
+                _playWhenOpened = true;
+                activePlayer.Source = _source;
             }
             catch (OperationCanceledException)
             {
@@ -278,6 +283,7 @@ namespace Nuvio.Playback
         {
             if (generation != Interlocked.Read(ref _openGeneration) || _disposed || _openFailed) return;
             _openFailed = true;
+            _playWhenOpened = false;
             CancelPendingOpen();
             try
             {
@@ -324,6 +330,7 @@ namespace Nuvio.Playback
             Interlocked.Increment(ref _openGeneration);
             CancelPendingOpen();
             _openFailed = true;
+            _playWhenOpened = false;
             if (_view != null) SetViewOpacity(0);
             ReleaseMediaPlayer();
             RaiseState("stopped", null);
@@ -386,9 +393,11 @@ namespace Nuvio.Playback
 
             player.MediaFailed -= OnMediaFailed;
             player.MediaEnded -= OnMediaEnded;
+            player.MediaOpened -= OnMediaOpened;
             player.PlaybackSession.PlaybackStateChanged -= OnPlaybackStateChanged;
             player.PlaybackSession.PositionChanged -= OnPositionChanged;
             player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
+            player.PlaybackSession.NaturalVideoSizeChanged -= OnNaturalVideoSizeChanged;
             player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
             try { player.Dispose(); }
             catch (Exception ex) { Log.Error("Disposing native playback failed", ex); }
@@ -405,19 +414,50 @@ namespace Nuvio.Playback
             _view = null;
         }
 
+        private void OnMediaOpened(MediaPlayer sender, object args)
+        {
+            if (_disposed || _openFailed || !_playWhenOpened || !ReferenceEquals(sender, _mediaPlayer)) return;
+            _playWhenOpened = false;
+            try
+            {
+                if (_pendingStartSeconds > 0)
+                    sender.PlaybackSession.Position = TimeSpan.FromSeconds(_pendingStartSeconds);
+                sender.Play();
+                Log.Write("Media source opened; starting playback");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Starting opened media failed", ex);
+                FailOpen(Interlocked.Read(ref _openGeneration), ex.Message);
+            }
+        }
+
+        private void OnNaturalVideoSizeChanged(MediaPlaybackSession sender, object args)
+        {
+            SignalVideoReady(sender);
+        }
+
+        private void SignalVideoReady(MediaPlaybackSession session)
+        {
+            if (_disposed || _openFailed || _readySent ||
+                session.PlaybackState != MediaPlaybackState.Playing ||
+                session.NaturalVideoHeight == 0 || session.NaturalVideoWidth == 0)
+                return;
+
+            _readySent = true;
+            CancelPendingOpen();
+            Log.Write("Native video track ready (" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight + ")");
+            Raise("player.ready", new JsonObject());
+            if (_view != null) SetViewOpacity(1);
+        }
+
         private void OnPlaybackStateChanged(MediaPlaybackSession sender, object args)
         {
             // Playback callbacks may arrive after Stop() or on a media worker thread.
             if (_disposed || _openFailed) return;
             if (sender.PlaybackState == MediaPlaybackState.Playing)
             {
-                if (!_readySent)
-                {
-                    _readySent = true;
-                    CancelPendingOpen();
-                    Raise("player.ready", new JsonObject());
-                    if (_view != null) SetViewOpacity(1);
-                }
+                SignalVideoReady(sender);
                 RaiseState("playing", null);
             }
             else if (sender.PlaybackState == MediaPlaybackState.Paused) RaiseState("paused", null);
@@ -453,6 +493,7 @@ namespace Nuvio.Playback
         }
         private void OnMediaEnded(MediaPlayer sender, object args)
         {
+            _playWhenOpened = false;
             if (_view != null) SetViewOpacity(0);
             ClearCurrentSource();
             RaiseEnded("eof", null);
@@ -463,6 +504,7 @@ namespace Nuvio.Playback
             Log.Write("Native playback failed (" + args.Error + "): " + message);
             if (_openFailed || _disposed) return;
             _openFailed = true;
+            _playWhenOpened = false;
             CancelPendingOpen();
             if (_view != null) SetViewOpacity(0);
             ClearCurrentSource();
