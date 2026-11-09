@@ -16,29 +16,39 @@
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled" BringIntoViewOnFocusChange="False">
             <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
-                <!-- Search bar -->
-                <Grid Margin="0,24,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Grid.ColumnSpan="2" Background="#1FFFFFFF" CornerRadius="8"/>
-                    <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="#B8FFFFFF" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                    <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="1" PlaceholderText="Search movies &amp; series" FontSize="12" Background="Transparent" BorderThickness="0" Foreground="White" Height="40" Padding="8,0,12,0" VerticalAlignment="Center" IsSpellCheckEnabled="False">
-                        <TextBox.InputScope>
-                            <InputScope>
-                                <InputScope.Names>
-                                    <InputScopeName NameValue="Search"/>
-                                </InputScope.Names>
-                            </InputScope>
-                        </TextBox.InputScope>
-                    </TextBox>
-                </Grid>
+                <!-- Search bar (web .search-bar): pill, surface-2 bg, hairline border,
+                     muted icon + placeholder; height 4.4rem = 35 epx, radius 2.2rem = 18 epx.
+                     The 8 epx icon/text gap is a fixed Grid column so it stays on the
+                     flow-start side in RTL: a physical Margin on the icon landed on the
+                     wrong side and pinned the icon flush to the bar's start edge, while
+                     the Border's symmetric 13 epx padding (1.6rem) covers both ends.
+                     Focus = accent border (see SearchBox GotFocus/LostFocus in the
+                     code-behind); system focus visuals are off so the accent border is
+                     the single ring. -->
+                <Border x:Name="SearchBarBorder" Margin="0,24,0,0" Background="#1AFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="18" Padding="13,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                        <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="2" PlaceholderText="Search movies &amp; series" PlaceholderForeground="#80FFFFFF" FontSize="11" Background="Transparent" BorderThickness="0" Foreground="White" Height="35" Padding="0" VerticalAlignment="Center" IsSpellCheckEnabled="False" UseSystemFocusVisuals="False">
+                            <TextBox.InputScope>
+                                <InputScope>
+                                    <InputScope.Names>
+                                        <InputScopeName NameValue="Search"/>
+                                    </InputScope.Names>
+                                </InputScope>
+                            </TextBox.InputScope>
+                        </TextBox>
+                    </Grid>
+                </Border>
 
                 <!-- Recent searches -->
-                <StackPanel Visibility="{Binding IsRecentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,16,0,0">
+                <StackPanel Visibility="{Binding IsRecentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,12,0,0">
                     <TextBlock x:Uid="RecentSearchesTitle" Text="Recent Searches" FontSize="12" FontWeight="Bold"/>
-                    <ItemsControl ItemsSource="{Binding RecentSearches}" Margin="0,9,0,0">
+                    <ItemsControl ItemsSource="{Binding RecentSearches}" Margin="0,7,0,0">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal"/>
@@ -46,7 +56,9 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Content="{Binding}" Click="RecentChip_Click" Background="#1FFFFFFF" Foreground="White" Padding="12,4" CornerRadius="8" FontSize="9" MinHeight="28" Margin="0,0,8,0"/>
+                                <!-- Web .chip: height 2.7rem = 22 epx, radius 1.35rem = 11 epx,
+                                     surface bg + 1 epx border token, text-2, SemiBold, gap .8rem = 6 epx. -->
+                                <Button Content="{Binding}" Click="RecentChip_Click" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" Foreground="#B8FFFFFF" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
