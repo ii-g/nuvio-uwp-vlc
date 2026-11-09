@@ -243,17 +243,21 @@ namespace Nuvio.Views
             if (viewer == null || item == null) return;
             var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
             var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            // Physical edges (see AnchorRow): TransformToVisual is RTL-origin in RTL,
+            // so rect.Left/Right are the start/end edges there, not the physical ones.
+            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
             const double pad = 6;
             double? target = null;
             if (rtl)
             {
-                if (rect.Left < pad) target = viewer.HorizontalOffset + (pad - rect.Left);
-                else if (rect.Right > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + ((viewer.ViewportWidth - pad) - rect.Right);
+                if (physicalLeft < pad) target = viewer.HorizontalOffset + (pad - physicalLeft);
+                else if (physicalRight > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + ((viewer.ViewportWidth - pad) - physicalRight);
             }
             else
             {
-                if (rect.Left < pad) target = viewer.HorizontalOffset + (rect.Left - pad);
-                else if (rect.Right > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + (rect.Right - (viewer.ViewportWidth - pad));
+                if (physicalLeft < pad) target = viewer.HorizontalOffset + (physicalLeft - pad);
+                else if (physicalRight > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + (physicalRight - (viewer.ViewportWidth - pad));
             }
             if (target.HasValue) SmoothScrollTo(viewer, target.Value, null);
         }
@@ -280,6 +284,18 @@ namespace Nuvio.Views
             }
             // The row's own padding: the anchor sits where the first card rests (the web's
             // scroll-padding), and the 1.06 focus zoom only overflows ~2.6 epx past it.
+            // TransformToVisual reports RTL-origin coordinates (x measured from the
+            // flow-start edge): build 180 proved it — sidebarX=0 for a strip visibly at
+            // 912..960 — so in RTL rect.Left is the card's START edge (physical right)
+            // and rect.Right its END edge (physical left), the reverse of the physical
+            // reading the previous anchor used. That pinned the focused card to the flow
+            // END (physical left) and threw the row several cards off per press, which is
+            // why the scroll felt broken, the first card showed as a sliver at the start
+            // edge, and the target container could virtualize away mid-row (falling back
+            // to a second XYFocus move). Flip to physical edges so the anchor reads the
+            // same in both directions.
+            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
             const double startInset = 6;
             double target;
             if (rtl)
@@ -287,14 +303,14 @@ namespace Nuvio.Views
                 // Start edge is the physical right; in RTL the offset grows as the content
                 // moves right, so the item's right edge moves right with it.
                 var anchor = viewer.ViewportWidth - startInset;
-                var delta = anchor - rect.Right;
+                var delta = anchor - physicalRight;
                 if (Math.Abs(delta) <= 1) return;
                 target = viewer.HorizontalOffset + delta;
             }
             else
             {
                 var anchor = startInset;
-                var delta = rect.Left - anchor;
+                var delta = physicalLeft - anchor;
                 if (Math.Abs(delta) <= 1) return;
                 target = viewer.HorizontalOffset + delta;
             }
@@ -837,7 +853,8 @@ namespace Nuvio.Views
             var card = value as CatalogCardItem;
             if (card != null)
             {
-                var shape = (card.Meta != null ? card.Meta.PosterShape : null) ?? "poster";
+                // The View All card has no Meta; it carries the row's shape on PosterShape.
+                var shape = card.PosterShape ?? (card.Meta != null ? card.Meta.PosterShape : null) ?? "poster";
                 shape = shape.ToLowerInvariant();
                 if (shape == "landscape") return 90;
                 if (shape == "square") return 104;
@@ -925,15 +942,18 @@ namespace Nuvio.Views
         }
     }
 
-    /// <summary>View All chevron: points in the flow direction (left in RTL, right in
-    /// LTR). The glyph is a physical Segoe MDL2 chevron and does not mirror with the
-    /// page: build 170 showed a right-pointing chevron on the left edge of an RTL row.</summary>
+    /// <summary>View All chevron: always a right-pointing chevron, in either direction.
+    /// The web's viewAllCard uses icon('chevron-right') unconditionally (no RTL flip in
+    /// code or CSS), and the old RTL screenshots show a right-pointing chevron too — the
+    /// previous converter's left chevron in RTL was a misreading of build 170, where the
+    /// chevron only looked wrong because the whole row was laid out LTR.</summary>
     internal sealed class ViewAllArrowConverter : Windows.UI.Xaml.Data.IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, string language)
         {
-            // E76B = ChevronLeft, E76C = ChevronRight.
-            return AppSettings.EffectiveIsRightToLeft() ? "\uE76B" : "\uE76C";
+            // E76C = ChevronRight. The glyph is a physical Segoe MDL2 chevron and does
+            // not mirror with the page.
+            return "\uE76C";
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -993,6 +1013,15 @@ namespace Nuvio.Views
             var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
             if (parameter as string == "hero")
                 return rtl ? new Thickness(0, 0, 88, 20) : new Thickness(6, 0, 0, 20);
+            if (parameter as string == "divider")
+                // Sidebar divider: on the content-facing edge (left in RTL, right in LTR).
+                return rtl ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
+            if (parameter as string == "logo")
+                // Sidebar logo cell: the 22 epx icon must sit at the same start edge as the
+                // button icons (8 epx panel + 8 epx button padding), so the cell keeps 8 epx
+                // on the END side only — the old fixed Padding="8,0" left a 16 epx cell that
+                // shrank the icon. RTL: content [8,32] of the 32 epx inner strip.
+                return rtl ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
