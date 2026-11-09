@@ -1,0 +1,193 @@
+<Page
+    x:Class="Nuvio.Views.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    XYFocusKeyboardNavigation="Enabled"
+    Background="Transparent">
+
+    <Page.Resources>
+        <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FF2F6FED"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Height" Value="56"/>
+            <Setter Property="Padding" Value="28,0"/>
+            <Setter Property="CornerRadius" Value="28"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#FF3C7BFF"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="HeroActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#33FFFFFF"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Height" Value="56"/>
+            <Setter Property="Padding" Value="28,0"/>
+            <Setter Property="CornerRadius" Value="28"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#4DFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Enabled">
+        <!-- Backdrop: two cross-fading layers following the focused card, plus a shade. -->
+        <Grid x:Name="BackdropHost" IsHitTestVisible="False">
+            <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
+            <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
+            <Rectangle Fill="#33000000"/>
+            <Rectangle>
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="#000D0E13"/>
+                        <GradientStop Offset="0.45" Color="#B30D0E13"/>
+                        <GradientStop Offset="0.75" Color="#FF0D0E13"/>
+                        <GradientStop Offset="1" Color="#FF0D0E13"/>
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+        </Grid>
+
+        <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled">
+            <StackPanel x:Name="ContentStack">
+                <!-- Hero carousel -->
+                <Grid x:Name="HeroSection" Visibility="{Binding HasHero, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="544" Height="660">
+                    <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="0,0,0,40" MaxWidth="704">
+                        <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" MaxWidth="480" MaxHeight="160" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
+                        <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="54" FontWeight="ExtraBold" LineHeight="57" TextWrapping="Wrap" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="18" Margin="0,18,0,0">
+                            <TextBlock Text="{Binding HeroYear}" FontSize="18" Foreground="#B8FFFFFF"/>
+                            <TextBlock Text="{Binding HeroRating}" FontSize="18" Foreground="White"/>
+                            <TextBlock Text="{Binding HeroType}" FontSize="18" Foreground="#B8FFFFFF"/>
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding HeroGenres}" Margin="0,12,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1FFFFFFF" CornerRadius="16" Padding="12,4">
+                                        <TextBlock Text="{Binding}" FontSize="16"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding HeroDescription}" FontSize="18" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Margin="0,12,0,0"/>
+                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,24,0,0">
+                            <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
+                            <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,48"/>
+                </Grid>
+
+                <!-- Continue Watching -->
+                <StackPanel x:Name="ContinueSection" Visibility="{Binding HasContinueItems, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,8,0,26">
+                    <TextBlock x:Uid="ContinueWatchingTitle" Text="Continue Watching" FontSize="23" FontWeight="Bold" Margin="0,0,0,4"/>
+                    <GridView x:Name="ContinueGridView" ItemsSource="{Binding ContinueItems}" ItemTemplate="{StaticResource ContinueCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="ContinueGridView_ItemClick" Padding="18,18,18,24" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="1"/>
+                            </ItemsPanelTemplate>
+                        </GridView.ItemsPanel>
+                    </GridView>
+                </StackPanel>
+
+                <!-- One row per catalog -->
+                <ItemsControl ItemsSource="{Binding CatalogRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,0,0,26">
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="{Binding Title}" FontSize="23" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="16" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                    <ProgressRing IsActive="{Binding IsLoading}" Width="20" Height="20" Foreground="White"/>
+                                </StackPanel>
+                                <GridView ItemsSource="{Binding Items}" ItemTemplateSelector="{StaticResource CatalogCardSelector}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogRowGridView_ItemClick" Padding="18,18,18,24" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                                    <GridView.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="1"/>
+                                        </ItemsPanelTemplate>
+                                    </GridView.ItemsPanel>
+                                </GridView>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Loading -->
+                <ProgressRing IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="48" Height="48" Foreground="White" HorizontalAlignment="Center" Margin="0,48,0,48"/>
+
+                <!-- Empty state -->
+                <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="500">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16" MaxWidth="768">
+                        <TextBlock Text="{Binding EmptyTitle}" FontSize="29" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding EmptyMessage}" FontSize="18" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
+                        <Button x:Name="ManageAddonsButton" x:Uid="ManageAddonsButton" Content="Manage Addons" Style="{StaticResource HeroPrimaryButtonStyle}" HorizontalAlignment="Center" Click="ManageAddonsButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
