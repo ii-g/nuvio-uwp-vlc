@@ -30,7 +30,8 @@ namespace Nuvio.Input
         // Web focus.js dedupes the same action arriving twice within 150 ms (one physical
         // press can reach the app through the poll and through native key handling); mirror
         // it here so a single tap can never move focus twice. Held repeats arrive every
-        // 300 ms (ControllerBridge), so they always pass this window.
+        // 500 ms at first, accelerating to 200 ms (ControllerBridge), so they always
+        // pass this window.
         private const double DirectionDedupeMs = 150;
         private string _lastDirection;
         private DateTime _lastDirectionTime = DateTime.MinValue;
