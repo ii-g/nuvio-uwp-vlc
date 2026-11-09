@@ -105,13 +105,13 @@ namespace Nuvio.Services
             return JsonHelpers.GetDouble(_current, name) ?? fallback;
         }
 
-        public JsonValue GetValue(string name)
+        public IJsonValue GetValue(string name)
         {
             if (_current == null || !_current.ContainsKey(name)) return null;
             return _current.GetNamedValue(name);
         }
 
-        public void Set(string name, JsonValue value)
+        public void Set(string name, IJsonValue value)
         {
             var existing = GetValue(name);
             if (existing != null && existing.Stringify() == value.Stringify()) return;
