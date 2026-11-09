@@ -68,12 +68,22 @@
         <controls:WebView2 x:Name="WebView" FlowDirection="LeftToRight" Visibility="Collapsed" />
 
         <Grid x:Name="ShellGrid" Background="#FF0D0E13">
+            <Grid.ColumnDefinitions>
+                <!-- Column 0 is the flow-start edge (right in RTL, left in LTR): the
+                     sidebar docks there by column, not by a one-time HorizontalAlignment
+                     set in the constructor. Build 162 proved the constructor value can
+                     disagree with the rendered direction (strip on the left while the
+                     rows render RTL); the column follows the page's flow direction, so
+                     the strip can no longer land on the wrong edge. -->
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
             <!-- Content fills the shell; the sidebar is an overlay on top of it (web:
                  position absolute, z-index 20), so expanding it never moves the content. -->
-            <Frame x:Name="ContentFrame" Navigated="ContentFrame_Navigated" NavigationFailed="ContentFrame_NavigationFailed"/>
+            <Frame x:Name="ContentFrame" Grid.Column="0" Grid.ColumnSpan="2" Navigated="ContentFrame_Navigated" NavigationFailed="ContentFrame_NavigationFailed"/>
 
             <!-- Collapsing sidebar: icons only (48 epx), expands to 136 epx when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem, width .22s). -->
-            <Border x:Name="SidebarBorder" Width="48" HorizontalAlignment="Right" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
+            <Border x:Name="SidebarBorder" Grid.Column="0" Width="48" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
                 <!-- Logo on top (web: .sidebar-logo, 2.8rem icon, 3rem below it) and the
                      nav buttons vertically centered in the strip (web: .sidebar-items
                      flex 1, justify-content center, margin-top -6rem). The logo icon sits
@@ -86,10 +96,12 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Padding="8,0" Margin="0,0,0,24">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22"/>
-                            <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" Opacity="0"/>
-                        </StackPanel>
+                        <!-- The wordmark already contains the triangle, so the icon and the
+                             wordmark share one cell and cross-fade (AnimateSidebar): collapsed
+                             shows the icon alone, expanded shows the full lockup once — never
+                             triangle + nuvio + triangle as in build 162. -->
+                        <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center" Opacity="0"/>
                     </Grid>
                     <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
                     <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
