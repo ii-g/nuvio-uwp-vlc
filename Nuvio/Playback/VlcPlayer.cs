@@ -433,8 +433,23 @@ namespace Nuvio.Playback
             if (!_request.HardwareDecoding)
             {
                 options.Add(":avcodec-hw=none");
+                Log.Write("VLC hardware decoding disabled; using software decoding");
+            }
+            else
+            {
+                // Force D3D11 hardware decoding. Leaving it to VLC's default
+                // left high-bitrate HEVC on slow software decoding on Xbox.
+                // (The "vlc error [mem] Invalid get/release function
+                // pointers" log line is unrelated benign noise from VLC
+                // 3.0.16 probing the imem access module — removed upstream
+                // in 2021 — not a broken input.)
+                options.Add(":avcodec-hw=d3d11va");
             }
             Media media;
+            // Plain files keep going through Windows' HTTP stack: VLC's own
+            // HTTPS failed to open links on the Xbox, and only the Windows
+            // stack sends arbitrary request headers. HLS/DASH playlists need
+            // VLC to fetch the segments itself, so they stay on VLC's HTTP.
             if (UseWindowsHttp(_request.Url))
             {
                 options.Add(":file-caching=" + NetworkCachingMs);
