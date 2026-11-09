@@ -5,7 +5,7 @@ import { settings } from '../core/store.js';
 import { formatEpisodeCode } from '../core/format.js';
 import { streamAddons, fetchStreams, addonName } from '../services/addons.js';
 import { fetchMeta, sortedVideos } from '../services/meta.js';
-import { describeStream, sortStreams, isPlayable } from '../services/streams.js';
+import { describeStream, sortStreams, sortForPlayback, isPlayable } from '../services/streams.js';
 import { parseVideoId } from '../services/progress.js';
 import { chip, spinner, emptyState, button, toast } from '../components/ui.js';
 import { debridAccount, debridName, resolveTorrent, DEBRID_PROVIDERS } from '../services/debrid.js';
@@ -192,7 +192,10 @@ export function streamsView({ params, state }) {
       }
       if (closed) return;
     }
-    const others = sortStreams(entries.filter((e) => e.info.kind === 'http'), settings.get('streamSort'))
+    // The fallback list is ordered for playback, not for display: mp4/H.264 and
+    // adaptive streams first, mkv/HEVC/DTS/REMUX last. The list the user browses
+    // keeps its own (addon/quality/size) order.
+    const others = sortForPlayback(entries.filter((e) => e.info.kind === 'http'))
       .map((e) => ({ ...e.stream, addonUrl: e.addon.transportUrl, addonName: e.info.addonName }))
       .filter((s) => s.url !== stream.url);
     router.go('player', { meta, video, stream, streams: [stream, ...others], restart: !!state.restart });

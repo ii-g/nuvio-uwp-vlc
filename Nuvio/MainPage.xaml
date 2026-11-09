@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:vlc="using:LibVLCSharp.Platforms.Windows"
     mc:Ignorable="d"
     FlowDirection="LeftToRight"
     Background="Black">
@@ -14,6 +15,11 @@
         <MediaPlayerElement x:Name="MediaElement" x:Load="False" SizeChanged="MediaElement_SizeChanged"
                             Opacity="0" IsHitTestVisible="False" IsTabStop="False"
                             FlowDirection="LeftToRight" AreTransportControlsEnabled="False" Stretch="Uniform" />
+
+        <!-- LibVLC fallback surface, used only when WMF cannot play a source. -->
+        <vlc:VideoView x:Name="VideoView" x:Load="False"
+                       SizeChanged="VideoView_SizeChanged" Opacity="0"
+                       IsHitTestVisible="False" IsTabStop="False" />
 
         <!-- The controller drives the page through AppBridge (see ControllerBridge). -->
         <controls:WebView2 x:Name="WebView" FlowDirection="LeftToRight" />

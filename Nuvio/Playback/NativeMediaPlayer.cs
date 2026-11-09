@@ -36,6 +36,7 @@ namespace Nuvio.Playback
         private string _pageId;
         private bool _readySent;
         private bool _openFailed;
+        private string _lastErrorKind; // e.g. SourceNotSupported, DecodingError, ManifestDownloadFailure
         private bool _disposed;
         private long _openGeneration;
         private long _lastPositionEventTicks;
@@ -62,6 +63,13 @@ namespace Nuvio.Playback
             if (_mediaPlayer != null) return;
 
             var player = new MediaPlayer { AutoPlay = false, IsMuted = false, Volume = 1.0 };
+            // The app is a video player, not a music player: keep Xbox's guide
+            // from showing it as a background-audio app. Pausing/playing from
+            // the guide stops working after this; control stays in the app.
+            try { player.SystemMediaTransportControls.IsEnabled = false; }
+            catch (Exception ex) { Log.Write("Disabling system media transport controls failed: " + ex.Message); }
+            try { player.CommandManager.IsEnabled = false; }
+            catch (Exception ex) { Log.Write("Disabling the media command manager failed: " + ex.Message); }
             player.MediaFailed += OnMediaFailed;
             player.MediaEnded += OnMediaEnded;
             player.MediaOpened += OnMediaOpened;
@@ -124,6 +132,7 @@ namespace Nuvio.Playback
             _pageId = request == null ? null : request.Id;
             _readySent = false;
             _openFailed = false;
+            _lastErrorKind = null;
             _playWhenOpened = false;
             _pendingStartSeconds = 0;
             if (_view == null)
@@ -172,6 +181,18 @@ namespace Nuvio.Playback
                 var hasHeaders = request.Headers != null && request.Headers.Count > 0;
                 var path = uri.AbsolutePath.ToLowerInvariant();
                 var adaptive = path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u");
+                if (!adaptive && !HasMediaExtension(path))
+                {
+                    // Extension-less links (e.g. /redirect) can still be HLS/DASH:
+                    // check the served Content-Type before choosing a player path.
+                    // A failed probe changes nothing — the link is tried as before.
+                    var probedType = await ProbeContentTypeAsync(uri, request.Headers, token);
+                    if (IsAdaptiveContentType(probedType))
+                    {
+                        adaptive = true;
+                        Log.Write("Adaptive stream detected by content type: " + probedType);
+                    }
+                }
                 // Diagnostic only: header names, host and path — never header
                 // values or the query string, which may carry tokens.
                 Log.Write("Opening native media: adaptive=" + adaptive +
@@ -197,11 +218,16 @@ namespace Nuvio.Playback
                             ? string.Empty
                             : " HTTP " + (int)result.HttpResponseMessage.StatusCode;
                         Log.Write("Adaptive stream creation failed: " + result.Status + httpStatus +
-                            (result.HttpResponseMessage == null ? " (no HTTP response)" : string.Empty));
-                        throw new InvalidOperationException(
-                            "Windows Media Foundation could not open this adaptive stream (" + result.Status + httpStatus + ").");
+                            (result.HttpResponseMessage == null ? " (no HTTP response)" : string.Empty) +
+                            "; falling back to the platform URI resolver");
+                        // Explicit parsing can fail where the platform resolver
+                        // succeeds (and vice versa): try the other path before
+                        // giving up on this source entirely.
+                        source = MediaSource.CreateFromUri(uri);
+                        adaptiveClient.Dispose();
+                        adaptiveClient = null;
                     }
-                    source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
+                    else source = MediaSource.CreateFromAdaptiveMediaSource(result.MediaSource);
                 }
                 else if (hasHeaders)
                 {
@@ -240,6 +266,60 @@ namespace Nuvio.Playback
                 randomAccessStream?.Dispose();
                 rangeStream?.Dispose();
                 adaptiveClient?.Dispose();
+            }
+        }
+
+        private static bool HasMediaExtension(string path)
+        {
+            return path.EndsWith(".mp4") || path.EndsWith(".m4v") || path.EndsWith(".mkv") ||
+                path.EndsWith(".webm") || path.EndsWith(".mov") || path.EndsWith(".ts") ||
+                path.EndsWith(".avi") || path.EndsWith(".mp3") || path.EndsWith(".m4a") ||
+                path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u");
+        }
+
+        private static bool IsAdaptiveContentType(string contentType)
+        {
+            if (string.IsNullOrWhiteSpace(contentType)) return false;
+            var type = contentType.Trim().ToLowerInvariant();
+            return type.StartsWith("application/vnd.apple.mpegurl") ||
+                type.StartsWith("application/x-mpegurl") ||
+                type.StartsWith("application/dash+xml");
+        }
+
+        // Best-effort HEAD probe for extension-less links. Returns the media
+        // type or null on any failure; never throws, so a probe problem can
+        // never break an otherwise playable link.
+        private static async Task<string> ProbeContentTypeAsync(Uri uri, IDictionary<string, string> headers, CancellationToken token)
+        {
+            try
+            {
+                using (var client = new Windows.Web.Http.HttpClient())
+                {
+                    if (headers != null)
+                    {
+                        var hasUserAgent = false;
+                        foreach (var header in headers)
+                        {
+                            if (string.IsNullOrWhiteSpace(header.Key) ||
+                                header.Key.Equals("Range", StringComparison.OrdinalIgnoreCase)) continue;
+                            if (header.Key.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)) hasUserAgent = true;
+                            client.DefaultRequestHeaders.TryAppendWithoutValidation(header.Key, header.Value ?? string.Empty);
+                        }
+                        if (!hasUserAgent) client.DefaultRequestHeaders.TryAppendWithoutValidation("User-Agent", "NuvioUWP");
+                    }
+                    using (var response = await client.SendRequestAsync(new Windows.Web.Http.HttpRequestMessage(Windows.Web.Http.HttpMethod.Head, uri)).AsTask(token))
+                    {
+                        return response.IsSuccessStatusCode && response.Content.Headers.ContentType != null
+                            ? response.Content.Headers.ContentType.MediaType
+                            : null;
+                    }
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Log.Write("Content-type probe failed for host " + uri.Host + " (" + ex.Message + ")");
+                return null;
             }
         }
 
@@ -289,6 +369,8 @@ namespace Nuvio.Playback
         {
             if (generation != Interlocked.Read(ref _openGeneration) || _disposed || _openFailed) return;
             _openFailed = true;
+            if (_lastErrorKind == null && !string.IsNullOrEmpty(message) && message.Contains("ManifestDownloadFailure"))
+                _lastErrorKind = "ManifestDownloadFailure";
             _playWhenOpened = false;
             CancelPendingOpen();
             try
@@ -513,6 +595,7 @@ namespace Nuvio.Playback
         private void OnMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args)
         {
             var message = string.IsNullOrWhiteSpace(args.ErrorMessage) ? "Windows Media Foundation could not play this media." : args.ErrorMessage;
+            _lastErrorKind = args.Error.ToString();
             Log.Write("Native playback failed (" + args.Error + "): " + message);
             if (_openFailed || _disposed) return;
             _openFailed = true;
@@ -535,6 +618,10 @@ namespace Nuvio.Playback
             var payload = new JsonObject();
             payload.SetNamedValue("reason", JsonValue.CreateStringValue(reason));
             if (message != null) payload.SetNamedValue("message", JsonValue.CreateStringValue(message));
+            // Lets the hybrid player tell codec failures (which VLC can play)
+            // apart from other errors. Never carries header values or URLs.
+            if (reason == "error" && !string.IsNullOrEmpty(_lastErrorKind))
+                payload.SetNamedValue("errorKind", JsonValue.CreateStringValue(_lastErrorKind));
             Raise("player.ended", payload);
         }
         private void Raise(string type, JsonObject payload)

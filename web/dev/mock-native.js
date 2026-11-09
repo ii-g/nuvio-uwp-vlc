@@ -49,7 +49,7 @@
     switch (message.type) {
       case 'app.hello':
         logLines.push(`${clock()} Web app connected`);
-        emit({ type: 'app.hello', platform: 'xbox', appVersion, vlcVersion: '3.0 (mock)', webAppUrl: null, bundled: true });
+        emit({ type: 'app.hello', platform: 'xbox', appVersion, mediaEngine: 'Windows Media Foundation + LibVLC (mock)', webAppUrl: null, bundled: true });
         break;
       case 'app.log':
         console.log('[native log]', message.message);

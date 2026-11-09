@@ -6,7 +6,7 @@ import { bridge } from '../core/bridge.js';
 import { formatClock, formatEpisodeCode } from '../core/format.js';
 import { createEngine } from '../player/engines.js';
 import { fetchSubtitles, fetchStreams, enabledAddons } from '../services/addons.js';
-import { describeStream, streamHeaders, isPlayable } from '../services/streams.js';
+import { describeStream, streamHeaders, isPlayable, playbackScore } from '../services/streams.js';
 import { saveProgress, resumeSeconds, parseVideoId } from '../services/progress.js';
 import { fetchMeta, nextEpisode, sortedVideos, isReleased } from '../services/meta.js';
 import { loadSubtitleCues, cuesAt, languageName, languageMatches } from '../services/subtitles.js';
@@ -16,6 +16,14 @@ import { debridAccount, resolveTorrent } from '../services/debrid.js';
 const HIDE_CONTROLS_MS = 4000;
 const OPEN_TIMEOUT_MS = 35000;
 const SAVE_EVERY_MS = 5000;
+// Fallback throttling: without these, a list of equally unplayable sources is
+// walked instantly, one native open per failure, and the console feels heavy.
+const MAX_CONSECUTIVE_FAILURES = 3;
+const FALLBACK_DELAY_MS = 1500;
+// Stall watchdog: native 'time' events arrive ~4 Hz while playing. If none
+// arrives for this long, the stream has stalled (not merely buffering).
+const STALL_CHECK_MS = 5000;
+const STALL_TIMEOUT_MS = 15000;
 const SEEK_STEP = 10;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const ASPECTS = [['fit', 'Fit'], ['fill', 'Fill (crop)'], ['stretch', 'Stretch'], ['16:9', '16:9'], ['4:3', '4:3'], ['21:9', '21:9']];
@@ -117,6 +125,18 @@ export function playerView({ state }) {
   let menuOpen = false;
   let sessionStarted = false; // a "playback" start was announced for the current stream
   let automaticFallbackNoticeShown = false;
+  let consecutiveFailures = 0; // failures since the last source that actually played
+  let fallbackTimer = 0;
+  let stallTimer = 0;
+  let stallReconnects = 0; // reopens of the same source after a stall (max 1)
+
+  // Playback-attempt order: the source the user picked stays first, the rest are
+  // ordered so WMF-friendly streams are tried before mkv/HEVC/DTS/REMUX ones.
+  // (The Sources menu keeps the original list order.)
+  const playbackSources = sources.length > 1
+    ? [sources[0], ...[...sources.slice(1)].sort((a, b) =>
+      (playbackScore(a, describeStream(a, a.addonName || '')) - playbackScore(b, describeStream(b, b.addonName || ''))))]
+    : sources;
 
   function osdButton(iconName, label, onClick, cls) {
     return h('button', { class: ['osd-btn', 'focusable', cls], type: 'button', 'aria-label': label, title: label, onClick: (e) => {
@@ -178,11 +198,18 @@ export function playerView({ state }) {
       applyTrackPreferences();
     }
   });
+  // The native side switched engines mid-stream (WMF could not play this
+  // source, so it moved to VLC from the same position). Tell the user; the
+  // spinner already shows while the fallback opens.
+  engine.on('engine', ({ engine: name, message }) => {
+    if (name === 'LibVLC') toast(message || 'Switched to VLC playback.');
+  });
   engine.on('ready', () => {
-    if (failed) return;
-    clearTimeout(openTimer);
+    if (failed) return;    clearTimeout(openTimer);
     openTimer = 0;
     ready = true;
+    consecutiveFailures = 0;
+    stallReconnects = 0;
     report('start');
     el.classList.add('ready');
     updateLoading();
@@ -193,6 +220,38 @@ export function playerView({ state }) {
     scheduleHide();
     if (settings.get('autoSelectSubtitles')) loadAddonSubtitles();
   });
+  // Try the next source after a failure, a stall, or an open timeout — with a
+  // short delay so the native player can release the failed source, and a cap
+  // on consecutive failures so a list of unplayable sources ends in an error
+  // box instead of a long, heavy walk through every entry.
+  function tryNextSource(reason) {
+    if (closed || failed) return;
+    consecutiveFailures++;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      engine.stop();
+      showError((reason || 'This stream could not be played.') +
+        ` Tried ${consecutiveFailures} sources without success.`);
+      return;
+    }
+    const currentIndex = playbackSources.findIndex((source) => source.url === stream.url);
+    const nextSource = playbackSources.slice(currentIndex + 1).find(isPlayable);
+    if (!nextSource) {
+      engine.stop();
+      showError(reason || 'This stream could not be played.');
+      return;
+    }
+    save(true);
+    if (!automaticFallbackNoticeShown) {
+      automaticFallbackNoticeShown = true;
+      toast('This source failed. Trying the next available source.');
+    }
+    clearTimeout(fallbackTimer);
+    fallbackTimer = setTimeout(() => {
+      if (closed || failed) return;
+      start(nextSource, ready ? currentTime() : lastTime);
+    }, FALLBACK_DELAY_MS);
+  }
+
   engine.on('ended', ({ reason, message }) => {
     if (reason === 'eof') {
       ended = true;
@@ -203,19 +262,24 @@ export function playerView({ state }) {
       return;
     }
 
-    const currentIndex = sources.findIndex((source) => source.url === stream.url);
-    const nextSource = sources.slice(currentIndex + 1).find(isPlayable);
-    if (nextSource && !closed) {
-      save(true);
-      if (!automaticFallbackNoticeShown) {
-        automaticFallbackNoticeShown = true;
-        toast('This source failed. Trying the next available source.');
-      }
-      start(nextSource, ready ? currentTime() : lastTime);
-      return;
-    }
-    showError(message || 'This stream could not be played.');
+    tryNextSource(message);
   });
+
+  // Stall watchdog: while playing, 'time' events should arrive about 4 times
+  // a second. If progress stops for STALL_TIMEOUT_MS, reopen the same source
+  // once from the current position; if it stalls again, move to the next source.
+  stallTimer = setInterval(() => {
+    if (closed || failed || !ready || playState !== 'playing') return;
+    if (performance.now() - lastTimeAt < STALL_TIMEOUT_MS) return;
+    if (stallReconnects < 1) {
+      stallReconnects++;
+      loadingText.textContent = 'Reconnecting…';
+      toast('Stream stalled. Reconnecting…');
+      start(stream, currentTime());
+    } else {
+      tryNextSource('The stream stalled. Trying the next available source.');
+    }
+  }, STALL_CHECK_MS);
 
   function updateLoading() {
     if (failed) {
@@ -239,6 +303,8 @@ export function playerView({ state }) {
   function start(target, at) {
     clearTimeout(openTimer);
     openTimer = 0;
+    clearTimeout(fallbackTimer);
+    fallbackTimer = 0;
     failed = false;
     report('stop');
     stream = target;
@@ -257,8 +323,9 @@ export function playerView({ state }) {
     engine.open({ url: stream.url, start: at, headers: streamHeaders(stream), hwdec: settings.get('hardwareDecoding') });
     openTimer = setTimeout(() => {
       if (closed || ready || failed) return;
-      showError('The player did not respond. Check the stream link or network, then retry or choose another source.');
-      engine.stop();
+      // An open that never becomes ready is a failure like any other: try the
+      // next source (subject to the same cap) instead of erroring out at once.
+      tryNextSource('The player did not respond. Check the stream link or network, then retry or choose another source.');
     }, OPEN_TIMEOUT_MS);
     engine.setAspect(aspect);
     if (rate !== 1) engine.setRate(rate);
@@ -835,6 +902,8 @@ export function playerView({ state }) {
     failed = true;
     clearTimeout(openTimer);
     openTimer = 0;
+    clearTimeout(fallbackTimer);
+    fallbackTimer = 0;
     ready = false;
     loading.hidden = true;
     el.classList.remove('ready');
@@ -845,8 +914,8 @@ export function playerView({ state }) {
       return;
     }
     clear(errorBox);
-    const index = sources.findIndex((s) => s.url === stream.url);
-    const nextSource = sources.slice(index + 1).find(isPlayable);
+    const index = playbackSources.findIndex((s) => s.url === stream.url);
+    const nextSource = playbackSources.slice(index + 1).find(isPlayable);
     errorBox.append(
       icon('warning', 'error-icon'),
       h('h2', null, 'Unable to play this stream'),
@@ -979,6 +1048,8 @@ export function playerView({ state }) {
       clearTimeout(hideTimer);
       clearTimeout(scrubTimer);
       clearTimeout(openTimer);
+      clearTimeout(fallbackTimer);
+      clearInterval(stallTimer);
       if (nextInfo) clearInterval(nextInfo.timer);
       cleanups.forEach((off) => off());
       engine.destroy();

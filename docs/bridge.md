@@ -44,15 +44,16 @@ for development.
 
 | type | fields | |
 | --- | --- | --- |
-| `app.hello` | `platform` (`xbox` or `desktop`), `appVersion`, `vlcVersion` (null until VLC has started), `webAppUrl`, `bundled` | |
+| `app.hello` | `platform` (`xbox` or `desktop`), `appVersion`, `mediaEngine` (e.g. `Windows Media Foundation + LibVLC`), `webAppUrl`, `bundled` | |
 | `input` | `action`, `repeat` | A controller button: `up`, `down`, `left`, `right` (D-pad or left stick, repeated while held), `select` (A), `back` (B), `x`, `y`, `menu`, `view`, `lb`, `rb`, `lt`, `rt`. |
 | `app.visibility` | `visible` | The app went to or came back from the background. |
 | `response` | `requestId`, `result`, `error` | Answer to `app.textInput` and `net.fetch`. |
 | `player.state` | `id`, `state` (`opening`, `buffering`, `playing`, `paused`), `message` | `buffering` here means reconnecting after a dropped connection. |
-| `player.buffering` | `id`, `percent` | VLC's cache filling (100 = playing smoothly). |
+| `player.buffering` | `id`, `percent` | Cache filling (100 = playing smoothly). |
 | `player.time` | `id`, `time`, `duration` (seconds) | About four times a second while playing. |
-| `player.duration` | `id`, `duration` | Once, when VLC knows the length. |
+| `player.duration` | `id`, `duration` | Once, when the player knows the length. |
 | `player.tracks` | `id`, `audio`, `subtitles` (arrays of `{ id, name, lang, title, codec, selected }`), `audioId`, `subtitleId` | Whenever the tracks change. |
 | `player.video` | `id`, `width`, `height` | |
 | `player.ready` | `id` | The first frame is showing (or, for audio, playback started); the page turns transparent. |
-| `player.ended` | `id`, `reason` (`eof` or `error`), `message` | A stream that ends before it ever played is reported as an error. Dropped connections are retried (up to 5 times) before anything is reported. |
+| `player.ended` | `id`, `reason` (`eof` or `error`), `message`, `errorKind` (WMF failures only: `SourceNotSupported`, `DecodingError`, `ManifestDownloadFailure`, …) | A stream that ends before it ever played is reported as an error. Dropped connections are retried (up to 5 times) before anything is reported. |
+| `player.engine` | `id`, `engine` (`LibVLC`), `message` | The hybrid player switched engines for the current source (WMF could not play it, VLC takes over from the same position). |

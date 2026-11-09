@@ -2,6 +2,12 @@
 
 A release's notes come from its section here (the heading must match the tag), and the app shows them when it offers the update.
 
+## v1.4.0
+- **LibVLC fallback player:** Windows Media Foundation stays the primary player, but when it cannot play a source (SourceNotSupported, DecodingError, or an adaptive manifest it cannot open), playback now switches automatically to LibVLC for the same source from the same position, and tells you it switched. Sources WMF already rejected start with VLC next time, and sources both players rejected are not retried in the same session.
+- **Tougher HTTP streams:** the range reader no longer fails when a server rejects HEAD or a range probe (including 403), streams with an unknown length now play instead of erroring, and a default User-Agent is sent. Extension-less links are now checked by Content-Type, so HLS/DASH links without an extension are detected, and a failed adaptive open falls back to the platform resolver.
+- **Smarter source order:** mp4/H.264 and adaptive streams are tried before mkv/HEVC/DTS/REMUX ones (nothing is removed, only tried later), automatic fallback now waits briefly between sources and stops after 3 consecutive failures instead of walking the whole list, and a stalled stream is reopened once from the same position before moving on.
+- **Xbox guide:** the app no longer shows up as a music player in the Xbox guide (system media controls are off for both players). Pause/play from the guide stops working; use the controls inside the app.
+
 ## v1.3.3
 - **Native playback:** replaced LibVLC with native Windows Media Foundation playback for direct HTTP(S) media and adaptive HLS/DASH streams. Header-authenticated streams play through a seekable HTTP range reader, adaptive streams fall back when manifest parsing fails, and stalled opens time out after 30 seconds instead of hanging.
 - **Player fixes:** fixed the buffering spinner staying on screen while a stream was playing, try the next source automatically after a playback failure, reduced stalls in header-based video streams, and added diagnostics to the log for adaptive open failures (including ManifestDownloadFailure).

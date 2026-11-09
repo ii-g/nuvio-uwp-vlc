@@ -1,9 +1,10 @@
-// Playback engines with one interface. In the app, NativeEngine plays through VLC (drawn under
-// the page); in a browser, Html5Engine uses a <video> element.
+// Playback engines with one interface. In the app, NativeEngine plays through the
+// hybrid native player (WMF first, LibVLC fallback, drawn under the page); in a
+// browser, Html5Engine uses a <video> element.
 //
 // Events: state {state: opening|buffering|playing|paused}, time {time, duration}, duration
 // {duration}, buffering {percent}, tracks {audio, subtitles, audioId, subtitleId}, ready, ended
-// {reason: eof|error, message}.
+// {reason: eof|error, message}, engine {engine, message} (announces a switch to the VLC fallback).
 
 import { bridge } from '../core/bridge.js';
 import { events } from '../core/store.js';
@@ -32,7 +33,7 @@ export class NativeEngine extends Emitter {
     this.id = null;
     this.drawsUnderPage = true;
     this.hasEmbeddedTracks = true;
-    this.offs = ['state', 'time', 'duration', 'buffering', 'tracks', 'ready', 'ended', 'video'].map((name) =>
+    this.offs = ['state', 'time', 'duration', 'buffering', 'tracks', 'ready', 'ended', 'video', 'engine'].map((name) =>
       events.on('native:player.' + name, (message) => {
         if (message.id === this.id) this.emit(name, message);
       }));

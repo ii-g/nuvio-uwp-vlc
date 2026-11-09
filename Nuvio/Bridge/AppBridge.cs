@@ -69,12 +69,12 @@ namespace Nuvio.Bridge
 
         private readonly CoreWebView2 _webView;
         private readonly CoreDispatcher _dispatcher;
-        private readonly NativeMediaPlayer _player;
+        private readonly HybridMediaPlayer _player;
         private readonly IAppHost _host;
         private readonly Uri _trustedOrigin;
         private bool _webViewReady;
 
-        public AppBridge(CoreWebView2 webView, NativeMediaPlayer player, IAppHost host, Uri trustedOrigin)
+        public AppBridge(CoreWebView2 webView, HybridMediaPlayer player, IAppHost host, Uri trustedOrigin)
         {
             _webView = webView;
             // WebView2's XAML controller is bound to the UI thread that created it. Native media

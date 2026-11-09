@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
+using Nuvio.Diagnostics;
 
 namespace Nuvio.Playback
 {
@@ -33,7 +34,11 @@ namespace Nuvio.Playback
         {
             _client = client;
             _uri = uri;
-            Length = length;
+            // length < 0 means the server never reported one: Length reports
+            // long.MaxValue so the stream stays seekable/readable and WMF can
+            // still play it; the end is signalled by a 0-byte read instead.
+            _unknownLength = length < 0;
+            _length = _unknownLength ? long.MaxValue : length;
             ContentType = string.IsNullOrWhiteSpace(contentType) ||
                 contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
                 ? GuessContentType(uri) : contentType;
@@ -43,7 +48,9 @@ namespace Nuvio.Playback
         public override bool CanRead => !_disposed;
         public override bool CanSeek => !_disposed;
         public override bool CanWrite => false;
-        public override long Length { get; }
+        public override long Length => _length;
+        private readonly long _length;
+        private readonly bool _unknownLength;
 
         public override long Position
         {
@@ -61,36 +68,64 @@ namespace Nuvio.Playback
                 long? length = null;
                 string contentType = null;
 
-                using (var head = new HttpRequestMessage(HttpMethod.Head, uri))
-                using (var response = await client.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, token))
+                // A failed HEAD must not kill playback: some origins reject HEAD
+                // outright while serving GET fine.
+                try
                 {
-                    if (response.IsSuccessStatusCode)
+                    using (var head = new HttpRequestMessage(HttpMethod.Head, uri))
+                    using (var response = await client.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, token))
                     {
-                        length = response.Content.Headers.ContentLength;
-                        contentType = response.Content.Headers.ContentType == null ? null : response.Content.Headers.ContentType.MediaType;
-                    }
-                }
-
-                if (!length.HasValue || length.Value <= 0)
-                {
-                    using (var probe = new HttpRequestMessage(HttpMethod.Get, uri))
-                    {
-                        probe.Headers.Range = new RangeHeaderValue(0, 0);
-                        using (var response = await client.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead, token))
+                        if (response.IsSuccessStatusCode)
                         {
-                            response.EnsureSuccessStatusCode();
-                            var range = response.Content.Headers.ContentRange;
-                            length = range != null && range.Length.HasValue
-                                ? range.Length
-                                : response.Content.Headers.ContentLength;
-                            if (string.IsNullOrWhiteSpace(contentType) && response.Content.Headers.ContentType != null)
-                                contentType = response.Content.Headers.ContentType.MediaType;
+                            length = response.Content.Headers.ContentLength;
+                            contentType = response.Content.Headers.ContentType == null ? null : response.Content.Headers.ContentType.MediaType;
                         }
                     }
                 }
+                catch (Exception ex) when (!(ex is OperationCanceledException))
+                {
+                    Log.Write("Media HEAD request failed for host " + uri.Host + "; continuing with a range probe (" + ex.Message + ")");
+                }
 
                 if (!length.HasValue || length.Value <= 0)
-                    throw new InvalidOperationException("The server did not report the media length, so the native player cannot seek this link.");
+                {
+                    // A 0-0 range probe is only a hint. Some servers answer it with
+                    // 403/405 while serving the media itself, so never throw here:
+                    // an unsuccessful probe just means the length stays unknown.
+                    try
+                    {
+                        using (var probe = new HttpRequestMessage(HttpMethod.Get, uri))
+                        {
+                            probe.Headers.Range = new RangeHeaderValue(0, 0);
+                            using (var response = await client.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead, token))
+                            {
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    var range = response.Content.Headers.ContentRange;
+                                    length = range != null && range.Length.HasValue
+                                        ? range.Length
+                                        : response.Content.Headers.ContentLength;
+                                    if (string.IsNullOrWhiteSpace(contentType) && response.Content.Headers.ContentType != null)
+                                        contentType = response.Content.Headers.ContentType.MediaType;
+                                }
+                                else
+                                {
+                                    Log.Write("Media range probe for host " + uri.Host + " returned HTTP " + (int)response.StatusCode + "; continuing without a known length");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (!(ex is OperationCanceledException))
+                    {
+                        Log.Write("Media range probe failed for host " + uri.Host + "; continuing without a known length (" + ex.Message + ")");
+                    }
+                }
+
+                if (!length.HasValue || length.Value <= 0)
+                {
+                    Log.Write("The server did not report the media length for host " + uri.Host + "; streaming with an unknown length");
+                    length = -1;
+                }
 
                 return new HttpRangeStream(client, uri, length.Value, contentType);
             }
@@ -103,16 +138,22 @@ namespace Nuvio.Playback
 
         private static void AddDefaultHeaders(HttpClient client, IDictionary<string, string> headers)
         {
-            if (headers == null) return;
-            foreach (var header in headers)
+            var hasUserAgent = false;
+            if (headers != null)
             {
-                if (string.IsNullOrWhiteSpace(header.Key) ||
-                    header.Key.Equals("Range", StringComparison.OrdinalIgnoreCase))
-                    continue;
+                foreach (var header in headers)
+                {
+                    if (string.IsNullOrWhiteSpace(header.Key) ||
+                        header.Key.Equals("Range", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (header.Key.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)) hasUserAgent = true;
 
-                if (!client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value ?? string.Empty))
-                    throw new InvalidOperationException("The media request header '" + header.Key + "' cannot be applied by the native HTTP stack.");
+                    if (!client.DefaultRequestHeaders.TryAddWithoutValidation(header.Key, header.Value ?? string.Empty))
+                        throw new InvalidOperationException("The media request header '" + header.Key + "' cannot be applied by the native HTTP stack.");
+                }
             }
+            // Some origins (and CDNs) reject requests with no User-Agent at all.
+            if (!hasUserAgent) client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "NuvioUWP");
         }
 
         public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
@@ -155,6 +196,15 @@ namespace Nuvio.Playback
             {
                 response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
                 request.Dispose();
+                if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+                {
+                    // Past the end of a stream whose length was never reported:
+                    // signal end-of-stream instead of failing the read.
+                    _responseEnd = _position;
+                    _responsePosition = _position;
+                    response.Dispose();
+                    return;
+                }
                 response.EnsureSuccessStatusCode();
 
                 var stream = await response.Content.ReadAsStreamAsync();
@@ -244,7 +294,10 @@ namespace Nuvio.Playback
             {
                 case SeekOrigin.Begin: target = offset; break;
                 case SeekOrigin.Current: target = _position + offset; break;
-                case SeekOrigin.End: target = Length + offset; break;
+                case SeekOrigin.End:
+                    if (_unknownLength) throw new NotSupportedException("The media length is unknown, so seeking from the end is not supported.");
+                    target = Length + offset;
+                    break;
                 default: throw new ArgumentOutOfRangeException(nameof(origin));
             }
             if (target < 0 || target > Length) throw new ArgumentOutOfRangeException(nameof(offset));
