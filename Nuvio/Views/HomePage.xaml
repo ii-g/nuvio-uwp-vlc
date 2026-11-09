@@ -108,12 +108,12 @@
         </Grid>
 
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled" BringIntoViewOnFocusChange="False">
-            <StackPanel x:Name="ContentStack">
+            <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
                 <!-- Hero carousel -->
                 <Grid x:Name="HeroSection" Visibility="{Binding HasHero, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="272" Height="356">
-                    <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="0,0,0,20" MaxWidth="352">
-                        <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="Left" MaxWidth="240" MaxHeight="80" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
-                        <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
+                    <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=hero}" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="352">
+                        <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="240" MaxHeight="80" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
+                        <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
                         <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,9,0,0">
                             <TextBlock Text="{Binding HeroYear}" FontSize="9" Foreground="#B8FFFFFF"/>
                             <TextBlock Text="{Binding HeroRating}" FontSize="9" Foreground="White"/>
@@ -133,13 +133,13 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock x:Name="HeroDescription" Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" Margin="0,9,0,0"/>
+                        <TextBlock x:Name="HeroDescription" Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" Margin="0,9,0,0"/>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,13,0,0">
                             <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
                             <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
                         </StackPanel>
                     </StackPanel>
-                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,24"/>
+                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="4" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}, ConverterParameter=invert}" VerticalAlignment="Bottom" Margin="0,0,0,24"/>
                 </Grid>
 
                 <!-- Continue Watching -->
