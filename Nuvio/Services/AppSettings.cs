@@ -165,6 +165,15 @@ namespace Nuvio.Services
 
         // Typed conveniences for the keys Milestone 1 reads.
         public string AppLanguage { get { return GetString("appLanguage", "ar"); } }
+
+        /// <summary>True for Arabic language tags ("ar", "ar-SA", ...): the app reads RTL then.
+        /// An absent value means the Arabic default.</summary>
+        public static bool IsRightToLeft(string language)
+        {
+            if (string.IsNullOrEmpty(language)) return true;
+            return language.Equals("ar", StringComparison.OrdinalIgnoreCase)
+                || language.StartsWith("ar-", StringComparison.OrdinalIgnoreCase);
+        }
         public bool ShowHero { get { return GetBool("showHero", true); } }
         public bool ShowCatalogType { get { return GetBool("showCatalogType", true); } }
         public bool HideUnreleased { get { return GetBool("hideUnreleased", false); } }
