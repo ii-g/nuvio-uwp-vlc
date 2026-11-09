@@ -5,13 +5,56 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls"
+    xmlns:shared="using:Nuvio.Views.Shared"
     xmlns:vlc="using:LibVLCSharp.Platforms.Windows"
     mc:Ignorable="d"
     FlowDirection="LeftToRight"
     Background="Black">
 
+    <Page.Resources>
+        <Style x:Key="SidebarButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Height" Value="64"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="24,0"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
     <Grid Background="Black">
-        <!-- Native Windows Media Foundation surface; controls are drawn by the web app above it. -->
+        <!-- Native Windows Media Foundation surface; controls are drawn by the native UI above it. -->
         <MediaPlayerElement x:Name="MediaElement" x:Load="False" SizeChanged="MediaElement_SizeChanged"
                             Opacity="0" IsHitTestVisible="False" IsTabStop="False"
                             FlowDirection="LeftToRight" AreTransportControlsEnabled="False" Stretch="Uniform" />
@@ -21,16 +64,65 @@
                        SizeChanged="VideoView_SizeChanged" Opacity="0"
                        IsHitTestVisible="False" IsTabStop="False" />
 
-        <!-- The controller drives the page through AppBridge (see ControllerBridge). -->
-        <controls:WebView2 x:Name="WebView" FlowDirection="LeftToRight" />
+        <!-- WebView2 is kept collapsed and never navigated in the native UI (M8 legacy import). -->
+        <controls:WebView2 x:Name="WebView" FlowDirection="LeftToRight" Visibility="Collapsed" />
+
+        <Grid x:Name="ShellGrid" Background="#FF0D0E13">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="272"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Fixed sidebar (the web sidebar expands 6rem to 17rem; native M1 keeps it open). -->
+            <Border Grid.Column="0" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
+                <StackPanel Margin="16,48,16,32" Spacing="8">
+                    <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <FontIcon Glyph="&#xE80F;" FontSize="22"/>
+                            <TextBlock x:Uid="SidebarHomeLabel" Text="Home" FontSize="18" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SearchButton" Style="{StaticResource SidebarButtonStyle}" Tag="search" Click="SidebarButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <FontIcon Glyph="&#xE721;" FontSize="22"/>
+                            <TextBlock x:Uid="SidebarSearchLabel" Text="Search" FontSize="18" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="LibraryButton" Style="{StaticResource SidebarButtonStyle}" Tag="library" Click="SidebarButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <FontIcon Glyph="&#xE8F1;" FontSize="22"/>
+                            <TextBlock x:Uid="SidebarLibraryLabel" Text="Library" FontSize="18" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SettingsButton" Style="{StaticResource SidebarButtonStyle}" Tag="settings" Click="SidebarButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <FontIcon Glyph="&#xE713;" FontSize="22"/>
+                            <TextBlock x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="18" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ProfileButton" Style="{StaticResource SidebarButtonStyle}" Tag="profile" Visibility="Collapsed" Click="SidebarButton_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <FontIcon Glyph="&#xE77B;" FontSize="22"/>
+                            <TextBlock x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="18" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Frame x:Name="ContentFrame" Grid.Column="1" Navigated="ContentFrame_Navigated" NavigationFailed="ContentFrame_NavigationFailed"/>
+        </Grid>
+
+        <Grid x:Name="ToastHost" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,48" IsHitTestVisible="False">
+            <shared:ToastControl x:Name="Toast"/>
+        </Grid>
 
         <Grid x:Name="LoadErrorPanel" Background="#FF0D0E13" Visibility="Collapsed">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560" Padding="24" Spacing="16">
                 <TextBlock x:Name="LoadErrorTitle" Text="Couldn't load Nuvio" FontSize="28" Foreground="White" HorizontalAlignment="Center" />
                 <TextBlock x:Name="LoadErrorText" Foreground="#B3FFFFFF" TextWrapping="Wrap" TextAlignment="Left" FlowDirection="LeftToRight" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
-                    <Button x:Name="RetryButton" Content="Retry" MinWidth="160" Click="RetryButton_Click" />
-                    <Button x:Name="BuiltInButton" Content="Use the built-in app" MinWidth="160" Visibility="Collapsed" Click="BuiltInButton_Click" />
+                    <Button x:Name="RetryButton" Content="Retry" MinWidth="160" />
+                    <Button x:Name="BuiltInButton" Content="Use the built-in app" MinWidth="160" Visibility="Collapsed" />
                 </StackPanel>
             </StackPanel>
         </Grid>
