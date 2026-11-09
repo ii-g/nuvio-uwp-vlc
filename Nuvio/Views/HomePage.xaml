@@ -36,7 +36,7 @@
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
@@ -75,7 +75,7 @@
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
