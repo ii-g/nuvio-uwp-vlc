@@ -457,9 +457,11 @@ namespace Nuvio
             Storyboard.SetTarget(widthAnimation, SidebarBorder);
             Storyboard.SetTargetProperty(widthAnimation, "Width");
             storyboard.Children.Add(widthAnimation);
-            // Labels fade (web: opacity .15s): delayed until the strip is wide enough
-            // to hold them when expanding, and at once when collapsing.
-            var labels = new[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel };
+            // Labels and the wordmark fade (web: opacity .15s): delayed until the
+            // strip is wide enough to hold them when expanding, and at once when
+            // collapsing. Collapsed the strip shows the logo icon alone; expanded
+            // it shows the full logo with NUVIO.
+            var labels = new UIElement[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel, SidebarLogoWordmark };
             foreach (var label in labels)
             {
                 var fade = new DoubleAnimation
@@ -519,7 +521,9 @@ namespace Nuvio
                 }
             }
             if (!inSidebar) return false;
-            var panel = SidebarBorder.Child as StackPanel;
+            // The strip's child is a Grid (logo row + items row); the buttons live
+            // in the named items panel.
+            var panel = SidebarItemsPanel;
             if (panel == null) return false;
             Button first = null;
             Button last = null;
