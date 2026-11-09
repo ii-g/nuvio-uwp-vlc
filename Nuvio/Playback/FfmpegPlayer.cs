@@ -411,7 +411,7 @@ namespace Nuvio.Playback
                 if (item == null) return;
                 for (var i = 0; i < item.TimedMetadataTracks.Count; i++)
                 {
-                    item.TimedMetadataTracks.SetPresentationMode(i, i == trackId
+                    item.TimedMetadataTracks.SetPresentationMode((uint)i, i == trackId
                         ? TimedMetadataTrackPresentationMode.PlatformPresented
                         : TimedMetadataTrackPresentationMode.Disabled);
                 }
@@ -529,7 +529,7 @@ namespace Nuvio.Playback
                 {
                     for (var i = 0; i < item.TimedMetadataTracks.Count; i++)
                     {
-                        if (item.TimedMetadataTracks[i].PresentationMode == TimedMetadataTrackPresentationMode.PlatformPresented)
+                        if (item.TimedMetadataTracks.GetPresentationMode((uint)i) == TimedMetadataTrackPresentationMode.PlatformPresented)
                             currentSubtitle = i;
                     }
                 }
