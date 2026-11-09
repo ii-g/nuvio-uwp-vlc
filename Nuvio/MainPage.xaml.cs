@@ -449,6 +449,15 @@ namespace Nuvio
             {
                 root = "home";
             }
+            else if (e.Content is SearchPage)
+            {
+                root = "search";
+            }
+            else if (e.Content is CatalogPage)
+            {
+                // Catalogs are not a sidebar root: no button is highlighted.
+                root = null;
+            }
             else if (e.Parameter is PlaceholderNavigation placeholder)
             {
                 root = placeholder.SidebarRoot;
