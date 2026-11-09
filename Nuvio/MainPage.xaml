@@ -8,7 +8,7 @@
     xmlns:shared="using:Nuvio.Views.Shared"
     xmlns:vlc="using:LibVLCSharp.Platforms.Windows"
     mc:Ignorable="d"
-    FlowDirection="LeftToRight"
+    FlowDirection="RightToLeft"
     Background="Black">
 
     <Page.Resources>
