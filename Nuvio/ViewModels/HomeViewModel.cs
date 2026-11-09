@@ -19,21 +19,27 @@ namespace Nuvio.ViewModels
         public CatalogCardItem(Meta meta, bool isWatched, double progress)
         {
             Meta = meta;
+            PosterShape = meta != null ? meta.PosterShape : null;
             IsWatched = isWatched;
             Progress = progress;
         }
 
-        private CatalogCardItem()
+        private CatalogCardItem(string posterShape)
         {
             IsViewAll = true;
+            PosterShape = posterShape;
         }
 
-        public static CatalogCardItem ViewAll()
+        public static CatalogCardItem ViewAll(string posterShape)
         {
-            return new CatalogCardItem();
+            return new CatalogCardItem(posterShape);
         }
 
         public Meta Meta { get; }
+        /// <summary>The row's shape (poster/landscape/square): the View All card has no
+        /// Meta, so it carries the shape itself for its size (the template binds this,
+        /// and the focus-ring height converter reads it too).</summary>
+        public string PosterShape { get; }
         public bool IsWatched { get; }
         public double Progress { get; }
         public bool IsViewAll { get; }
@@ -100,7 +106,7 @@ namespace Nuvio.ViewModels
                 {
                     Items.Clear();
                     foreach (var card in cards) Items.Add(card);
-                    if (cards.Count > 0) Items.Add(CatalogCardItem.ViewAll());
+                    if (cards.Count > 0) Items.Add(CatalogCardItem.ViewAll(Shape));
                     IsLoaded = true;
                 }).ConfigureAwait(false);
                 return cards.Count > 0;
