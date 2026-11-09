@@ -63,6 +63,7 @@
     <Compile Include="Bridge\AppBridge.cs" />
     <Compile Include="Diagnostics\Log.cs" />
     <Compile Include="Input\ControllerBridge.cs" />
+    <Compile Include="Input\NativeInputRouter.cs" />
     <Compile Include="Playback\FfmpegPlayer.cs" />
     <Compile Include="Playback\HttpMediaInput.cs" />
     <Compile Include="Playback\HttpRangeStream.cs" />
@@ -70,6 +71,42 @@
     <Compile Include="Playback\NativeMediaPlayer.cs" />
     <Compile Include="Playback\VlcPlayer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <!-- Milestone 1: native UI core, models, services, view models, views. -->
+    <Compile Include="Core\JsonHelpers.cs" />
+    <Compile Include="Core\HttpService.cs" />
+    <Compile Include="Core\AppEvents.cs" />
+    <Compile Include="Core\MetaHelpers.cs" />
+    <Compile Include="Core\Formatting.cs" />
+    <Compile Include="Core\LanguageNames.cs" />
+    <Compile Include="Models\Meta.cs" />
+    <Compile Include="Models\Video.cs" />
+    <Compile Include="Models\StreamItem.cs" />
+    <Compile Include="Models\Addon.cs" />
+    <Compile Include="Models\LibraryItem.cs" />
+    <Compile Include="Models\ProgressEntry.cs" />
+    <Compile Include="Models\WatchedMark.cs" />
+    <Compile Include="Services\LocalStore.cs" />
+    <Compile Include="Services\AppSettings.cs" />
+    <Compile Include="Services\StremioService.cs" />
+    <Compile Include="Services\LibraryService.cs" />
+    <Compile Include="Services\ProgressService.cs" />
+    <Compile Include="Services\NavigationService.cs" />
+    <Compile Include="ViewModels\ViewModelBase.cs" />
+    <Compile Include="ViewModels\PlaceholderViewModel.cs" />
+    <Compile Include="ViewModels\HomeViewModel.cs" />
+    <Compile Include="Views\HomePage.xaml.cs">
+      <DependentUpon>HomePage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\PlaceholderPage.xaml.cs">
+      <DependentUpon>PlaceholderPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\Shared\ToastControl.xaml.cs">
+      <DependentUpon>ToastControl.xaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <PRIResource Include="Strings\ar\Resources.resw" />
+    <PRIResource Include="Strings\en\Resources.resw" />
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
@@ -90,6 +127,22 @@
       <SubType>Designer</SubType>
     </ApplicationDefinition>
     <Page Include="MainPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\HomePage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\PlaceholderPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\Shared\ToastControl.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\Shared\CardTemplates.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
