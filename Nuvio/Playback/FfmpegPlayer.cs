@@ -45,6 +45,8 @@ namespace Nuvio.Playback
         private bool _disposed;
         private long _openGeneration;
         private long _lastPositionEventTicks;
+        private double _lastPositionSeconds;
+        private bool _hardwareDecodingRequested;
         private double _pendingStartSeconds;
         private bool _playWhenOpened;
         private CancellationTokenSource _openCancellation;
@@ -127,7 +129,12 @@ namespace Nuvio.Playback
             }
         }
 
-        public void SetUnavailable(string reason) { RaiseState("error", reason); RaiseEnded("error", reason); }
+        public void SetUnavailable(string reason)
+        {
+            _lastErrorKind = "Unavailable";
+            RaiseState("error", reason);
+            RaiseEnded("error", reason);
+        }
 
         public void Open(OpenRequest request)
         {
@@ -137,11 +144,13 @@ namespace Nuvio.Playback
             _readySent = false;
             _openFailed = false;
             _lastErrorKind = null;
+            _hardwareDecodingRequested = request != null && request.HardwareDecoding;
+            _lastPositionSeconds = request == null ? 0 : Math.Max(0, request.StartSeconds);
             _playWhenOpened = false;
             _pendingStartSeconds = 0;
             if (_view == null)
             {
-                FailOpen(generation, "The media player is not ready.");
+                FailOpen(generation, "The media player is not ready.", "PlayerNotReady");
                 return;
             }
 
@@ -149,7 +158,7 @@ namespace Nuvio.Playback
             if (request == null || !Uri.TryCreate(request.Url, UriKind.Absolute, out uri) ||
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             {
-                FailOpen(generation, "This player accepts direct HTTP or HTTPS media links.");
+                FailOpen(generation, "This player accepts direct HTTP or HTTPS media links.", "InvalidSource");
                 return;
             }
             try
@@ -169,8 +178,10 @@ namespace Nuvio.Playback
             }
             catch (Exception ex)
             {
-                Log.Error("FFmpeg media source could not be opened", ex);
-                FailOpen(generation, ex.Message);
+                // Log type + HResult only: the message may carry the stream URL.
+                Log.Write("FFmpeg media source could not be opened: " + DescribeOpenException(ex) +
+                    " hwdec=" + _hardwareDecodingRequested + " at " + Math.Round(_lastPositionSeconds) + "s");
+                FailOpen(generation, "FFmpeg could not open this source.", ClassifyOpenError(ex));
             }
         }
 
@@ -189,6 +200,12 @@ namespace Nuvio.Playback
                 Log.Write("Opening FFmpeg media: adaptive=" + adaptive +
                     " headers=" + (hasHeaders ? string.Join(",", request.Headers.Keys) : "none") +
                     " host=" + uri.Host + " path=" + uri.AbsolutePath);
+                // Requested decoder only: FFmpegInteropX reports the ACTUAL
+                // decoder (VideoStreamInfo.DecoderEngine) once playback has
+                // started — see LogActualDecoder, called when the video is
+                // ready and on failure. Automatic asks for D3D11 hardware
+                // and falls back to software if it is unavailable.
+                Log.Write("FFmpeg decoder: " + RequestedDecoderLabel(request.HardwareDecoding));
 
                 var config = CreateConfig(request);
                 if (hasHeaders && !adaptive)
@@ -231,8 +248,12 @@ namespace Nuvio.Playback
             }
             catch (Exception ex)
             {
-                Log.Error("FFmpeg media source could not be opened", ex);
-                FailOpen(generation, ex.Message);
+                // Log type + HResult only: the message may carry the stream URL.
+                // The hwdec flag matters here: a failure while hardware decoding
+                // was requested may be a D3D11VA failure, not a bad source.
+                Log.Write("FFmpeg media source could not be opened: " + DescribeOpenException(ex) +
+                    " hwdec=" + _hardwareDecodingRequested + " at " + Math.Round(_lastPositionSeconds) + "s");
+                FailOpen(generation, "FFmpeg could not open this source.", ClassifyOpenError(ex));
             }
             finally
             {
@@ -257,7 +278,7 @@ namespace Nuvio.Playback
             options["timeout"] = "10000000";
             options["stimeout"] = "10000000";
             config.General.ReadAheadBufferEnabled = true;
-            config.General.ReadAheadBufferDuration = TimeSpan.FromSeconds(30);
+            config.General.ReadAheadBufferDuration = TimeSpan.FromSeconds(10);
             config.Video.VideoDecoderMode = request != null && request.HardwareDecoding
                 ? VideoDecoderMode.Automatic
                 : VideoDecoderMode.ForceFFmpegSoftwareDecoder;
@@ -292,7 +313,7 @@ namespace Nuvio.Playback
                 {
                     if (IsCurrentOpen(generation, CancellationToken.None) && !_readySent && !_openFailed)
                     {
-                        FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.");
+                        FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.", "OpenTimeout");
                     }
                 });
             }
@@ -308,11 +329,17 @@ namespace Nuvio.Playback
                 generation == Interlocked.Read(ref _openGeneration) && !_openFailed;
         }
 
-        private void FailOpen(long generation, string message)
+        private void FailOpen(long generation, string message, string errorKind)
         {
             if (generation != Interlocked.Read(ref _openGeneration) || _disposed || _openFailed) return;
             _openFailed = true;
             _playWhenOpened = false;
+            // Every failure that reaches the page must carry a real kind:
+            // the hybrid player falls back on "player.ended" + errorKind,
+            // and a missing kind used to surface there as "unknown".
+            _lastErrorKind = string.IsNullOrEmpty(errorKind) ? "OpenError" : errorKind;
+            Log.Write("FFmpeg open failed (" + _lastErrorKind + ") at " + Math.Round(_lastPositionSeconds) +
+                "s hwdec=" + _hardwareDecodingRequested);
             CancelPendingOpen();
             try
             {
@@ -323,6 +350,61 @@ namespace Nuvio.Playback
             ClearCurrentSource();
             RaiseState("error", message);
             RaiseEnded("error", message);
+        }
+
+        private static string RequestedDecoderLabel(bool hardwareDecoding)
+        {
+            return hardwareDecoding ? "D3D11 hardware requested (hwdec=true)"
+                : "software requested (hwdec=false)";
+        }
+
+        // The kind for an open failure is the exception type + HResult only.
+        // Never the message: it may carry the stream URL or a token.
+        private static string ClassifyOpenError(Exception ex)
+        {
+            if (ex == null) return "OpenError";
+            return ex.GetType().Name + ":0x" + ex.HResult.ToString("X8");
+        }
+
+        private static string DescribeOpenException(Exception ex)
+        {
+            if (ex == null) return "null";
+            var description = ex.GetType().Name + " HResult=0x" + ex.HResult.ToString("X8");
+            if (ex.InnerException != null)
+                description += " inner=" + ex.InnerException.GetType().Name +
+                    " HResult=0x" + ex.InnerException.HResult.ToString("X8");
+            return description;
+        }
+
+        // Reports the decoder FFmpeg actually selected for each video stream
+        // (FFmpegD3D11HardwareDecoder vs FFmpegSoftwareDecoder vs
+        // SystemDecoder), with the hardware-availability status. Only
+        // meaningful once playback has started — FFmpegInteropX itself notes
+        // VideoStreamInfo shows the actual decoder after playback starts —
+        // so this is called when the video is ready and on failure, never
+        // at open time, when only the requested mode is known.
+        private void LogActualDecoder(string context)
+        {
+            try
+            {
+                var source = _ffmpegSource;
+                if (source == null || source.VideoStreams == null || source.VideoStreams.Count == 0)
+                {
+                    Log.Write("FFmpeg decoder (" + context + "): no video stream info available");
+                    return;
+                }
+                foreach (var stream in source.VideoStreams)
+                {
+                    Log.Write("FFmpeg decoder (" + context + "): actual=" + stream.DecoderEngine +
+                        " hwAccel=" + stream.HardwareDecoderStatus +
+                        " codec=" + (stream.CodecName ?? string.Empty) +
+                        " requested=" + (_hardwareDecodingRequested ? "D3D11 hardware" : "software"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("FFmpeg decoder (" + context + "): could not read decoder info: " + ex.GetType().Name);
+            }
         }
 
         private void CancelPendingOpen()
@@ -494,8 +576,9 @@ namespace Nuvio.Playback
             }
             catch (Exception ex)
             {
-                Log.Error("Starting opened FFmpeg media failed", ex);
-                FailOpen(Interlocked.Read(ref _openGeneration), ex.Message);
+                Log.Write("Starting opened FFmpeg media failed: " + DescribeOpenException(ex) +
+                    " hwdec=" + _hardwareDecodingRequested + " at " + Math.Round(_lastPositionSeconds) + "s");
+                FailOpen(Interlocked.Read(ref _openGeneration), "FFmpeg could not start playback.", "StartFailed");
             }
         }
 
@@ -574,6 +657,7 @@ namespace Nuvio.Playback
             _readySent = true;
             CancelPendingOpen();
             Log.Write("FFmpeg video track ready (" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight + ")");
+            LogActualDecoder("ready");
             Raise("player.ready", new JsonObject());
             if (_view != null) SetViewOpacity(1);
         }
@@ -598,6 +682,9 @@ namespace Nuvio.Playback
         }
         private void OnPositionChanged(MediaPlaybackSession sender, object args)
         {
+            // Keep the freshest position for failure logs even when the
+            // progress event below is coalesced.
+            _lastPositionSeconds = Math.Max(0, sender.Position.TotalSeconds);
             // PositionChanged can fire several times per second. Coalesce progress updates so
             // the WebView bridge doesn't build a backlog on the Xbox renderer thread.
             var now = DateTime.UtcNow.Ticks;
@@ -635,7 +722,10 @@ namespace Nuvio.Playback
         {
             var message = string.IsNullOrWhiteSpace(args.ErrorMessage) ? "FFmpeg could not play this media." : args.ErrorMessage;
             _lastErrorKind = args.Error.ToString();
-            Log.Write("FFmpeg playback failed (" + args.Error + "): " + message);
+            try { _lastPositionSeconds = Math.Max(0, sender.PlaybackSession.Position.TotalSeconds); }
+            catch (Exception) { /* fall back to the last throttled position */ }
+            Log.Write("FFmpeg playback failed (" + args.Error + ") at " + Math.Round(_lastPositionSeconds) + "s: " + message);
+            LogActualDecoder("failed");
             if (_openFailed || _disposed) return;
             _openFailed = true;
             _playWhenOpened = false;
