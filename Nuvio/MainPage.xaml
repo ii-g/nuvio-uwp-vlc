@@ -15,11 +15,11 @@
         <Style x:Key="SidebarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Height" Value="48"/>
+            <Setter Property="Height" Value="29"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="Padding" Value="18,0"/>
-            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -69,41 +69,41 @@
 
         <Grid x:Name="ShellGrid" Background="#FF0D0E13">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="SidebarColumn" Width="72"/>
+                <ColumnDefinition x:Name="SidebarColumn" Width="48"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <!-- Collapsing sidebar: icons only (72px), expands to 204px when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem). -->
             <Border x:Name="SidebarBorder" Grid.Column="0" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
-                <StackPanel Margin="6,36,6,24" Spacing="6">
+                <StackPanel Margin="8,19,8,19" Spacing="5">
                     <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE80F;" FontSize="17"/>
-                            <TextBlock x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE80F;" FontSize="14"/>
+                            <TextBlock x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="10" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="SearchButton" Style="{StaticResource SidebarButtonStyle}" Tag="search" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE721;" FontSize="17"/>
-                            <TextBlock x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE721;" FontSize="14"/>
+                            <TextBlock x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="10" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="LibraryButton" Style="{StaticResource SidebarButtonStyle}" Tag="library" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE8F1;" FontSize="17"/>
-                            <TextBlock x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE8F1;" FontSize="14"/>
+                            <TextBlock x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="10" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="SettingsButton" Style="{StaticResource SidebarButtonStyle}" Tag="settings" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE713;" FontSize="17"/>
-                            <TextBlock x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE713;" FontSize="14"/>
+                            <TextBlock x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="10" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                     <Button x:Name="ProfileButton" Style="{StaticResource SidebarButtonStyle}" Tag="profile" Visibility="Collapsed" HorizontalContentAlignment="Center" Click="SidebarButton_Click">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <FontIcon Glyph="&#xE77B;" FontSize="17"/>
-                            <TextBlock x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="14" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE77B;" FontSize="14"/>
+                            <TextBlock x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="10" VerticalAlignment="Center" Visibility="Collapsed"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -112,7 +112,7 @@
             <Frame x:Name="ContentFrame" Grid.Column="1" Navigated="ContentFrame_Navigated" NavigationFailed="ContentFrame_NavigationFailed"/>
         </Grid>
 
-        <Grid x:Name="ToastHost" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,48" IsHitTestVisible="False">
+        <Grid x:Name="ToastHost" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24" IsHitTestVisible="False">
             <shared:ToastControl x:Name="Toast"/>
         </Grid>
 
