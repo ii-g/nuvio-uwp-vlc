@@ -879,6 +879,23 @@ namespace Nuvio.Views
         }
     }
 
+    /// <summary>View All chevron: points in the flow direction (left in RTL, right in
+    /// LTR). The glyph is a physical Segoe MDL2 chevron and does not mirror with the
+    /// page: build 170 showed a right-pointing chevron on the left edge of an RTL row.</summary>
+    internal sealed class ViewAllArrowConverter : Windows.UI.Xaml.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+        {
+            // E76B = ChevronLeft, E76C = ChevronRight.
+            return AppSettings.EffectiveIsRightToLeft() ? "\uE76B" : "\uE76C";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     /// <summary>Continue card progress bar: visible only while unfinished and past the start.</summary>
     internal sealed class ContinueProgressVisibilityConverter : Windows.UI.Xaml.Data.IValueConverter
     {
