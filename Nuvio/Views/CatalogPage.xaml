@@ -1,0 +1,69 @@
+<!-- Catalog page (Milestone 2): "View All" — one catalog as a grid, genre
+     filters, infinite scroll. Ported from views/catalog.js.
+     XYFocus keyboard navigation is off on purpose: the controller poll owns
+     every move (see MainPage.OnPreviewKeyDown). Left on, the framework moves
+     focus a second card per D-pad press on top of the router's move. -->
+<Page
+    x:Class="Nuvio.Views.CatalogPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:Nuvio.Views"
+    mc:Ignorable="d"
+    XYFocusKeyboardNavigation="Disabled"
+    Background="Transparent">
+
+    <Page.Resources>
+        <views:ChipSelectedBackgroundConverter x:Key="ChipSelectedBackgroundConverter"/>
+    </Page.Resources>
+
+    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,24,0,0">
+            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold"/>
+            <TextBlock Text="{Binding Subtitle}" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Genre filter chips -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Genres}" Margin="0,12,0,0">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Content="{Binding DisplayName}" Click="GenreChip_Click" Background="{Binding IsSelected, Converter={StaticResource ChipSelectedBackgroundConverter}}" Foreground="White" Padding="12,4" CornerRadius="8" FontSize="9" MinHeight="28" Margin="0,0,8,0"/>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Poster grid -->
+        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,12,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsWrapGrid Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+        </GridView>
+
+        <!-- Empty state (unavailable / no titles / load failed) -->
+        <Grid Grid.Row="2" Visibility="{Binding IsEmptyState, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="240">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="384">
+                <TextBlock Text="{Binding EmptyTitle}" FontSize="14" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding EmptyMessage}" FontSize="9" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Footer spinner -->
+        <ProgressRing Grid.Row="3" IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" Margin="0,12,0,12"/>
+    </Grid>
+</Page>
