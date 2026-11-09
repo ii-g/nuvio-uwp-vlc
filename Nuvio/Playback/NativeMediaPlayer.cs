@@ -172,6 +172,11 @@ namespace Nuvio.Playback
                 var hasHeaders = request.Headers != null && request.Headers.Count > 0;
                 var path = uri.AbsolutePath.ToLowerInvariant();
                 var adaptive = path.EndsWith(".m3u8") || path.EndsWith(".mpd") || path.EndsWith(".m3u");
+                // Diagnostic only: header names, host and path — never header
+                // values or the query string, which may carry tokens.
+                Log.Write("Opening native media: adaptive=" + adaptive +
+                    " headers=" + (hasHeaders ? string.Join(",", request.Headers.Keys) : "none") +
+                    " host=" + uri.Host + " path=" + uri.AbsolutePath);
                 if (adaptive && !hasHeaders)
                 {
                     // MediaSource.CreateFromUri invokes the platform's adaptive URI resolver.
@@ -191,7 +196,8 @@ namespace Nuvio.Playback
                         var httpStatus = result.HttpResponseMessage == null
                             ? string.Empty
                             : " HTTP " + (int)result.HttpResponseMessage.StatusCode;
-                        Log.Write("Adaptive stream creation failed: " + result.Status + httpStatus);
+                        Log.Write("Adaptive stream creation failed: " + result.Status + httpStatus +
+                            (result.HttpResponseMessage == null ? " (no HTTP response)" : string.Empty));
                         throw new InvalidOperationException(
                             "Windows Media Foundation could not open this adaptive stream (" + result.Status + httpStatus + ").");
                     }
@@ -459,7 +465,13 @@ namespace Nuvio.Playback
             {
                 SignalVideoReady(sender);
                 RaiseState("playing", null);
+                // WMF BufferingProgress rarely reaches 100% while streaming,
+                // so tell the page buffering is complete once we are playing.
+                var bufferingPayload = new JsonObject();
+                bufferingPayload.SetNamedValue("percent", JsonValue.CreateNumberValue(100));
+                Raise("player.buffering", bufferingPayload);
             }
+            else if (sender.PlaybackState == MediaPlaybackState.Buffering) RaiseState("buffering", null);
             else if (sender.PlaybackState == MediaPlaybackState.Paused) RaiseState("paused", null);
             else RaiseState("stopped", null);
         }

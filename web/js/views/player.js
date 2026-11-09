@@ -223,7 +223,11 @@ export function playerView({ state }) {
       loading.hidden = true;
       return;
     }
-    const showSpinner = !ready || playState === 'opening' || (playState === 'playing' && bufferingPercent < 100) || playState === 'buffering';
+    // WMF BufferingProgress is the fraction buffered ahead for the current
+    // segment, not the fraction of the whole file: it rarely reaches 100%
+    // while a stream is playing, so it must not drive the spinner.
+    // Show the spinner only while opening or genuinely buffering.
+    const showSpinner = !ready || playState === 'opening' || playState === 'buffering';
     el.classList.toggle('buffering', ready && showSpinner);
     loading.hidden = ready;
     if (!ready) {
