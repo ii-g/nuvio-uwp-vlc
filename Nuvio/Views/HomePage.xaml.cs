@@ -72,34 +72,15 @@ namespace Nuvio.Views
             GotFocus += OnGotFocus;
         }
 
-        /// <summary>Applies every direction-dependent layout value from one RTL flag: the page
-        /// flow, the content insets, and the hero block. The hero must dock to the rows'
-        /// start edge (right in RTL) with the same 6 epx start inset as the row's card
-        /// padding — in builds 125-162 the hero panel itself was never aligned, so it
-        /// floated centered while its text took the LTR branch.</summary>
+        /// <summary>Sets the page flow from one RTL flag. The hero block and the content
+        /// insets follow the page's rendered FlowDirection through bindings (Self), not
+        /// through one-time assignments here: build 170 proved the flag can be right
+        /// while constructor-time assignments do not render (hero LTR, dots right,
+        /// padding LTR), so the hero must read the direction the page actually
+        /// renders in. A local assignment here would also clobber those bindings.</summary>
         private void ApplyFlowDirection(bool rtl)
         {
             FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            // Page content starts after the sidebar; in RTL the start edge is the right one.
-            // Web content insets are 8.5rem (136 physical px) at the start and 4rem
-            // (64 physical px) at the end; XAML on Xbox is scaled 200%, so those are
-            // 68 and 32 epx from the screen edge. The sidebar is an overlay (it sits in
-            // the shell grid's start column while the content spans both columns), so
-            // the pad is the full inset: 68 at the start (clear of the collapsed 48 epx
-            // strip), 32 at the end.
-            ContentStack.Padding = rtl
-                ? new Thickness(32, 0, 68, 0)
-                : new Thickness(68, 0, 32, 0);
-            // Hero content sits on the row's start edge (RTL: right), like the web rows,
-            // with the row's own 6 epx start inset so the title starts on the same edge
-            // as the first card. The dots sit at the flow end (web: inset-inline-end).
-            // Meta/genre/button rows already flow RTL.
-            HeroContent.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            HeroContent.Margin = rtl ? new Thickness(0, 0, 6, 20) : new Thickness(6, 0, 0, 20);
-            HeroLogo.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            HeroTitle.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
-            HeroDescription.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
-            HeroDots.HorizontalAlignment = rtl ? HorizontalAlignment.Left : HorizontalAlignment.Right;
         }
 
         protected override async void OnNavigatedTo(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
