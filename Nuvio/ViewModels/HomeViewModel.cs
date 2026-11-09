@@ -77,7 +77,11 @@ namespace Nuvio.ViewModels
         /// <summary>Loads the row's items (hideUnreleased filter, slice to 30). Returns true if it has items.</summary>
         public async Task<bool> LoadAsync()
         {
-            IsLoading = true;
+            // LoadRowsAsync runs on a background thread (fire-and-forget after
+            // ConfigureAwait(false)): setting IsLoading here raised PropertyChanged off
+            // the UI thread and threw RPC_E_WRONG_THREAD (0x8001010E), aborting this row's
+            // load and every row after it — titles with no cards. Marshal like the rest.
+            await RunOnUi(() => { IsLoading = true; }).ConfigureAwait(false);
             try
             {
                 var items = await _stremio.FetchCatalogAsync(Addon, Catalog).ConfigureAwait(false);
@@ -271,8 +275,14 @@ namespace Nuvio.ViewModels
         public async Task LoadAsync()
         {
             var generation = ++_loadGeneration;
-            IsLoading = true;
-            ErrorMessage = null;
+            // May be invoked off the UI thread (StremioService raises AddonsChanged from a
+            // background continuation): marshal the opening property sets like the rest,
+            // or the same RPC_E_WRONG_THREAD aborts the reload.
+            await RunOnUi(() =>
+            {
+                IsLoading = true;
+                ErrorMessage = null;
+            }).ConfigureAwait(false);
             try
             {
                 await _stremio.LoadAddonsAsync().ConfigureAwait(false);
@@ -401,8 +411,13 @@ namespace Nuvio.ViewModels
         {
             var generation = _loadGeneration;
             await LoadContinueAsync(generation).ConfigureAwait(false);
-            var handler = ContinueRefreshed;
-            if (handler != null) handler(this, EventArgs.Empty);
+            // OnContinueRefreshed touches UI (GridView containers, Focus): raise on the
+            // UI thread, since this continuation runs on a background thread.
+            await RunOnUi(() =>
+            {
+                var handler = ContinueRefreshed;
+                if (handler != null) handler(this, EventArgs.Empty);
+            }).ConfigureAwait(false);
         }
 
         private async Task<IReadOnlyList<ProgressEntry>> LoadContinueEntriesAsync()
