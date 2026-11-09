@@ -82,7 +82,9 @@ namespace Nuvio
                 Log.Error("Setting the app language failed", ex);
             }
             InitializeComponent();
-            SetFlowDirection(AppSettings.IsRightToLeft(language));
+            // The direction follows the UI language actually rendered, not only the
+            // stored tag (build 162: Arabic labels, yet the strip landed on the left).
+            SetFlowDirection(AppSettings.EffectiveIsRightToLeft());
             _player = new HybridMediaPlayer();
             // The page has its own focus navigation for the controller; the console's mouse-mode
             // cursor would only get in the way.
@@ -110,12 +112,10 @@ namespace Nuvio
             // constructed before it is parented still lands in the right direction.
             if (ContentFrame != null) ContentFrame.FlowDirection = FlowDirection;
             // The sidebar is an overlay (web: position absolute): it docks to the
-            // flow-start edge, its divider faces the content, and its buttons' content
-            // sits at the start edge in both states (web: icon at the start, labels fade),
-            // so the icons never move when the strip widens.
-            SidebarBorder.HorizontalAlignment = FlowDirection == Windows.UI.Xaml.FlowDirection.RightToLeft
-                ? HorizontalAlignment.Right
-                : HorizontalAlignment.Left;
+            // flow-start edge through the shell grid's first column (right in RTL, left
+            // in LTR), its divider faces the content, and its buttons' content sits at
+            // the start edge in both states (web: icon at the start, labels fade), so
+            // the icons never move when the strip widens.
             SidebarBorder.BorderThickness = rightToLeft ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
             var contentAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             HomeButton.HorizontalContentAlignment = contentAlignment;
@@ -124,6 +124,28 @@ namespace Nuvio
             SettingsButton.HorizontalContentAlignment = contentAlignment;
             ProfileButton.HorizontalContentAlignment = contentAlignment;
             Log.Write("Shell flow direction: " + (rightToLeft ? "RightToLeft" : "LeftToRight"));
+        }
+
+        /// <summary>Logs the strip's on-screen side against the effective direction. Build 162
+        /// showed it on the left despite an RTL shell, so the next Xbox log must prove where
+        /// it actually landed; the grid column already docks it to the flow-start edge, this
+        /// only records the result.</summary>
+        private void VerifySidebarSide()
+        {
+            try
+            {
+                var rtl = FlowDirection == Windows.UI.Xaml.FlowDirection.RightToLeft;
+                var content = Window.Current != null ? Window.Current.Content : null;
+                if (content == null) return;
+                var origin = SidebarBorder.TransformToVisual(content).TransformPoint(new Windows.Foundation.Point(0, 0));
+                var windowWidth = Window.Current.Bounds.Width;
+                var onRight = origin.X + SidebarBorder.ActualWidth / 2 > windowWidth / 2;
+                Log.Write("Sidebar side check: rtl=" + rtl + ", sidebarX=" + origin.X + ", sidebarWidth=" + SidebarBorder.ActualWidth + ", windowWidth=" + windowWidth + ", onRight=" + onRight);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Verifying the sidebar side failed", ex);
+            }
         }
 
         /// <summary>Handles media surface initialization failure without taking down the app.</summary>
@@ -162,6 +184,13 @@ namespace Nuvio
             SystemNavigationManager.GetForCurrentView().BackRequested += OnBackRequested;
             Window.Current.VisibilityChanged += OnWindowVisibilityChanged;
             Current = this;
+
+            // The direction the constructor sees is not always the direction the page
+            // renders in (build 162: the strip landed on the left while the rows render
+            // RTL). Re-assert it from the UI language actually rendered, once the page
+            // is in the visual tree, and log the strip's on-screen side after layout.
+            SetFlowDirection(AppSettings.EffectiveIsRightToLeft());
+            var _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => VerifySidebarSide());
 
             Store = new LocalStore();
             Library = new LibraryService(Store);
@@ -474,6 +503,18 @@ namespace Nuvio
                 Storyboard.SetTargetProperty(fade, "Opacity");
                 storyboard.Children.Add(fade);
             }
+            // The wordmark already contains the triangle, so the icon cross-fades the
+            // other way: collapsed shows the icon alone, expanded shows the full lockup
+            // once — never triangle + nuvio + triangle as in build 162.
+            var iconFade = new DoubleAnimation
+            {
+                To = labelsVisible ? 0 : 1,
+                Duration = TimeSpan.FromMilliseconds(150),
+                BeginTime = labelsVisible ? TimeSpan.FromMilliseconds(70) : TimeSpan.Zero,
+            };
+            Storyboard.SetTarget(iconFade, SidebarLogoIcon);
+            Storyboard.SetTargetProperty(iconFade, "Opacity");
+            storyboard.Children.Add(iconFade);
             storyboard.Completed += (s, e) =>
             {
                 // A newer animation supersedes this one; only the latest pins the end state.
@@ -484,6 +525,7 @@ namespace Nuvio
                 {
                     label.Opacity = labelsVisible ? 1 : 0;
                 }
+                SidebarLogoIcon.Opacity = labelsVisible ? 0 : 1;
             };
             _sidebarStoryboard = storyboard;
             storyboard.Begin();
