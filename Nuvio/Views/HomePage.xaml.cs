@@ -43,33 +43,15 @@ namespace Nuvio.Views
             NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Required;
             InitializeComponent();
             var shell = MainPage.Current;
-            // The page has no parent yet at construction time, so the inherited FlowDirection
-            // still reads as the LTR default here. Set it explicitly from the language
-            // setting, so the padding and hero alignment below (which read FlowDirection)
-            // use the real direction instead of always taking the LTR branch.
-            FlowDirection = AppSettings.IsRightToLeft(shell.Settings.AppLanguage)
-                ? FlowDirection.RightToLeft
-                : FlowDirection.LeftToRight;
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
             DataContext = _viewModel;
-            // Page content starts after the sidebar; in RTL the start edge is the right one.
-            // Web content insets are 8.5rem (136 physical px) at the start and 4rem
-            // (64 physical px) at the end; XAML on Xbox is scaled 200%, so those are
-            // 68 and 32 epx from the screen edge. The sidebar is an overlay now (it no
-            // longer takes a grid column), so the pad is the full inset: 68 at the
-            // start (clear of the collapsed 48 epx strip), 32 at the end.
-            ContentStack.Padding = FlowDirection == FlowDirection.RightToLeft
-                ? new Thickness(32, 0, 68, 0)
-                : new Thickness(68, 0, 32, 0);
-            // Hero content sits on the row's start edge (RTL: right), like the web rows:
-            // the logo/title/description were physically left-aligned, so the hero read
-            // as LTR while the rows start at the right. The dots sit at the flow end
-            // (web: inset-inline-end). Meta/genre/button rows already flow RTL.
-            var rtl = FlowDirection == FlowDirection.RightToLeft;
-            HeroLogo.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            HeroTitle.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
-            HeroDescription.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
-            HeroDots.HorizontalAlignment = rtl ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+            // The page has no parent yet at construction time, so the inherited FlowDirection
+            // still reads as the LTR default here. Apply the direction from the UI language
+            // actually rendered, and re-apply it in OnNavigatedTo from the page's effective
+            // FlowDirection once the frame has parented the page — build 162 proved the
+            // constructor-time direction is not the rendered one (hero left, dots right,
+            // yet the rows render RTL), so a one-time constructor value is not enough.
+            ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             _heroTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HeroIntervalMs) };
             _heroTimer.Tick += OnHeroTimerTick;
             _backdropTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BackdropDebounceMs) };
@@ -80,9 +62,43 @@ namespace Nuvio.Views
             GotFocus += OnGotFocus;
         }
 
+        /// <summary>Applies every direction-dependent layout value from one RTL flag: the page
+        /// flow, the content insets, and the hero block. The hero must dock to the rows'
+        /// start edge (right in RTL) with the same 6 epx start inset as the row's card
+        /// padding — in builds 125-162 the hero panel itself was never aligned, so it
+        /// floated centered while its text took the LTR branch.</summary>
+        private void ApplyFlowDirection(bool rtl)
+        {
+            FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+            // Page content starts after the sidebar; in RTL the start edge is the right one.
+            // Web content insets are 8.5rem (136 physical px) at the start and 4rem
+            // (64 physical px) at the end; XAML on Xbox is scaled 200%, so those are
+            // 68 and 32 epx from the screen edge. The sidebar is an overlay (it sits in
+            // the shell grid's start column while the content spans both columns), so
+            // the pad is the full inset: 68 at the start (clear of the collapsed 48 epx
+            // strip), 32 at the end.
+            ContentStack.Padding = rtl
+                ? new Thickness(32, 0, 68, 0)
+                : new Thickness(68, 0, 32, 0);
+            // Hero content sits on the row's start edge (RTL: right), like the web rows,
+            // with the row's own 6 epx start inset so the title starts on the same edge
+            // as the first card. The dots sit at the flow end (web: inset-inline-end).
+            // Meta/genre/button rows already flow RTL.
+            HeroContent.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            HeroContent.Margin = rtl ? new Thickness(0, 0, 6, 20) : new Thickness(6, 0, 0, 20);
+            HeroLogo.HorizontalAlignment = rtl ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            HeroTitle.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
+            HeroDescription.TextAlignment = rtl ? TextAlignment.Right : TextAlignment.Left;
+            HeroDots.HorizontalAlignment = rtl ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        }
+
         protected override async void OnNavigatedTo(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
+            // Re-apply from the effective flow direction: by now the frame has parented
+            // the page, so FlowDirection is the one the rows actually render in.
+            ApplyFlowDirection(FlowDirection == FlowDirection.RightToLeft);
+            Log.Write("Home page flow direction: " + (FlowDirection == FlowDirection.RightToLeft ? "RTL" : "LTR"));
             _heroTimer.Start();
             // The page is cached, so this runs once; addons/progress events drive later refreshes.
             if (_loadedOnce) return;
@@ -100,6 +116,14 @@ namespace Nuvio.Views
             base.OnNavigatedFrom(e);
             _heroTimer.Stop();
             _backdropTimer.Stop();
+            // Stop any running glide when the page leaves the frame.
+            foreach (var state in _smoothScrolls.Values.ToArray()) state.Running = false;
+            _smoothScrolls.Clear();
+            if (_smoothScrollHandlerAttached)
+            {
+                _smoothScrollHandlerAttached = false;
+                CompositionTarget.Rendering -= OnSmoothScrollRendering;
+            }
         }
 
         private string S(string key, string fallback)
