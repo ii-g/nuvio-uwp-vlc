@@ -153,12 +153,37 @@ namespace Nuvio.Views
             _viewModel.OpenTitle(_viewModel.CurrentHero);
         }
 
+        // Anchor the focused element the way the old web UI did (focus.js): the
+        // focused card stays at the row's start edge while the strip glides beneath
+        // it, and the focused row sits ~16% down the page. The framework's own
+        // bring-into-view only guarantees the element is just inside the viewport,
+        // so the highlight raced across the screen and every move looked like a jump.
+        private void AnchorFocusedElement(DependencyObject focused)
+        {
+            var element = focused as UIElement;
+            if (element == null) return;
+            if (IsDescendantOf(focused, HeroSection))
+            {
+                // Hero: the page belongs at the top (web: [data-scroll-top]).
+                Scroller.ChangeView(null, 0, null, false);
+                return;
+            }
+            var options = new BringIntoViewOptions
+            {
+                AnimationDesired = true,
+                HorizontalAlignmentRatio = 0.0,
+                VerticalAlignmentRatio = 0.16,
+            };
+            element.StartBringIntoView(options);
+        }
+
         // ---------- Backdrop ----------
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return;
+            AnchorFocusedElement(focused);
             var item = FindAncestorGridViewItem(focused);
             if (item != null)
             {
