@@ -190,13 +190,14 @@ namespace Nuvio.Services
         /// normalized) — the same value assigned to PrimaryLanguageOverride, so it is the
         /// language the labels actually render in. ApplicationLanguages.Languages[0] must
         /// NOT decide the direction: it is the console's system-language list, not the
-        /// override — the override affects resource loading only. Build 170 proved the
-        /// split on the Xbox: Arabic labels with an LTR hero and LTR rows, because
-        /// Languages[0] was a non-Arabic system tag while resources resolved Arabic.
-        /// (The b81ec44 "fix" derived RTL from Languages[0], so it read the same wrong
-        /// source and the hero stayed LTR.) The resolved list and the resource-context
-        /// language are still logged, so the next Xbox log proves which source
-        /// disagreed; the stored tag decides.</summary>
+        /// override — the override affects resource loading only. (Build 170's log showed
+        /// Languages[0] 'ar' too, so the derivation was never the hero's problem: the
+        /// flag was RTL everywhere measured while the hero still rendered LTR, which is
+        /// why the hero now follows the page's rendered FlowDirection through bindings
+        /// instead of a constructor-time flag. The stored tag still decides because it
+        /// is the single source of truth for the rendered language; the resolved list
+        /// and the resource-context language are still logged, so the next Xbox log
+        /// proves which source disagreed.)</summary>
         public static bool EffectiveIsRightToLeft()
         {
             string stored = null;
