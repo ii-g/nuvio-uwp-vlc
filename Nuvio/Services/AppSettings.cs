@@ -186,13 +186,17 @@ namespace Nuvio.Services
                 || tag.StartsWith("ar-", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>RTL from the UI language the resource system actually resolved
-        /// (ApplicationLanguages.Languages[0], after PrimaryLanguageOverride), falling back
-        /// to the stored setting. The stored tag and the rendered language can disagree —
-        /// a stored tag the override rejects leaves the resources in the system language —
-        /// so the direction must follow what is actually rendered, not only what is stored.
-        /// (Build 162 on the Xbox rendered Arabic labels while the shell landed LTR, which
-        /// is exactly the disagreement this guards against.)</summary>
+        /// <summary>RTL from the app language the user chose (the stored appLanguage tag,
+        /// normalized) — the same value assigned to PrimaryLanguageOverride, so it is the
+        /// language the labels actually render in. ApplicationLanguages.Languages[0] must
+        /// NOT decide the direction: it is the console's system-language list, not the
+        /// override — the override affects resource loading only. Build 170 proved the
+        /// split on the Xbox: Arabic labels with an LTR hero and LTR rows, because
+        /// Languages[0] was a non-Arabic system tag while resources resolved Arabic.
+        /// (The b81ec44 "fix" derived RTL from Languages[0], so it read the same wrong
+        /// source and the hero stayed LTR.) The resolved list and the resource-context
+        /// language are still logged, so the next Xbox log proves which source
+        /// disagreed; the stored tag decides.</summary>
         public static bool EffectiveIsRightToLeft()
         {
             string stored = null;
@@ -205,25 +209,32 @@ namespace Nuvio.Services
                 stored = null;
             }
 
+            string resolved = null;
             try
             {
                 var languages = ApplicationLanguages.Languages;
-                if (languages != null && languages.Count > 0)
-                {
-                    var resolved = languages[0];
-                    if (!string.IsNullOrWhiteSpace(resolved))
-                    {
-                        Log.Write("Effective direction: resolved language '" + resolved + "', stored '" + (stored ?? "?") + "'");
-                        return IsRightToLeft(resolved);
-                    }
-                }
+                if (languages != null && languages.Count > 0) resolved = languages[0];
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Log.Error("Reading the resolved UI language failed", ex);
+                resolved = null;
             }
 
-            return IsRightToLeft(stored);
+            string resourceLanguage = null;
+            try
+            {
+                var context = Windows.ApplicationModel.Resources.Core.ResourceContext.GetForViewIndependentUse();
+                if (context != null && context.Languages != null && context.Languages.Count > 0)
+                    resourceLanguage = context.Languages[0];
+            }
+            catch (Exception)
+            {
+                resourceLanguage = null;
+            }
+
+            var rtl = IsRightToLeft(stored);
+            Log.Write("Effective direction: stored '" + (stored ?? "?") + "', resource '" + (resourceLanguage ?? "?") + "', Languages[0] '" + (resolved ?? "?") + "' (ignored) => " + (rtl ? "RTL" : "LTR"));
+            return rtl;
         }
         public bool ShowHero { get { return GetBool("showHero", true); } }
         public bool ShowCatalogType { get { return GetBool("showCatalogType", true); } }
