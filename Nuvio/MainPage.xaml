@@ -74,7 +74,24 @@
 
             <!-- Collapsing sidebar: icons only (48 epx), expands to 136 epx when a sidebar button is focused or the pointer hovers (web: 6rem to 17rem, width .22s). -->
             <Border x:Name="SidebarBorder" Width="48" HorizontalAlignment="Right" Background="#FF111218" BorderBrush="#14FFFFFF" BorderThickness="0,0,1,0">
-                <StackPanel Margin="8,19,8,19" Spacing="5">
+                <!-- Logo on top (web: .sidebar-logo, 2.8rem icon, 3rem below it) and the
+                     nav buttons vertically centered in the strip (web: .sidebar-items
+                     flex 1, justify-content center, margin-top -6rem). The logo icon sits
+                     at the same start offset as the button icons (8 epx panel + 8 epx
+                     button padding); the NUVIO wordmark fades in with the labels on
+                     expand, so the strip shows the icon alone when collapsed. -->
+                <Grid Margin="8,19,8,19">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Padding="8,0" Margin="0,0,0,24">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22"/>
+                            <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" Opacity="0"/>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
                     <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon Glyph="&#xE80F;" FontSize="14"/>
@@ -105,7 +122,8 @@
                             <TextBlock x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="10" VerticalAlignment="Center" Opacity="0"/>
                         </StackPanel>
                     </Button>
-                </StackPanel>
+                    </StackPanel>
+                </Grid>
             </Border>
 
         </Grid>
