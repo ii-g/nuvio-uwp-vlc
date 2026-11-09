@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Milestone 1 strings only: sidebar, Home, common. English values are the English keys from web/js/core/i18n.js. -->
+  <data name="SidebarHomeLabel.Text" xml:space="preserve">
+    <value>Home</value>
+  </data>
+  <data name="SidebarSearchLabel.Text" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SidebarLibraryLabel.Text" xml:space="preserve">
+    <value>Library</value>
+  </data>
+  <data name="SidebarSettingsLabel.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="SidebarSwitchProfileLabel.Text" xml:space="preserve">
+    <value>Switch profile</value>
+  </data>
+  <data name="HeroDetailsButton.Content" xml:space="preserve">
+    <value>Details</value>
+  </data>
+  <data name="ContinueWatchingTitle.Text" xml:space="preserve">
+    <value>Continue Watching</value>
+  </data>
+  <data name="ManageAddonsButton.Content" xml:space="preserve">
+    <value>Manage Addons</value>
+  </data>
+  <data name="ViewAllLabel.Text" xml:space="preserve">
+    <value>View All</value>
+  </data>
+  <data name="BackButton.Content" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="PressBackAgainToExit" xml:space="preserve">
+    <value>Press back again to exit</value>
+  </data>
+  <data name="HomeEmptyNoAddonsTitle" xml:space="preserve">
+    <value>Make Nuvio yours.</value>
+  </data>
+  <data name="HomeEmptyNoAddonsMessage" xml:space="preserve">
+    <value>Add an addon to start building your library.</value>
+  </data>
+  <data name="HomeEmptyNoCatalogsTitle" xml:space="preserve">
+    <value>No Home content available</value>
+  </data>
+  <data name="HomeEmptyNoCatalogsMessage" xml:space="preserve">
+    <value>Your enabled addons do not provide catalogs that can be shown on Home.</value>
+  </data>
+  <data name="Play" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="Watch" xml:space="preserve">
+    <value>Watch</value>
+  </data>
+  <data name="NextUp" xml:space="preserve">
+    <value>Next Up</value>
+  </data>
+  <data name="NewEpisode" xml:space="preserve">
+    <value>New Episode</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="GoToDetails" xml:space="preserve">
+    <value>Go to details</value>
+  </data>
+  <data name="StartFromBeginning" xml:space="preserve">
+    <value>Start from beginning</value>
+  </data>
+  <data name="Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="AlmostDone" xml:space="preserve">
+    <value>Almost done</value>
+  </data>
+  <data name="Upcoming" xml:space="preserve">
+    <value>Upcoming</value>
+  </data>
+  <data name="AirsToday" xml:space="preserve">
+    <value>Airs today</value>
+  </data>
+  <data name="AirsTomorrow" xml:space="preserve">
+    <value>Airs tomorrow</value>
+  </data>
+  <data name="AirsInDays" xml:space="preserve">
+    <value>Airs in {0} days</value>
+  </data>
+  <data name="Airs" xml:space="preserve">
+    <value>Airs</value>
+  </data>
+  <data name="TypeMovie" xml:space="preserve">
+    <value>Movie</value>
+  </data>
+  <data name="TypeSeries" xml:space="preserve">
+    <value>Series</value>
+  </data>
+  <data name="TypeChannel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="TypeTv" xml:space="preserve">
+    <value>TV</value>
+  </data>
+  <data name="TypeAnime" xml:space="preserve">
+    <value>Anime</value>
+  </data>
+</root>
