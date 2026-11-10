@@ -13,6 +13,17 @@
     Background="Transparent">
 
     <Page.Resources>
+        <!-- Shared focus frame gradient (Fluent 2 Design card frame, recolored):
+             light whites on glass: white to pale icy blue, 70% alpha so the
+             frosted blur band under it shows through. The 0.5 stop is the
+             contrast stop: it is what reads on a white poster. -->
+        <LinearGradientBrush x:Key="FocusFrameGradientBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Offset="0" Color="#B3FFFFFF"/>
+            <GradientStop Offset="0.25" Color="#B3E8F2FF"/>
+            <GradientStop Offset="0.5" Color="#B3B4D8FF"/>
+            <GradientStop Offset="0.75" Color="#B3E8F2FF"/>
+            <GradientStop Offset="1" Color="#B3FFFFFF"/>
+        </LinearGradientBrush>
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#A62F6FED"/>
             <Setter Property="Foreground" Value="White"/>
@@ -21,6 +32,7 @@
             <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="FontSize" Value="9"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -35,6 +47,19 @@
                             <!-- Translucent tint over the blur: the style's Background. -->
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
                             <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <!-- Focus frame (Fluent 2 Design card frame, recolored to
+                                 light whites on glass): frosted blur band + light
+                                 gradient border + 2 epx #FAFAFA inner ring. The only
+                                 focus indicator: the old white pill (TintBorder to
+                                 White, text to Black) is gone. All Opacity 0 until
+                                 Focused/PointerFocused. -->
+                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.BorderBrush>
+                            </Border>
+                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="11" Margin="2" Opacity="0" IsHitTestVisible="False"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -48,12 +73,19 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="TintBorder" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentText" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
-                                    <VisualState x:Name="PointerFocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
                         </Grid>
@@ -69,6 +101,7 @@
             <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="FontSize" Value="9"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -83,6 +116,19 @@
                             <!-- Translucent tint over the blur: the style's Background. -->
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
                             <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <!-- Focus frame (Fluent 2 Design card frame, recolored to
+                                 light whites on glass): frosted blur band + light
+                                 gradient border + 2 epx #FAFAFA inner ring. The only
+                                 focus indicator: the old white pill (TintBorder to
+                                 White, text to Black) is gone. All Opacity 0 until
+                                 Focused/PointerFocused. -->
+                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.BorderBrush>
+                            </Border>
+                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="11" Margin="2" Opacity="0" IsHitTestVisible="False"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -96,12 +142,19 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="TintBorder" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentText" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="Black"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
-                                    <VisualState x:Name="PointerFocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
                         </Grid>
