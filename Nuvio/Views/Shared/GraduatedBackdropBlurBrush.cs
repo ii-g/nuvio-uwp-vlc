@@ -14,7 +14,7 @@ namespace Nuvio.Views.Shared
     /// Graduated blur for backdrops: one shared definition, built in
     /// Composition. The brush wraps a CompositionMaskBrush whose source
     /// is the same GaussianBlur effect the frosted sidebar uses
-    /// (BlurAmount 20 over the app content behind it) and whose mask
+    /// (BlurAmount 12 over the app content behind it) and whose mask
     /// is a vertical CompositionLinearGradientBrush — transparent where
     /// the backdrop stays sharp, opaque where it is fully blurred.
     /// A page only puts this brush on its blur rectangle and drives it
@@ -26,7 +26,8 @@ namespace Nuvio.Views.Shared
     /// for exactly that), so the graduation cannot be an XAML mask.
     ///
     /// States: hero (clear to 0.30, fully blurred from 0.80) and row
-    /// (clear at the very top only, fully blurred from 0.30). ~200ms
+    /// (clear to 0.30, fully blurred from 0.60 — the blur never
+    /// reaches the top). ~200ms
     /// with an ease-out cubic-bezier matching the XAML CubicEase
     /// EaseOut (1-(1-t)^3); the animation carries only the final
     /// keyframe, so a new animation retargets from the current value
@@ -40,22 +41,23 @@ namespace Nuvio.Views.Shared
     /// uniform blur (graduation lost, blur kept); it never crashes
     /// startup on the blur.
     ///
-    /// Values: BlurAmount 20 DIPs (same as the sidebar), no tint.
+    /// Values: BlurAmount 12 DIPs (lighter than the sidebar's 20), no tint.
     /// Min version 22000 is far above CompositionMaskBrush /
     /// CompositionLinearGradientBrush (both 17134), so no
     /// ApiInformation guard is needed.
     /// </summary>
     internal sealed class GraduatedBackdropBlurBrush : XamlCompositionBrushBase
     {
-        private const float BlurAmount = 20f;
+        private const float BlurAmount = 12f;
 
         // Hero state: clear to 0.30, fully blurred from 0.80.
         private const double HeroClearOffset = 0.30;
         private const double HeroFullOffset = 0.80;
 
-        // Row state: clear at the very top only, fully blurred from 0.30.
-        private const double RowClearOffset = 0.0;
-        private const double RowFullOffset = 0.30;
+        // Row state: clear to 0.30, fully blurred from 0.60 —
+        // the blur never reaches the top.
+        private const double RowClearOffset = 0.30;
+        private const double RowFullOffset = 0.60;
 
         private const double AnimationDurationMs = 200;
 
