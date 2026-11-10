@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
+using Windows.Foundation.Metadata;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.UI;
@@ -58,6 +59,20 @@ namespace Nuvio.Views.Shared
     /// visibility is tracked explicitly. The mask is re-taken when the
     /// text or the image source changes, so the glow follows the hero
     /// carousel and rows loading.
+    ///
+    /// Insertion is resolved from the Composition tree itself, not guessed
+    /// from the XAML tree: the glow must be a sibling of the host visual,
+    /// directly below it, and the only reliable way to find that sibling
+    /// slot is the host visual's own Composition parent (Visual.Parent),
+    /// falling back to the XAML ancestors via GetElementVisual /
+    /// GetContainerVisual. The first behind-text version took the XAML
+    /// parent's GetElementVisual "as ContainerVisual" and silently
+    /// skipped the glow when the cast failed — which is what happened on
+    /// Xbox (build 314/315: no glow anywhere, no crash) — and it never
+    /// retried, so one failed InsertBelow left the element glowless
+    /// forever. This version retries the insert on every layout pass
+    /// until it lands, and falls back to InsertAtBottom (no sibling
+    /// needed) when InsertBelow cannot place below the host.
     /// </summary>
     public static class TextGlow
     {
@@ -78,15 +93,25 @@ namespace Nuvio.Views.Shared
         {
             public DropShadow Shadow;
             public SpriteVisual Visual;
-            // Children (VisualCollection) lives on ContainerVisual only,
-            // not on the base Visual class — touching it on a Visual is
-            // CS1061 (build 313). Store the parent as a ContainerVisual
-            // (null when the parent visual is not a container); the null
-            // guards in EnsureInserted and Detach then skip the glow
-            // instead of crashing.
-            public ContainerVisual ParentVisual;
+            // The container the glow is inserted into, resolved at insert
+            // time from the Composition tree (see ResolveContainer) —
+            // never assumed from the XAML parent. Children
+            // (VisualCollection) lives on ContainerVisual only, not on
+            // the base Visual class, and GetElementVisual returns a base
+            // Visual handout, so taking the XAML parent's visual "as
+            // ContainerVisual" can be null: the old code then skipped
+            // the glow silently, which is what happened on Xbox
+            // (build 314/315: no glow anywhere, no crash).
+            public ContainerVisual Container;
             public Visual HostVisual;
             public bool IsInserted;
+            // Correction from the host's placement to the container's
+            // space, accumulated over every level between the host and
+            // the container (zero / identity when the container is the
+            // host's direct parent, which is the normal case).
+            public Vector3 OffsetCorrection;
+            public Matrix4x4 TransformCorrection;
+            public bool HasCorrection;
             public long TextChangedToken = -1;
             public long SourceChangedToken = -1;
             public long VisibilityChangedToken = -1;
@@ -158,16 +183,12 @@ namespace Nuvio.Views.Shared
             if (!(element is TextBlock) && !(element is FontIcon) && !(element is Image)) return;
             try
             {
-                var parent = VisualTreeHelper.GetParent(element) as UIElement;
-                if (parent == null)
-                {
-                    System.Diagnostics.Debug.WriteLine("TextGlow: no visual parent for " + element.GetType().Name);
-                    return;
-                }
+                // The container is resolved lazily in EnsureInserted,
+                // from the Composition tree itself: at attach time the
+                // host visual may not have been parented yet.
                 var state = new GlowState
                 {
                     HostVisual = ElementCompositionPreview.GetElementVisual(element),
-                    ParentVisual = ElementCompositionPreview.GetElementVisual(parent) as ContainerVisual,
                 };
                 SetState(element, state);
 
@@ -241,18 +262,226 @@ namespace Nuvio.Views.Shared
 
         private static void EnsureInserted(FrameworkElement element, GlowState state)
         {
-            if (state.IsInserted || state.Visual == null || state.ParentVisual == null || state.HostVisual == null) return;
+            if (state.IsInserted || state.Visual == null || state.HostVisual == null) return;
             try
             {
-                state.ParentVisual.Children.InsertBelow(state.Visual, state.HostVisual);
+                // Resolve the container fresh on every attempt: at attach
+                // time the host visual may not have been parented yet,
+                // and the resolution result can change as the tree
+                // settles. Re-resolving also keeps the correction in step
+                // with the container.
+                if (!ResolveContainer(element, state, out var container, out var offsetCorrection, out var transformCorrection))
+                {
+                    System.Diagnostics.Debug.WriteLine("TextGlow: no container visual found for " + element.GetType().Name);
+                    return;
+                }
+                var correctionChanged = state.Container != container
+                    || state.OffsetCorrection != offsetCorrection
+                    || state.TransformCorrection != transformCorrection;
+                state.Container = container;
+                state.OffsetCorrection = offsetCorrection;
+                state.TransformCorrection = transformCorrection;
+                state.HasCorrection = offsetCorrection != Vector3.Zero || transformCorrection != Matrix4x4.Identity;
+                if (correctionChanged)
+                {
+                    // The glow tracks the host through expressions that
+                    // embed the correction: restart them against the new
+                    // container.
+                    StartTrackingExpressions(element, state);
+                }
+                // Never insert a visual that is already parented
+                // elsewhere (a previous attempt that left it attached).
+                if (state.Visual.Parent is ContainerVisual oldParent && oldParent != container)
+                {
+                    oldParent.Children.Remove(state.Visual);
+                }
+                try
+                {
+                    container.Children.InsertBelow(state.Visual, state.HostVisual);
+                }
+                catch
+                {
+                    // The host visual is not (yet) a child of this
+                    // container: InsertBelow needs the sibling in the
+                    // collection. The glow still belongs below the text,
+                    // so put it at the bottom of the container instead —
+                    // no sibling needed, same visual result for these
+                    // containers (each holds only the text, or
+                    // non-overlapping siblings).
+                    container.Children.InsertAtBottom(state.Visual);
+                }
                 state.IsInserted = true;
             }
             catch (Exception ex)
             {
-                // The host visual is not in the parent yet (element still
-                // collapsed): the visibility callback retries on the next
-                // change to Visible.
+                // Not inserted yet (element still unparented, container
+                // gone): SyncTracked retries on the next layout pass,
+                // and the visibility callback retries on the next change
+                // to Visible.
                 System.Diagnostics.Debug.WriteLine("TextGlow: insert failed: " + ex.Message);
+            }
+        }
+
+        // Finds the ContainerVisual the glow must live in: a sibling of
+        // the host visual, directly below it. The Composition tree is
+        // the ground truth — the host's Offset is relative to exactly
+        // its Composition parent, so no correction is needed when that
+        // parent is a container. If levels have to be skipped, their
+        // placement is accumulated into the correction (going up one
+        // level with placement (offset o, matrix m) maps a point p to
+        // p * m + o).
+        private static bool ResolveContainer(FrameworkElement element, GlowState state, out ContainerVisual container, out Vector3 offsetCorrection, out Matrix4x4 transformCorrection)
+        {
+            container = null;
+            offsetCorrection = Vector3.Zero;
+            transformCorrection = Matrix4x4.Identity;
+            var hostVisual = state.HostVisual;
+            if (hostVisual == null) return false;
+
+            // 1) The host visual's own Composition parent chain.
+            var composedOffset = hostVisual.Offset;
+            var restMatrix = Matrix4x4.Identity;
+            var current = hostVisual.Parent;
+            for (var depth = 0; current != null && depth < 64; depth++)
+            {
+                if (current is ContainerVisual found)
+                {
+                    container = found;
+                    offsetCorrection = composedOffset - Vector3.Transform(hostVisual.Offset, restMatrix);
+                    transformCorrection = restMatrix;
+                    return true;
+                }
+                composedOffset = Vector3.Transform(composedOffset, current.TransformMatrix) + current.Offset;
+                restMatrix = Matrix4x4.Multiply(restMatrix, current.TransformMatrix);
+                current = current.Parent;
+            }
+
+            // 2) Fallback: the XAML ancestors. GetElementVisual returns
+            // a base Visual handout, which is not guaranteed to be a
+            // ContainerVisual (that is why GetContainerVisual exists);
+            // try both, and walk up until one of them yields a
+            // container.
+            composedOffset = hostVisual.Offset;
+            restMatrix = Matrix4x4.Identity;
+            var ancestor = VisualTreeHelper.GetParent(element) as UIElement;
+            for (var depth = 0; ancestor != null && depth < 64; depth++)
+            {
+                var ancestorContainer = TryGetContainerVisual(ancestor);
+                if (ancestorContainer != null)
+                {
+                    container = ancestorContainer;
+                    offsetCorrection = composedOffset - Vector3.Transform(hostVisual.Offset, restMatrix);
+                    transformCorrection = restMatrix;
+                    return true;
+                }
+                try
+                {
+                    var ancestorVisual = ElementCompositionPreview.GetElementVisual(ancestor);
+                    composedOffset = Vector3.Transform(composedOffset, ancestorVisual.TransformMatrix) + ancestorVisual.Offset;
+                    restMatrix = Matrix4x4.Multiply(restMatrix, ancestorVisual.TransformMatrix);
+                }
+                catch
+                {
+                    break;
+                }
+                ancestor = VisualTreeHelper.GetParent(ancestor) as UIElement;
+            }
+
+            return false;
+        }
+
+        private static ContainerVisual TryGetContainerVisual(UIElement element)
+        {
+            try
+            {
+                var asContainer = ElementCompositionPreview.GetElementVisual(element) as ContainerVisual;
+                if (asContainer != null) return asContainer;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("TextGlow: element visual failed: " + ex.Message);
+            }
+            // GetContainerVisual is the API Microsoft ships for exactly
+            // this (the container backing a XAML container); gate it in
+            // case the running OS predates it.
+            try
+            {
+                if (ApiInformation.IsMethodPresent("Windows.UI.Xaml.Hosting.ElementCompositionPreview", "GetContainerVisual"))
+                {
+                    return ElementCompositionPreview.GetContainerVisual(element) as ContainerVisual;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("TextGlow: container visual failed: " + ex.Message);
+            }
+            return null;
+        }
+
+        private static void StartTrackingExpressions(FrameworkElement element, GlowState state)
+        {
+            var shadowVisual = state.Visual;
+            var hostVisual = state.HostVisual;
+            if (shadowVisual == null || hostVisual == null) return;
+            // Seed the placement from the host plus the correction, then
+            // glue it to the host with expression animations: the glow
+            // tracks layout moves, size changes and the icon jiggle
+            // transform. When the container is the host's direct parent
+            // the correction is zero / identity and these are exactly
+            // the plain host expressions.
+            shadowVisual.Offset = Vector3.Transform(hostVisual.Offset, state.TransformCorrection) + state.OffsetCorrection;
+            shadowVisual.Size = new Vector2((float)element.ActualWidth, (float)element.ActualHeight);
+            shadowVisual.TransformMatrix = Matrix4x4.Multiply(hostVisual.TransformMatrix, state.TransformCorrection);
+            state.LastOffset = shadowVisual.Offset;
+            state.LastSize = shadowVisual.Size;
+            state.LastTransform = shadowVisual.TransformMatrix;
+
+            if (state.HasCorrection)
+            {
+                state.OffsetTracked = TryStartCorrectedOffsetExpression(shadowVisual, hostVisual, state.OffsetCorrection, state.TransformCorrection);
+                state.SizeTracked = TryStartExpression(shadowVisual, "Size", hostVisual, "host.Size");
+                state.TransformTracked = TryStartCorrectedTransformExpression(shadowVisual, hostVisual, state.TransformCorrection);
+            }
+            else
+            {
+                state.OffsetTracked = TryStartExpression(shadowVisual, "Offset", hostVisual, "host.Offset");
+                state.SizeTracked = TryStartExpression(shadowVisual, "Size", hostVisual, "host.Size");
+                state.TransformTracked = TryStartExpression(shadowVisual, "TransformMatrix", hostVisual, "host.TransformMatrix");
+            }
+        }
+
+        private static bool TryStartCorrectedOffsetExpression(Visual target, Visual host, Vector3 offsetCorrection, Matrix4x4 transformCorrection)
+        {
+            try
+            {
+                var animation = target.Compositor.CreateExpressionAnimation("host.Offset * restMatrix + restOffset");
+                animation.SetReferenceParameter("host", host);
+                animation.SetMatrix4x4Parameter("restMatrix", transformCorrection);
+                animation.SetVector3Parameter("restOffset", offsetCorrection);
+                target.StartAnimation("Offset", animation);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("TextGlow: corrected offset expression failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static bool TryStartCorrectedTransformExpression(Visual target, Visual host, Matrix4x4 transformCorrection)
+        {
+            try
+            {
+                var animation = target.Compositor.CreateExpressionAnimation("host.TransformMatrix * restMatrix");
+                animation.SetReferenceParameter("host", host);
+                animation.SetMatrix4x4Parameter("restMatrix", transformCorrection);
+                target.StartAnimation("TransformMatrix", animation);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("TextGlow: corrected transform expression failed: " + ex.Message);
+                return false;
             }
         }
 
@@ -285,7 +514,6 @@ namespace Nuvio.Views.Shared
             var state = GetState(element);
             if (state == null || state.Visual != null) return;
             var hostVisual = state.HostVisual;
-            var parentVisual = state.ParentVisual;
             var compositor = hostVisual.Compositor;
 
             var shadow = compositor.CreateDropShadow();
@@ -312,23 +540,13 @@ namespace Nuvio.Views.Shared
 
             var shadowVisual = compositor.CreateSpriteVisual();
             shadowVisual.Shadow = shadow;
+            shadowVisual.IsVisible = element.Visibility == Visibility.Visible;
+            state.Shadow = shadow;
+            state.Visual = shadowVisual;
             // Seed the placement from the host, then glue it to the host
             // with expression animations: the glow tracks layout moves,
             // size changes and the icon jiggle transform.
-            shadowVisual.Offset = hostVisual.Offset;
-            shadowVisual.Size = new Vector2((float)element.ActualWidth, (float)element.ActualHeight);
-            shadowVisual.TransformMatrix = hostVisual.TransformMatrix;
-            shadowVisual.IsVisible = element.Visibility == Visibility.Visible;
-            state.LastOffset = shadowVisual.Offset;
-            state.LastSize = shadowVisual.Size;
-            state.LastTransform = shadowVisual.TransformMatrix;
-
-            state.OffsetTracked = TryStartExpression(shadowVisual, "Offset", hostVisual, "host.Offset");
-            state.SizeTracked = TryStartExpression(shadowVisual, "Size", hostVisual, "host.Size");
-            state.TransformTracked = TryStartExpression(shadowVisual, "TransformMatrix", hostVisual, "host.TransformMatrix");
-
-            state.Shadow = shadow;
-            state.Visual = shadowVisual;
+            StartTrackingExpressions(element, state);
             EnsureInserted(element, state);
         }
 
@@ -357,10 +575,23 @@ namespace Nuvio.Views.Shared
             if (state?.Visual == null || state.HostVisual == null) return;
             try
             {
-                if (!state.OffsetTracked && state.HostVisual.Offset != state.LastOffset)
+                // Retry a never-completed insert: the host visual may not
+                // have been parented when Attach ran, and nothing else
+                // retries — a single failed InsertBelow used to leave the
+                // element glowless forever (build 314/315).
+                if (!state.IsInserted)
                 {
-                    state.Visual.Offset = state.HostVisual.Offset;
-                    state.LastOffset = state.HostVisual.Offset;
+                    EnsureInserted(element, state);
+                    if (!state.IsInserted) return;
+                }
+                if (!state.OffsetTracked)
+                {
+                    var offset = Vector3.Transform(state.HostVisual.Offset, state.TransformCorrection) + state.OffsetCorrection;
+                    if (offset != state.LastOffset)
+                    {
+                        state.Visual.Offset = offset;
+                        state.LastOffset = offset;
+                    }
                 }
                 if (!state.SizeTracked)
                 {
@@ -371,10 +602,14 @@ namespace Nuvio.Views.Shared
                         state.LastSize = size;
                     }
                 }
-                if (!state.TransformTracked && state.HostVisual.TransformMatrix != state.LastTransform)
+                if (!state.TransformTracked)
                 {
-                    state.Visual.TransformMatrix = state.HostVisual.TransformMatrix;
-                    state.LastTransform = state.HostVisual.TransformMatrix;
+                    var transform = Matrix4x4.Multiply(state.HostVisual.TransformMatrix, state.TransformCorrection);
+                    if (transform != state.LastTransform)
+                    {
+                        state.Visual.TransformMatrix = transform;
+                        state.LastTransform = transform;
+                    }
                 }
             }
             catch (Exception ex)
@@ -534,7 +769,7 @@ namespace Nuvio.Views.Shared
                     state.Visual.StopAnimation("TransformMatrix");
                     if (state.IsInserted)
                     {
-                        state.ParentVisual?.Children.Remove(state.Visual);
+                        state.Container?.Children.Remove(state.Visual);
                     }
                 }
                 state.Shadow?.StopAnimation("Opacity");
