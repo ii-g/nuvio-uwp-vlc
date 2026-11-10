@@ -162,44 +162,44 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Margin="0,0,0,24" FlowDirection="LeftToRight">
-                        <!-- The collapsed icon is the wordmark's own triangle: a 22 epx
-                             box holding the wordmark image at 22 epx high, clipped to
-                             its left 22 epx so only the triangle shows. Build 241 proved
-                             the old Canvas wrong: the triangle sat about 47 epx left of
-                             the strip centre, clear of the divider over the hero. A Canvas
-                             lays its 69.4 epx wide child out from the RTL flow-start edge,
-                             so the 22 epx clip window landed 69.4 minus 22 = 47.4 epx left
-                             of the cell. The b96c542 wordmark-overflow theory was wrong:
-                             that triangle would straddle the divider at 901..923, not sit
-                             clear of it. No Canvas any more: a plain 22 epx Grid, clipped
-                             to its own bounds, in an explicitly LeftToRight row, so the
-                             triangle is the image's physical left 22 epx, centred in the
-                             32 epx cell on the button-icon column exactly like the other
-                             icons. The LeftToRight is on this logo row only: the button
-                             labels below still inherit RTL, so their alignment is
-                             untouched. The wordmark is 69.4 epx wide in a 32 epx cell, so
-                             it overflows past the strip on the content side while
-                             collapsed; Opacity alone could not keep it hidden (build 232
-                             showed the triangle outside the strip), so it is
-                             Visibility=Collapsed when collapsed as well: AnimateSidebar
-                             hides it the moment a collapse starts, not at the end of the
-                             150 ms fade (while it stays Visible it paints "nuvio" past
-                             the strip edge, and a superseded animation never pins its
-                             end state), and the XAML default is Collapsed. The wordmark's play glyph is white on the gradient
-                             in both states. The wordmark's triangle ends at 20 epx of the
-                             22 epx height and its "nuvio" text starts at 24.3 epx, so the
-                             22 epx clip shows the whole triangle and none of the text. The
-                             wordmark is centered in the full row width when expanded
-                             (build 216: start-aligned, its centre sat about 17 epx off
-                             the strip's centre). The row itself carries no padding any
-                             more, so the centring is exact. The two share one cell and
-                             cross-fade (AnimateSidebar), never triangle + nuvio + triangle
-                             as in build 162. -->
+                        <!-- The collapsed icon is the official NuvioTV brand mark
+                             (NuvioTV repo, assets/brand/app_logo_mark.png,
+                             1080x1080, commit 17ddebe): the gradient play
+                             triangle with its dark inner triangle and white
+                             play glyph, traced to XAML Paths from the PNG
+                             contours (radial ray-cast + Douglas-Peucker,
+                             max 3 px deviation at 1080 scale, about 0.12 px
+                             at 22 epx; shape verified against the source
+                             image side by side). The mark PNG itself is a
+                             full opaque square on dark navy #0D101E and
+                             cannot be uploaded as a binary through the
+                             Contents API, so only the triangle is drawn as
+                             vectors (no dark tile) and the wordmark file is
+                             untouched. The fork's wordmark.png is
+                             byte-identical to NuvioTV's wordmark, so the
+                             expanded state (triangle + nuvio) already is
+                             the official wordmark. The gradient is a 4-stop
+                             diagonal approximation of the mark's cyan to
+                             blue to purple flow (#4ADEEF, #1973C5, #6753DF,
+                             #B64DF5). AnimateSidebar still cross-fades this
+                             Grid with the wordmark, and the wordmark is
+                             still hidden the moment a collapse starts. -->
                         <Grid x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Grid.Clip>
                                 <RectangleGeometry Rect="0,0,22,22"/>
                             </Grid.Clip>
-                            <Image Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <Path Data="M 21.01,11.02 L 20.56,12.83 L 20.07,13.53 L 19.20,14.23 L 6.46,21.63 L 5.22,22.00 L 3.50,21.79 L 2.55,21.30 L 1.73,20.52 L 1.03,18.92 L 0.99,3.37 L 1.27,2.26 L 2.18,0.99 L 3.58,0.16 L 5.18,0.00 L 6.25,0.29 L 19.49,7.98 L 20.52,9.09 L 20.89,9.99 Z">
+                                <Path.Fill>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Offset="0" Color="#FF4ADEEF"/>
+                                        <GradientStop Offset="0.35" Color="#FF1973C5"/>
+                                        <GradientStop Offset="0.7" Color="#FF6753DF"/>
+                                        <GradientStop Offset="1" Color="#FFB64DF5"/>
+                                    </LinearGradientBrush>
+                                </Path.Fill>
+                            </Path>
+                            <Path Data="M 14.60,11.02 L 14.39,11.80 L 13.94,12.25 L 8.02,15.67 L 6.79,15.71 L 6.17,15.21 L 5.88,14.52 L 5.88,7.48 L 6.04,6.99 L 6.79,6.29 L 8.02,6.33 L 13.94,9.75 L 14.39,10.20 Z" Fill="#FF0D101E"/>
+                            <Path Data="M 11.56,11.02 L 11.47,11.31 L 10.86,11.76 L 8.92,12.87 L 8.35,12.87 L 8.06,12.54 L 8.06,9.46 L 8.35,9.13 L 8.92,9.13 L 11.27,10.49 L 11.47,10.69 Z" Fill="White"/>
                         </Grid>
                         <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Visibility="Collapsed"/>
                     </Grid>
