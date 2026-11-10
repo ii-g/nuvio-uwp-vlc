@@ -20,6 +20,17 @@
         <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
         <views:FlowDirectionToHorizontalAlignmentConverter x:Key="FlowDirectionToHorizontalAlignmentConverter"/>
         <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
+        <!-- Shared focus frame gradient (Fluent 2 Design card frame, recolored):
+             light whites on glass: white to pale icy blue, 70% alpha so the
+             frosted blur band under it shows through. The 0.5 stop is the
+             contrast stop: it is what reads on a white poster. -->
+        <LinearGradientBrush x:Key="FocusFrameGradientBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Offset="0" Color="#B3FFFFFF"/>
+            <GradientStop Offset="0.25" Color="#B3E8F2FF"/>
+            <GradientStop Offset="0.5" Color="#B3B4D8FF"/>
+            <GradientStop Offset="0.75" Color="#B3E8F2FF"/>
+            <GradientStop Offset="1" Color="#B3FFFFFF"/>
+        </LinearGradientBrush>
         <Style x:Key="SidebarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#80FFFFFF"/>
@@ -28,11 +39,12 @@
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Padding" Value="8,0"/>
             <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid x:Name="RootGrid" CornerRadius="{TemplateBinding CornerRadius}">
-                            <!-- State background (active / hover / pressed / focused) on its
+                            <!-- State background (active / hover / pressed) on its
                                  own Border so it can hide while the strip is collapsed: its
                                  Visibility follows SidebarLogoWordmark's, which AnimateSidebar
                                  pins to Collapsed the moment a collapse starts and to Visible
@@ -63,18 +75,30 @@
                                  blue accent bar is gone on purpose: on the frosted strip
                                  it read as a stray blue tick on the button's edge. -->
                             <Border x:Name="ActiveUnderline" Width="18" Height="2" CornerRadius="1" Background="#33FFFFFF" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=activeUnderline}" Visibility="Collapsed"/>
+                            <!-- Focus frame (Fluent 2 Design card frame, recolored to
+                                 light whites on glass): frosted blur band + light
+                                 gradient border + 2 epx #FAFAFA inner ring. The only
+                                 focus indicator: the old white pill (TintBorder to
+                                 White, text to Black) is gone. All Opacity 0 until
+                                 Focused/PointerFocused. -->
+                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.BorderBrush>
+                            </Border>
+                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="11" Margin="2" Opacity="0" IsHitTestVisible="False"/>
                             <VisualStateManager.VisualStateGroups>
                                 <!-- Button states, matched to the web sidebar (web/css/app.css):
                                      default = transparent bg, muted text/icon (the style's
                                      Foreground setter); hover = surface-2 bg + white text
                                      (web .sidebar-item:hover); pressed = surface-3 bg + white
-                                     text; focused = surface-2 bg + white text. The web's
+                                     text; focused = glass gradient frame + white text, no fill. The web's
                                      focused white inversion (.sidebar-item.focused: background
                                      #fff, color #000) is deliberately NOT ported: on the frosted
                                      strip it read as a bright pill with a white ring that clashed
                                      with the dark theme, in every state — focused, pressed and
-                                     merely selected — so all four states stay in the dark theme
-                                     and differ only in surface depth. The active (selected-page)
+                                     merely selected — so the states stay in the dark theme; hover and pressed differ only in surface depth, and focus adds the glass gradient frame. The active (selected-page)
                                      look is owned by SetSidebarActive: surface-2 bg + white
                                      text + the underline below (a thin light transparent line
                                      under the icon, replacing the blue accent bar). Collapsed,
@@ -105,12 +129,20 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateBackground" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
-                                    <VisualState x:Name="PointerFocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
                         </Grid>
