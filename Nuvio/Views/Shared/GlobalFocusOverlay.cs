@@ -39,17 +39,20 @@ namespace Nuvio.Views.Shared
     /// from the target.
     ///
     /// Look (dark theme, TV/game-UI language): a glassy white ring (~90%
-    /// white, 2 epx) with a faint white wash (8%) and a soft white DropShadow
-    /// glow around it. The app's Accent (#FF3C7BFF) is deliberately NOT the
+    /// white, 2 epx) with a faint white wash (12%) and a soft white DropShadow
+    /// glow around it (BlurRadius 10, ~50% white at 0.7 opacity — the old
+    /// 14 epx / 35% / 0.55 glow was too faint to see on the TV, so the ring
+    /// read as a plain thin line). The app's Accent (#FF3C7BFF) is deliberately NOT the
     /// ring colour: it already means progress bars and selected chips, and
     /// the old blue accent bar on the sidebar was removed for clashing with
     /// the frosted strip; white is the ring language the old card ring used.
     ///
     /// Radius adapts to the focused element: the art's 6 epx corners on cards
-    /// (ring 8), the button's own CornerRadius + 2 (sidebar 14 -&gt; 16, hero
-    /// pills 14 -&gt; 16, chips 11 -&gt; 13, default buttons 2 -&gt; 4), and a
-    /// pill (height / 2) for the search field. The ring sits 2 epx outside
-    /// the target on every side.
+    /// (ring 6), the button's own CornerRadius (sidebar 14, hero pills 14,
+    /// chips 11, default buttons 2), and a pill (height / 2) for the search
+    /// field. The ring sits ON the target's edge on every side (Pad 0): its
+    /// 2 epx stroke straddles the element's hard edge, so the two read as
+    /// one line instead of a double.
     ///
     /// Visibility rule: the ring shows for gamepad/keyboard focus
     /// (FocusState.Keyboard — D-pad arrives as Keyboard in UWP) and for
@@ -61,12 +64,16 @@ namespace Nuvio.Views.Shared
     /// interactive tree (Frame, GridView, dialogs in Popups — their bounds
     /// cannot be mapped into the shell) or when the app loses activation.
     ///
-    /// Following: the ring re-targets (120 ms) on the enclosing ScrollViewer's
-    /// ViewChanged and on the focused element's SizeChanged — event-driven,
-    /// no per-frame polling — so it tracks smooth scrolling and the sidebar's
-    /// 220 ms expand/collapse (whose buttons change width as the strip
-    /// moves). MainPage also calls Refresh() when the expand/collapse
-    /// storyboard completes. A window resize re-targets through the host's
+    /// Following: the ring re-targets (120 ms) on the focused element's
+    /// SizeChanged — event-driven, no per-frame polling — so it tracks the
+    /// sidebar's 220 ms expand/collapse (whose buttons change width as the
+    /// strip moves). On the enclosing ScrollViewer's ViewChanged it does NOT
+    /// re-animate: during a smooth scroll the card moves every frame, and
+    /// restarting a 120 ms ease-out each frame made the ring chase with a
+    /// lag and then jump to catch up (the shake) — instead it snaps its
+    /// offset to the card's exact live position, riding 1:1 with no lag.
+    /// MainPage also calls Refresh() when the expand/collapse storyboard
+    /// completes. A window resize re-targets through the host's
     /// SizeChanged; the layout size survives layout passes (Width/Height
     /// are explicit values), so the ring never resets to 0.
     ///
@@ -90,8 +97,15 @@ namespace Nuvio.Views.Shared
         // --- Appearance -------------------------------------------------
         private static readonly Color RingColor = Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF);
         private const double RingThickness = 2.0;
-        private static readonly Color FillColor = Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF);
-        private const double Pad = 2.0;
+        // Wash inside the ring: 12% white (was 8% — invisible on the dark
+        // UI, so the ring read as a plain thin line instead of glassy white).
+        private static readonly Color FillColor = Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF);
+        // The ring sits ON the target's edge, not outside it: the 2 epx
+        // stroke is centred on the rect boundary, so Pad 0 puts the stroke
+        // straddling the element's own hard edge (one line). Pad 2 left a
+        // 2 epx gap whose element edge read as a second, parallel line —
+        // the "double" in the build 269 photo and video.
+        private const double Pad = 0.0;
         private const double CardRadius = 8.0;
 
         // --- Motion ------------------------------------------------------
@@ -228,7 +242,13 @@ namespace Nuvio.Views.Shared
             try
             {
                 // Soft white halo around the ring (no offset: the glow hugs
-                // the ring on every side). If the device cannot build it, the
+                // the ring on every side). Strengthened in the build 269
+                // fix: BlurRadius 10 (was 14), ~50% white (was 35%) at
+                // 0.7 opacity (was 0.55) — the old glow was too faint to
+                // see on the TV at all, so the ring read as a plain thin
+                // line instead of glassy glowing white. Still a soft blur,
+                // not a hard second line: the peak is ~35% white and it
+                // falls off over 10 epx. If the device cannot build it, the
                 // ring still renders — the glow is decoration, not the cue.
                 //
                 // UWP has no Visual.Shadow (that is WinUI 3, CS1061): the
@@ -248,10 +268,10 @@ namespace Nuvio.Views.Shared
                 // glow a halo around the outline instead of a haze over
                 // the focused card.
                 var shadow = _compositor.CreateDropShadow();
-                shadow.BlurRadius = 14;
+                shadow.BlurRadius = 10;
                 shadow.Offset = new Vector3(0, 0, 0);
-                shadow.Color = Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF);
-                shadow.Opacity = 0.55f;
+                shadow.Color = Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF);
+                shadow.Opacity = 0.7f;
                 _shadow = shadow;
                 _shadowSprite = _compositor.CreateSpriteVisual();
                 _shadowSprite.Offset = new Vector3(0, 0, 0);
@@ -356,6 +376,30 @@ namespace Nuvio.Views.Shared
 
         private void OnScrollerViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
         {
+            // During a smooth scroll the focused card moves every frame.
+            // Re-animating a 120 ms ease-out to the new rect on every
+            // ViewChanged made the ring chase the card with a lag and then
+            // jump to catch up when the scroll stopped (the shake in the
+            // build 269 video). The size does not change while scrolling,
+            // so snap the offset to the card's exact live position instead:
+            // the ring rides the card 1:1 with no lag. Only if the size or
+            // radius changed (sidebar expanding mid-scroll) fall back to
+            // the animated retarget. The shadow sprite is the ring's child
+            // visual, so it inherits the snapped offset for free.
+            if (_currentElement == null || !_visible || _visual == null) return;
+            Rect rect;
+            double radius;
+            if (!TryResolveTarget(_currentElement, out rect, out radius)) { Hide(); return; }
+            if (Math.Abs(rect.Width - _targetRect.Width) < 0.5
+                && Math.Abs(rect.Height - _targetRect.Height) < 0.5
+                && Math.Abs(radius - _targetRadius) < 0.5)
+            {
+                _targetRect = rect;
+                _targetRadius = radius;
+                _visual.StopAnimation("Offset");
+                _visual.Offset = new Vector3((float)rect.X, (float)rect.Y, 0);
+                return;
+            }
             RetargetCurrent(FollowDurationMs);
         }
 
@@ -594,9 +638,18 @@ namespace Nuvio.Views.Shared
             rect = default(Rect);
             radius = CardRadius;
             // The template root carries the focus zoom (ScaleTransform 1.06
-            // on the template RootGrid), so measuring it through
-            // TransformToVisual gives the scaled on-screen rect — the ring
-            // must match the scaled art, not the layout bounds.
+            // over 180 ms on the template RootGrid, RenderTransformOrigin
+            // 0.5,0.5), but GotFocus fires as the zoom STARTS — so measuring
+            // the live scaled bounds gives a ~1.0 rect while the art settles
+            // at 1.06: the ring would sit ~2-3 epx inside the settled art
+            // (the art's edges end up outside the ring), reading as a
+            // double line, and a different size on every move as the
+            // measured scale varies with input timing (the shake). Target
+            // the SETTLED 1.06 art instead: the live bounds' centre is the
+            // image of the layout centre for any uniform scale, so the
+            // settled rect is the same centre with the layout size x 1.06.
+            // The card then zooms into a ring that is already exactly
+            // right, and re-measuring it later returns the identical rect.
             FrameworkElement templateRoot = null;
             var count = VisualTreeHelper.GetChildrenCount(item);
             for (var i = 0; i < count; i++)
@@ -611,7 +664,7 @@ namespace Nuvio.Views.Shared
             // Art height by the same rule as the old ring (CardArtHeightConverter:
             // landscape 90, square 104, compact 102, large 156, extraLarge 180,
             // default 132, Continue cards 99). The zoom is uniform, so the art
-            // occupies the top artHeight * scale of the scaled item.
+            // occupies the top artHeight * 1.06 of the settled item.
             double artHeight = bounds.Height;
             try
             {
@@ -623,9 +676,14 @@ namespace Nuvio.Views.Shared
             {
                 // Keep the whole item height as the fallback.
             }
-            double scale = bounds.Height / templateRoot.ActualHeight;
-            if (scale < 0.5 || scale > 2 || double.IsNaN(scale)) scale = 1;
-            rect = Inflate(new Rect(bounds.X, bounds.Y, bounds.Width, artHeight * scale), Pad);
+            const double settledZoom = 1.06;
+            var centerX = bounds.X + bounds.Width / 2;
+            var centerY = bounds.Y + bounds.Height / 2;
+            var settledWidth = templateRoot.ActualWidth * settledZoom;
+            var settledHeight = templateRoot.ActualHeight * settledZoom;
+            rect = Inflate(new Rect(centerX - settledWidth / 2,
+                                    centerY - settledHeight / 2,
+                                    settledWidth, artHeight * settledZoom), Pad);
             radius = 6 + Pad;
             return true;
         }
@@ -660,7 +718,7 @@ namespace Nuvio.Views.Shared
                 }
                 if (found) bounds = union;
             }
-            rect = Inflate(bounds, 4);
+            rect = Inflate(bounds, Pad);
             radius = rect.Height / 2;
             return true;
         }
@@ -788,6 +846,10 @@ namespace Nuvio.Views.Shared
                 _ringRect.RadiusX = _radiusTo;
                 _ringRect.RadiusY = _radiusTo;
                 StopMorphAnimation();
+                // The mask was fetched from the pre-move shape: re-fetch it
+                // now that the ring sits at its settled size, so the glow
+                // hugs the final outline exactly.
+                RefreshShadowMask();
                 return;
             }
             var eased = EvaluateCubicBezier(Math.Max(0, t), BezierX1, BezierY1, BezierX2, BezierY2);
