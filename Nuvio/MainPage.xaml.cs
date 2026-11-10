@@ -44,6 +44,9 @@ namespace Nuvio
         private bool _sidebarExpanded;
         private Storyboard _sidebarStoryboard;
         private bool _userInputSeen;
+        private string _activeRoot;
+        private Storyboard _sidebarIconAnimation;
+        private CompositeTransform _sidebarIconAnimationTarget;
 
         internal AppSettings Settings { get; private set; }
         internal LocalStore Store { get; private set; }
@@ -98,11 +101,11 @@ namespace Nuvio
             // launch the framework parks initial focus on HomeButton before any input,
             // and that activation focus must not open the strip — the strip starts
             // collapsed. Pointer hover expands regardless (it is a user action).
-            HomeButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
-            SearchButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
-            LibraryButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
-            SettingsButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
-            ProfileButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
+            HomeButton.GotFocus += SidebarButton_GotFocus;
+            SearchButton.GotFocus += SidebarButton_GotFocus;
+            LibraryButton.GotFocus += SidebarButton_GotFocus;
+            SettingsButton.GotFocus += SidebarButton_GotFocus;
+            ProfileButton.GotFocus += SidebarButton_GotFocus;
             ContentFrame.GotFocus += (s, e) => CollapseSidebar();
             SidebarBorder.PointerEntered += (s, e) => ExpandSidebar();
             SidebarBorder.PointerExited += (s, e) => { if (!IsFocusInSidebar()) CollapseSidebar(); };
@@ -483,10 +486,28 @@ namespace Nuvio
 
         private void SetActiveSidebarButton(string root)
         {
+            _activeRoot = root;
             SetSidebarActive(HomeButton, root == "home");
             SetSidebarActive(SearchButton, root == "search");
             SetSidebarActive(LibraryButton, root == "library");
             SetSidebarActive(SettingsButton, root == "settings");
+        }
+
+        /// <summary>
+        /// Moves focus to the sidebar's button for the current page (Home when
+        /// the page is unknown). Used by the hero's start-edge move: at the
+        /// first slide, right from Play opens the strip instead of wrapping
+        /// the carousel to the last slide. Focusing a sidebar button expands
+        /// the strip through ExpandSidebarOnFocus (gated on real user input,
+        /// which a D-pad press always is).
+        /// </summary>
+        public void FocusSidebar()
+        {
+            var button = _activeRoot == "search" ? SearchButton
+                : _activeRoot == "library" ? LibraryButton
+                : _activeRoot == "settings" ? SettingsButton
+                : HomeButton;
+            button.Focus(FocusState.Programmatic);
         }
 
         private static void SetSidebarActive(Button button, bool active)
@@ -561,6 +582,115 @@ namespace Nuvio
             ExpandSidebar();
         }
 
+        /// <summary>
+        /// A sidebar button got focus: expand the strip (as before) and play
+        /// that button's icon motion once. The motion is on the FontIcon's own
+        /// RenderTransform, never on the button: the glyph itself moves, its
+        /// shape never changes (same Segoe MDL2 glyph, same size).
+        /// </summary>
+        private void SidebarButton_GotFocus(object sender, RoutedEventArgs e)
+        {
+            ExpandSidebarOnFocus();
+            PlaySidebarIconAnimation(sender as Button);
+        }
+
+        /// <summary>
+        /// Icon motion on focus arrival (Mohammed: the icon itself moves, like
+        /// a ready-made animated icon, but the glyphs stay exactly the ones in
+        /// use now). Ready-made animated sets (Lottie / WinUI AnimatedIcon /
+        /// GIF) are different icon designs, so using one would replace the
+        /// shapes, which he ruled out; no mechanism animates a Segoe MDL2
+        /// glyph in place. So the light motion is applied to the glyph itself:
+        /// a short one-shot Storyboard (200-300 ms) on the FontIcon's
+        /// CompositeTransform, returning to identity, never looping. Gated on
+        /// real user input so the framework's launch focus does not play it.
+        /// Home (E80F house) hops, Search (E721 lens) wobbles, Library (E8F1
+        /// books) slides up and settles, Settings (E713 gear) turns a little
+        /// and back, Profile (E77B person, hidden) pulses.
+        /// </summary>
+        private void PlaySidebarIconAnimation(Button button)
+        {
+            if (button == null || !_userInputSeen) return;
+            CompositeTransform transform;
+            string property;
+            double[] timesMs;
+            double[] values;
+            if (button == HomeButton)
+            {
+                transform = HomeIconTransform; property = "TranslateY";
+                timesMs = new[] { 0.0, 100.0, 250.0 };
+                values = new[] { 0.0, -3.0, 0.0 };
+            }
+            else if (button == SearchButton)
+            {
+                transform = SearchIconTransform; property = "Rotation";
+                timesMs = new[] { 0.0, 90.0, 180.0, 280.0 };
+                values = new[] { 0.0, -10.0, 8.0, 0.0 };
+            }
+            else if (button == LibraryButton)
+            {
+                transform = LibraryIconTransform; property = "TranslateY";
+                timesMs = new[] { 0.0, 90.0, 170.0, 250.0 };
+                values = new[] { 0.0, -4.0, 1.0, 0.0 };
+            }
+            else if (button == SettingsButton)
+            {
+                transform = SettingsIconTransform; property = "Rotation";
+                timesMs = new[] { 0.0, 150.0, 300.0 };
+                values = new[] { 0.0, 30.0, 0.0 };
+            }
+            else if (button == ProfileButton)
+            {
+                transform = ProfileIconTransform; property = "ScaleX";
+                timesMs = new[] { 0.0, 100.0, 250.0 };
+                values = new[] { 1.0, 1.15, 1.0 };
+            }
+            else return;
+            if (transform == null) return;
+            // A fast re-entry restarts the motion: stop the running one and
+            // reset the icon to identity first, so no icon is ever left
+            // translated, rotated or scaled mid-motion.
+            if (_sidebarIconAnimation != null)
+            {
+                _sidebarIconAnimation.Stop();
+                ResetIconTransform(_sidebarIconAnimationTarget);
+            }
+            var storyboard = new Storyboard();
+            AddIconTrack(storyboard, transform, property, timesMs, values);
+            if (property == "ScaleX")
+                AddIconTrack(storyboard, transform, "ScaleY", timesMs, values);
+            _sidebarIconAnimation = storyboard;
+            _sidebarIconAnimationTarget = transform;
+            storyboard.Begin();
+        }
+
+        private static void AddIconTrack(Storyboard storyboard, CompositeTransform transform, string property, double[] timesMs, double[] values)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames();
+            Storyboard.SetTarget(animation, transform);
+            Storyboard.SetTargetProperty(animation, property);
+            for (var i = 0; i < timesMs.Length; i++)
+            {
+                animation.KeyFrames.Add(new EasingDoubleKeyFrame
+                {
+                    KeyTime = TimeSpan.FromMilliseconds(timesMs[i]),
+                    Value = values[i],
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            }
+            storyboard.Children.Add(animation);
+        }
+
+        private static void ResetIconTransform(CompositeTransform transform)
+        {
+            if (transform == null) return;
+            transform.TranslateX = 0;
+            transform.TranslateY = 0;
+            transform.Rotation = 0;
+            transform.ScaleX = 1;
+            transform.ScaleY = 1;
+        }
+
         private void ExpandSidebar()
         {
             if (_sidebarExpanded) return;
@@ -582,7 +712,22 @@ namespace Nuvio
             // outside the strip while collapsed (its 69.4 epx lockup overflows the
             // 32 epx cell and build 232 showed its triangle left of the divider).
             SidebarLogoIcon.Visibility = Visibility.Visible;
-            SidebarLogoWordmark.Visibility = Visibility.Visible;
+            if (labelsVisible)
+            {
+                SidebarLogoWordmark.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                // Collapsing: hide the wordmark at once, not at the end of the
+                // 150 ms fade. It is 69.4 epx wide in a 32 epx cell, so while it
+                // stays Visible it paints "nuvio" past the strip edge for the
+                // whole fade-out, and a superseded animation never pins its end
+                // state, so the fade alone cannot be trusted to hide it. The
+                // icon still cross-fades in; only the wordmark is pinned early.
+                // The Completed handler below still pins Visibility with
+                // Opacity, so the end state is the same either way.
+                SidebarLogoWordmark.Visibility = Visibility.Collapsed;
+            }
             var storyboard = new Storyboard();
             var widthAnimation = new DoubleAnimation
             {
