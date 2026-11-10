@@ -185,6 +185,17 @@ namespace Nuvio.Views
             // Don't change the title under the user's highlight.
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused != null && IsDescendantOf(focused, HeroSection)) return;
+            // Freeze the carousel while the sidebar is expanded: the
+            // strip's live blur samples the hero backdrop, so a timer flip
+            // while the menu is open would change the frosted menu under
+            // the user's hands (the change Mohammed saw: focus leaves the
+            // hero, the timer flips the slide dark to bright, and the
+            // strip's tones jump). The timer keeps ticking; ticks just
+            // skip the advance until the strip collapses, so rotation
+            // resumes on the next tick after collapse. The manual advance
+            // from the hero Details button is untouched — it only runs
+            // while focus is on the hero, with the strip collapsed.
+            if (MainPage.Current != null && MainPage.Current.IsSidebarExpanded) return;
             _viewModel.AdvanceHero();
             UpdateDots();
         }
