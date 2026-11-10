@@ -262,13 +262,14 @@ namespace Nuvio.Views
         }
 
         /// <summary>Guards the row's flow end: a target offset must never leave the
-        /// last card half-cut at the end edge (build 232: THE WEIGHT cut ~20 epx by
-        /// a leftover offset a few epx short of max). If the last item would be
-        /// partially visible at the target, the target is nudged to the nearer
-        /// offset where it is fully visible (left edge at the 68 epx end padding)
-        /// or fully hidden (right edge at the viewport edge). Skipped when the last
-        /// container is not realized (then it is far off-screen, not partial) or
-        /// the row does not scroll horizontally (the vertical catalog grid).</summary>
+        /// last card half-cut at the end edge. If the last item would be partially
+        /// visible at the target, the target is nudged to the nearer offset where
+        /// it is fully visible (its edge flush with the viewport edge — the end
+        /// padding is 0 by Mohammed's call in build 241: the 68 epx end pad only
+        /// disfigured the last poster) or fully hidden (its edge at the viewport
+        /// edge). Skipped when the last container is not realized (then it is far
+        /// off-screen, not partial) or the row does not scroll horizontally (the
+        /// vertical catalog grid).</summary>
         private double SnapRowEnd(GridView row, ScrollViewer viewer, double target)
         {
             if (viewer.ScrollableWidth <= 0) return target;
@@ -285,7 +286,10 @@ namespace Nuvio.Views
             var lastLeft = physicalLeft + shift;
             var lastRight = physicalRight + shift;
             if (lastLeft >= 0 || lastRight <= 0) return target;
-            const double endPad = 68;
+            // Build 241: no end padding at all — the last card ends flush with the
+            // viewport edge (lastLeft 0) or hidden whole (lastRight 0), never
+            // half-cut behind a gap.
+            const double endPad = 0;
             var toVisible = endPad - lastLeft;
             var toHidden = -lastRight;
             var nudge = Math.Abs(toVisible) <= Math.Abs(toHidden) ? toVisible : toHidden;
@@ -305,12 +309,12 @@ namespace Nuvio.Views
         /// <summary>Keeps a newly entered row's focused card inside the padded viewport
         /// (web scrollIntoView's row part): scrolls only when the card sticks out past
         /// the row padding, never yanks it to the anchor. The anchor is for moves
-        /// inside the row (AnchorRow). The pads are the web's scroll-padding: 68 epx
-        /// at the flow end (the row track's end padding), 6 epx at the flow start
-        /// (the page's 68 epx start inset sits outside the track). The offset signs
-        /// mirror AnchorRow: in RTL the offset grows as content moves right, in LTR
-        /// as it moves left. The end is also tidied (SnapRowEnd) so a leftover offset
-        /// never leaves the last card half-cut.</summary>
+        /// inside the row (AnchorRow). The pads are 0 epx at the flow end (build 241:
+        /// no end padding — the last card ends flush or hidden whole) and 6 epx at
+        /// the flow start (the page's 68 epx start inset sits outside the track).
+        /// The offset signs mirror AnchorRow: in RTL the offset grows as content
+        /// moves right, in LTR as it moves left. The end is also tidied (SnapRowEnd)
+        /// so a leftover offset never leaves the last card half-cut.</summary>
         private void KeepCardInView(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
@@ -322,7 +326,7 @@ namespace Nuvio.Views
             var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
             var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
             const double startPad = 6;
-            const double endPad = 68;
+            const double endPad = 0;
             double? target = null;
             if (rtl)
             {
@@ -756,18 +760,30 @@ namespace Nuvio.Views
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return false;
-            // Hero cycling: left/right on a hero action button at the edge cycles hero items.
+            // Up from a hero button goes nowhere: nothing focusable sits above the
+            // hero, so the router's XYFocus move carried focus to an unrelated
+            // element (build 241: focus landed somewhere unknown, most plausibly a
+            // sidebar button, and the strip opened). Swallow it; focus stays on the
+            // button. Down is untouched: it leaves the hero for the first row.
+            if (action == "up" && IsDescendantOf(focused, HeroSection)) return true;
+            // Hero cycling: left/right on a hero button only flips the carousel
+            // slide and keeps focus on the button (build 241). The old code tried
+            // an XYFocus move first, so left/right hopped between Play and Details
+            // and only cycled at the edge. Direction is the web's nav-edge rule
+            // (web/js/views/home.js): forward is left in RTL, right in LTR — the
+            // same mapping the auto-advance (+1) uses. The timer restarts so a
+            // manual flip buys a full interval before the next auto-advance, and
+            // the backdrop follows the new slide (it otherwise only followed
+            // focus changes, so the flipped slide kept the old slide's art).
             if ((action == "left" || action == "right") && IsDescendantOf(focused, HeroSection))
             {
-                var direction = action == "left" ? FocusNavigationDirection.Left : FocusNavigationDirection.Right;
-                var before = FocusManager.GetFocusedElement();
-                FocusManager.TryMoveFocus(direction);
-                if (ReferenceEquals(FocusManager.GetFocusedElement(), before))
-                {
-                    var forward = FlowDirection == FlowDirection.RightToLeft ? action == "left" : action == "right";
-                    _viewModel.SetHeroIndex(_viewModel.HeroIndex + (forward ? 1 : -1));
-                    UpdateDots();
-                }
+                var forward = FlowDirection == FlowDirection.RightToLeft ? action == "left" : action == "right";
+                _viewModel.SetHeroIndex(_viewModel.HeroIndex + (forward ? 1 : -1));
+                UpdateDots();
+                var hero = _viewModel.CurrentHero;
+                if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
+                _heroTimer.Stop();
+                _heroTimer.Start();
                 return true;
             }
             // Row moves by DOM index, like web focus.js horizontalRowNeighbor: the index
@@ -1114,16 +1130,15 @@ namespace Nuvio.Views
                 // bottom edge.
                 return rtl ? new Thickness(0, 0, 6, 3) : new Thickness(6, 0, 0, 3);
             if (parameter as string == "row")
-                // Horizontal row track padding (web .row-track): the flow-end side
-                // carries the content inset (68 epx, --content-left) inside the
-                // scrollable track, the flow-start side one card-padding (6 epx);
-                // the page's own 68 epx start inset sits outside the track. Build
-                // 232 showed the last poster cut ~20 epx at the row's end: with
-                // only 6 epx of end padding a leftover offset a few epx short of
-                // max already cuts it, and the web's 68 epx is the margin that
-                // keeps it whole. The vertical catalog grid keeps its own 6 epx
-                // padding (its end is the bottom, not a horizontal edge).
-                return rtl ? new Thickness(68, 9, 6, 12) : new Thickness(6, 9, 68, 12);
+                // Horizontal row track padding: the flow-start side carries one
+                // card-padding (6 epx); the flow-END side carries none (0) — build
+                // 241: Mohammed asked for the end padding to go entirely ("no use
+                // at the row's end but to disfigure the poster"), so the last card
+                // ends flush with the viewport edge or hidden whole, never half-cut
+                // behind a gap. The page's own 68 epx start inset sits outside the
+                // track. The vertical catalog grid keeps its own 6 epx padding (its
+                // end is the bottom, not a horizontal edge).
+                return rtl ? new Thickness(0, 9, 6, 12) : new Thickness(6, 9, 0, 12);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
