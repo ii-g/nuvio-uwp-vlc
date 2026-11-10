@@ -211,7 +211,13 @@ namespace Nuvio.Views.Shared
                 shadow.Offset = new Vector3(0, 0, 0);
                 shadow.Color = Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF);
                 shadow.Opacity = 0.55f;
-                _ringBorder.Shadow = shadow;
+                // UIElement.Shadow takes a XAML Shadow (ThemeShadow), not a
+                // Composition DropShadow — the glow belongs on the ring
+                // Border's Visual instead (Visual.Shadow takes a
+                // CompositionShadow, and the shadow follows the Visual's
+                // animated size, so it hugs the ring on every side).
+                // _visual is set in OnLoaded just before this runs.
+                if (_visual != null) _visual.Shadow = shadow;
             }
             catch (Exception)
             {
@@ -224,12 +230,22 @@ namespace Nuvio.Views.Shared
             ShowForElement(e.NewFocusedElement as UIElement);
         }
 
-        private void OnFocusManagerLostFocus(object sender, FocusManagerLostFocusEventArgs e)
+        private async void OnFocusManagerLostFocus(object sender, FocusManagerLostFocusEventArgs e)
         {
-            // GotFocus for the next element follows immediately and re-shows
-            // the ring, so only a real loss of focus hides it (no flicker
-            // between two focused elements).
-            if (e.NewFocusedElement == null) Hide();
+            // UWP's FocusManagerLostFocusEventArgs has no NewFocusedElement
+            // (only OldFocusedElement + CorrelationId — that member is a
+            // WinUI 3 / LosingFocusEventArgs one), so the next element
+            // cannot be read from the args. Defer one dispatcher tick
+            // instead: the GotFocus of the next element in the same move
+            // runs first and re-shows the ring, so this hides only on a
+            // real loss of focus (no flicker between two focused
+            // elements).
+            var dispatcher = Window.Current?.Dispatcher;
+            if (dispatcher == null) return;
+            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                if (FocusManager.GetFocusedElement() == null) Hide();
+            });
         }
 
         private void OnCoreWindowKeyDown(CoreWindow sender, KeyEventArgs e)
@@ -278,12 +294,17 @@ namespace Nuvio.Views.Shared
             // Pointer focus (mouse/touch) never shows the ring: the pointer
             // has its own hover states, and a ring chasing clicks would
             // fight them.
-            if (element.FocusState == FocusState.Pointer) { Hide(); return; }
-            if (element.FocusState == FocusState.Unfocused) { Hide(); return; }
+            // FocusState lives on Control in UWP, not on UIElement.
+            // (Every focusable element is a Control — Focus() is a
+            // Control method — so the cast succeeds for anything that
+            // actually holds focus; the fallback is defensive only.)
+            var focusState = (element as Control)?.FocusState ?? FocusState.Unfocused;
+            if (focusState == FocusState.Pointer) { Hide(); return; }
+            if (focusState == FocusState.Unfocused) { Hide(); return; }
             // Every move in this app is Programmatic (router, FocusFirst,
             // FocusSidebar), so the gate is the only thing separating the
             // framework's parked launch focus from a real D-pad move.
-            if (element.FocusState == FocusState.Programmatic && !_userInputSeen) { Hide(); return; }
+            if (focusState == FocusState.Programmatic && !_userInputSeen) { Hide(); return; }
             ShowFor(element, MoveDurationMs);
         }
 
@@ -636,7 +657,7 @@ namespace Nuvio.Views.Shared
             if (!_radiusAnimating)
             {
                 _radiusAnimating = true;
-                CompositionTarget.Rendering += OnRadiusRendering;
+                Windows.UI.Xaml.Media.CompositionTarget.Rendering += OnRadiusRendering;
             }
         }
 
@@ -658,7 +679,7 @@ namespace Nuvio.Views.Shared
         {
             if (!_radiusAnimating) return;
             _radiusAnimating = false;
-            CompositionTarget.Rendering -= OnRadiusRendering;
+            Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnRadiusRendering;
         }
 
         private static double EvaluateCubicBezier(double t, double x1, double y1, double x2, double y2)
