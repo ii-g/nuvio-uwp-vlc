@@ -766,25 +766,61 @@ namespace Nuvio.Views
             // sidebar button, and the strip opened). Swallow it; focus stays on the
             // button. Down is untouched: it leaves the hero for the first row.
             if (action == "up" && IsDescendantOf(focused, HeroSection)) return true;
-            // Hero cycling: left/right on a hero button only flips the carousel
-            // slide and keeps focus on the button (build 241). The old code tried
-            // an XYFocus move first, so left/right hopped between Play and Details
-            // and only cycled at the edge. Direction is the web's nav-edge rule
-            // (web/js/views/home.js): forward is left in RTL, right in LTR — the
-            // same mapping the auto-advance (+1) uses. The timer restarts so a
-            // manual flip buys a full interval before the next auto-advance, and
-            // the backdrop follows the new slide (it otherwise only followed
-            // focus changes, so the flipped slide kept the old slide's art).
+            // Hero buttons: left/right moves focus between Play and Details
+            // first (the pre-build-241 behaviour). Build 241 made every
+            // left/right flip the carousel slide and keep focus on the button,
+            // so the two buttons could no longer be reached from each other.
+            // Flow-aware: towardStart is right in RTL, left in LTR; towardEnd
+            // is the opposite. Play sits at the start edge, Details at the
+            // end edge. Right never flips a slide. Left from Details advances
+            // one slide, clamped at the last slide; the dots, backdrop and
+            // auto-rotate timer follow the new slide (as in build 241). No
+            // wrap ever: right from Play on the first slide opens the sidebar
+            // instead of wrapping to the last slide, and the advance stops at
+            // the last slide instead of wrapping to the first.
             if ((action == "left" || action == "right") && IsDescendantOf(focused, HeroSection))
             {
-                var forward = FlowDirection == FlowDirection.RightToLeft ? action == "left" : action == "right";
-                _viewModel.SetHeroIndex(_viewModel.HeroIndex + (forward ? 1 : -1));
-                UpdateDots();
-                var hero = _viewModel.CurrentHero;
-                if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
-                _heroTimer.Stop();
-                _heroTimer.Start();
-                return true;
+                var rtl = FlowDirection == FlowDirection.RightToLeft;
+                var towardStart = rtl ? action == "right" : action == "left";
+                if (IsDescendantOf(focused, HeroPlayButton))
+                {
+                    if (!towardStart)
+                    {
+                        HeroDetailsButton.Focus(FocusState.Programmatic);
+                        return true;
+                    }
+                    // Toward the start edge from Play: at the first slide open
+                    // the sidebar; on any other slide stay put (no flip, no
+                    // wrap).
+                    if (_viewModel.HeroIndex == 0)
+                    {
+                        MainPage.Current?.FocusSidebar();
+                    }
+                    return true;
+                }
+                if (IsDescendantOf(focused, HeroDetailsButton))
+                {
+                    if (towardStart)
+                    {
+                        HeroPlayButton.Focus(FocusState.Programmatic);
+                        return true;
+                    }
+                    // Toward the end edge from Details: advance one slide
+                    // (the web nav-edge rule: forward is left in RTL, right
+                    // in LTR, and towardEnd is forward), clamped at the last
+                    // slide, never wrapping to the first.
+                    if (_viewModel.HeroIndex < _viewModel.HeroItems.Count - 1)
+                    {
+                        _viewModel.SetHeroIndex(_viewModel.HeroIndex + 1);
+                        UpdateDots();
+                        var hero = _viewModel.CurrentHero;
+                        if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
+                        _heroTimer.Stop();
+                        _heroTimer.Start();
+                    }
+                    return true;
+                }
+                return false;
             }
             // Row moves by DOM index, like web focus.js horizontalRowNeighbor: the index
             // is stable while the strip glides, while XYFocus measures moving cards (and
