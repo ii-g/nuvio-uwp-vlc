@@ -14,7 +14,7 @@ namespace Nuvio.Views.Shared
     /// Graduated blur for backdrops: one shared definition, built in
     /// Composition. The brush wraps a CompositionMaskBrush whose source
     /// is the same GaussianBlur effect the frosted sidebar uses
-    /// (BlurAmount 12 over the app content behind it) and whose mask
+    /// (BlurAmount 6 over the app content behind it) and whose mask
     /// is a vertical CompositionLinearGradientBrush — transparent where
     /// the backdrop stays sharp, opaque where it is fully blurred.
     /// A page only puts this brush on its blur rectangle and drives it
@@ -41,14 +41,14 @@ namespace Nuvio.Views.Shared
     /// uniform blur (graduation lost, blur kept); it never crashes
     /// startup on the blur.
     ///
-    /// Values: BlurAmount 12 DIPs (lighter than the sidebar's 20), no tint.
+    /// Values: BlurAmount 6 DIPs (lighter than the sidebar's 20), no tint.
     /// Min version 22000 is far above CompositionMaskBrush /
     /// CompositionLinearGradientBrush (both 17134), so no
     /// ApiInformation guard is needed.
     /// </summary>
     internal sealed class GraduatedBackdropBlurBrush : XamlCompositionBrushBase
     {
-        private const float BlurAmount = 12f;
+        private const float BlurAmount = 6f;
 
         // Hero state: clear to 0.30, fully blurred from 0.80.
         private const double HeroClearOffset = 0.30;
