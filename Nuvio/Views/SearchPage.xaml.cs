@@ -478,12 +478,15 @@ namespace Nuvio.Views
                 await stream.WriteAsync(bytes.AsBuffer());
                 stream.Seek(0);
                 var decoder = await BitmapDecoder.CreateAsync(stream);
-                decoder.BitmapTransform.ScaledWidth = BackgroundDecodeWidth;
-                decoder.BitmapTransform.ScaledHeight = BackgroundDecodeHeight;
-                decoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
+                var transform = new BitmapTransform
+                {
+                    ScaledWidth = BackgroundDecodeWidth,
+                    ScaledHeight = BackgroundDecodeHeight,
+                    InterpolationMode = BitmapInterpolationMode.Fant
+                };
                 var pixelData = await decoder.GetPixelDataAsync(
                     BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
-                    decoder.BitmapTransform, ExifOrientationMode.IgnoreExifOrientation,
+                    transform, ExifOrientationMode.IgnoreExifOrientation,
                     ColorManagementMode.DoNotColorManage);
                 var pixels = pixelData.DetachPixelData();
                 var blurred = BoxBlur(pixels, BackgroundDecodeWidth, BackgroundDecodeHeight, BackgroundBlurRadius);
