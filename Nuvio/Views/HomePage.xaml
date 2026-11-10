@@ -165,26 +165,12 @@
     </Page.Resources>
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
-        <!-- Backdrop: two cross-fading layers following the focused card, live-blurred.
-             Light blur 6 + a light bottom gradient (option B, per Mohammed's call). -->
+        <!-- Backdrop: two cross-fading layers following the focused card.
+             A light bottom gradient (option B) so the rows read on light
+             fanart — no blur on the backdrop at all. -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
-            <!-- Graduated blur: one shared Composition definition
-                 (Views/Shared/GraduatedBackdropBlurBrush) — a
-                 CompositionMaskBrush whose source is the same GaussianBlur
-                 the frosted sidebar uses (BlurAmount 20) and whose mask
-                 is a vertical alpha ramp: transparent where the backdrop
-                 stays sharp, opaque where it is fully blurred. No
-                 OpacityMask exists in UWP (WPF only — build 297 failed
-                 with WMC0011 for that), so the graduation lives in
-                 Composition, not XAML. The brush is driven from
-                 OnGotFocus so the clear zone follows focus. -->
-            <Rectangle x:Name="BackdropBlurRect">
-                <Rectangle.Fill>
-                    <shared:GraduatedBackdropBlurBrush/>
-                </Rectangle.Fill>
-            </Rectangle>
             <!-- Light bottom shade (option B): a static vertical gradient —
                  fully transparent to 0.45, grading to ~40% black at the
                  bottom — so the rows read on light fanart while the
