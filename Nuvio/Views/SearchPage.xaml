@@ -34,67 +34,62 @@
         </Grid>
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled" BringIntoViewOnFocusChange="False">
             <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
-                <!-- Search bar, Apple TV style: a tall prominent field, 48 epx high
-                     with a 24 epx radius, 14 epx text and a 20 epx icon at the
-                     flow-start edge. The 10 epx icon/text gap is a fixed Grid column
-                     so it stays on the flow-start side in RTL: a physical Margin on
-                     the icon landed on the wrong side and pinned the icon flush to
-                     the bar's start edge, while the Border's symmetric 16 epx
-                     padding covers both ends. Dark in every state (see the TextBox
-                     resource overrides below); focus is the accent border from
-                     SearchBox GotFocus/LostFocus in the code-behind, and the system
-                     focus visuals are off so the accent border is the single ring. -->
-                <Border x:Name="SearchBarBorder" Margin="0,24,0,0" Background="#1AFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="24" Padding="16,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="&#xE721;" FontSize="20" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
-                        <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="2" PlaceholderText="Search movies &amp; series" PlaceholderForeground="#80FFFFFF" FontSize="14" Background="Transparent" BorderThickness="0" Foreground="White" Height="48" Padding="0" VerticalAlignment="Center" IsSpellCheckEnabled="False" UseSystemFocusVisuals="False">
-                            <TextBox.Resources>
-                                <!-- The default TextBox template inverts to a white background on
-                                     focus (TextControlBackgroundFocused) with an accent border:
-                                     on the dark theme that reads as a blinding white pill with a
-                                     blue ring (build 216). The pill's own focus ring is the outer
-                                     Border's accent border (GotFocus/LostFocus in the code-behind),
-                                     so the box itself stays dark in every state: surface-2 like
-                                     the bar, no template border, white text, muted placeholder. -->
-                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#1AFFFFFF"/>
-                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#1AFFFFFF"/>
-                                <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent"/>
-                                <SolidColorBrush x:Key="TextControlForeground" Color="White"/>
-                                <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="White"/>
-                                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="White"/>
-                                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#80FFFFFF"/>
-                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#80FFFFFF"/>
-                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#80FFFFFF"/>
-                            </TextBox.Resources>
-                            <TextBox.InputScope>
-                                <InputScope>
-                                    <InputScope.Names>
-                                        <InputScopeName NameValue="Search"/>
-                                    </InputScope.Names>
-                                </InputScope>
-                            </TextBox.InputScope>
-                        </TextBox>
-                    </Grid>
-                </Border>
-
-                <!-- On-screen keyboard row (Apple TV style): a keyboard key, SPACE,
-                     the Latin letters a to z, and backspace, laid out LTR because
-                     titles are mostly English. The keys are built in the code-behind
-                     (BuildKeyboardRow) so the row and the D-pad navigation share one
-                     ordered list; each key appends to the search box and the 700 ms
-                     debounce runs the search exactly as if typed. The row stays
-                     visible while results show below it. -->
-                <StackPanel x:Name="KeyboardRow" Orientation="Horizontal" FlowDirection="LeftToRight" Margin="0,12,0,0"/>
+                <!-- Search field, Apple TV style (no on-screen keyboard row): a large
+                     borderless field, magnifier at the flow-start edge and large text
+                     on the page background, no pill and no border, with a thin divider
+                     under it like the Apple TV search screen. The placeholder is
+                     bilingual: the Arabic translation is the TextBox's own placeholder
+                     (so typed text lands exactly where the placeholder sat) and the
+                     English original sits below it in smaller muted text; both hide
+                     when the box has text. The field has no focus ring at all (no blue
+                     accent border): focus is the caret and the placeholder/text
+                     brightness, and the Xbox system keyboard still opens on focus.
+                     Tapping anywhere in the field (magnifier, English line) focuses
+                     the box. -->
+                <Grid Margin="0,24,0,0" Tapped="SearchField_Tapped">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <FontIcon Glyph="&#xE721;" FontSize="24" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                    <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="2" PlaceholderText="أفلام، مسلسلات، ممثلون، والمزيد" PlaceholderForeground="#80FFFFFF" FontSize="18" Background="Transparent" BorderThickness="0" Foreground="White" Height="30" Padding="0" VerticalAlignment="Center" IsSpellCheckEnabled="False" UseSystemFocusVisuals="False">
+                        <TextBox.Resources>
+                            <!-- Borderless field: the box stays transparent in every state
+                                 (no pill background, no template border, no focus wash) so
+                                 the field reads as large text on the page background like
+                                 Apple TV; the caret and the placeholder/text brightness are
+                                 the only focus indication. -->
+                            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent"/>
+                            <SolidColorBrush x:Key="TextControlForeground" Color="White"/>
+                            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="White"/>
+                            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="White"/>
+                            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#80FFFFFF"/>
+                            <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#80FFFFFF"/>
+                            <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#80FFFFFF"/>
+                        </TextBox.Resources>
+                        <TextBox.InputScope>
+                            <InputScope>
+                                <InputScope.Names>
+                                    <InputScopeName NameValue="Search"/>
+                                </InputScope.Names>
+                            </InputScope>
+                        </TextBox.InputScope>
+                    </TextBox>
+                    <TextBlock x:Uid="SearchPlaceholderEnglish" Grid.Row="1" Grid.Column="2" Text="Movies, Shows, Cast, and More" FontSize="11" Foreground="#59FFFFFF" Margin="0,2,0,0" IsHitTestVisible="False" Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource InverseStringToVisibilityConverter}}"/>
+                </Grid>
+                <Border Height="1" Background="#1FFFFFFF" Margin="0,12,0,0"/>
 
                 <!-- Empty state: a centred hero shown while no query is active and no
                      results exist (ViewModel.IsEmptyHero — first entry, or the query
@@ -147,7 +142,7 @@
                                     <TextBlock Text="{Binding Subtitle}" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
                                     <ProgressRing IsActive="{Binding IsLoading}" Width="8" Height="8" Foreground="White"/>
                                 </StackPanel>
-                                <GridView ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SearchRowGridView_ItemClick" Padding="6,9,6,12" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
+                                <GridView ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SearchRowGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=row}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
                                     <GridView.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <ItemsStackPanel Orientation="Horizontal"/>
