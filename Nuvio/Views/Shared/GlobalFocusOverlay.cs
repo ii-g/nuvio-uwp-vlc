@@ -66,8 +66,16 @@ namespace Nuvio.Views.Shared
     /// against the shell root, the same rule the scroller uses (TransformToVisual
     /// reports RTL-origin rects, so no flow-direction math is needed here).
     /// </summary>
-    public sealed class GlobalFocusOverlay : Border
+    // NOTE: Border is sealed in UWP (CS0509), so the ring is a Grid hosting
+    // an inner Border that draws the ring. The animated Visual is the inner
+    // Border's (its rendering follows Visual.Offset/Size exactly like the
+    // Border-based version); the Grid is a 0x0 transparent host and draws
+    // nothing itself. ContentControl was rejected: its default template does
+    // not guarantee the ring's Background/BorderBrush render, and as a
+    // Control it would be tab-focusable by default.
+    public sealed class GlobalFocusOverlay : Grid
     {
+        private readonly Border _ringBorder;
         // --- Appearance -------------------------------------------------
         private static readonly Color RingColor = Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF);
         private const double RingThickness = 2.0;
@@ -106,15 +114,20 @@ namespace Nuvio.Views.Shared
 
         public GlobalFocusOverlay()
         {
-            BorderBrush = new SolidColorBrush(RingColor);
-            BorderThickness = new Thickness(RingThickness);
-            Background = new SolidColorBrush(FillColor);
-            CornerRadius = new CornerRadius(CardRadius);
+            _ringBorder = new Border
+            {
+                BorderBrush = new SolidColorBrush(RingColor),
+                BorderThickness = new Thickness(RingThickness),
+                Background = new SolidColorBrush(FillColor),
+                CornerRadius = new CornerRadius(CardRadius),
+                Opacity = 0,
+                IsHitTestVisible = false,
+            };
+            Children.Add(_ringBorder);
             HorizontalAlignment = HorizontalAlignment.Left;
             VerticalAlignment = VerticalAlignment.Top;
             Width = 0;
             Height = 0;
-            Opacity = 0;
             IsHitTestVisible = false;
             Loaded += OnLoaded;
             Unloaded += OnUnloaded;
@@ -146,7 +159,7 @@ namespace Nuvio.Views.Shared
         {
             if (_attached) return;
             _attached = true;
-            _visual = ElementCompositionPreview.GetElementVisual(this);
+            _visual = ElementCompositionPreview.GetElementVisual(_ringBorder);
             _compositor = _visual.Compositor;
             _ease = _compositor.CreateCubicBezierEasingFunction(
                 new Vector2((float)BezierX1, (float)BezierY1),
@@ -198,7 +211,7 @@ namespace Nuvio.Views.Shared
                 shadow.Offset = new Vector3(0, 0, 0);
                 shadow.Color = Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF);
                 shadow.Opacity = 0.55f;
-                Shadow = shadow;
+                _ringBorder.Shadow = shadow;
             }
             catch (Exception)
             {
@@ -315,12 +328,12 @@ namespace Nuvio.Views.Shared
             if (_visual.Size == Vector2.Zero)
             {
                 // First placement (or a layout pass reset the animated size
-                // to the Border's 0 layout size, e.g. on window resize):
+                // to the ring Border's 0 layout size, e.g. on window resize):
                 // snap into place and fade in only — growing from the
                 // origin would read as a jump.
                 _visual.Offset = targetOffset;
                 _visual.Size = targetSize;
-                CornerRadius = new CornerRadius(radius);
+                _ringBorder.CornerRadius = new CornerRadius(radius);
                 _targetRect = rect;
                 _targetRadius = radius;
                 AnimateOpacity(1, ShowDurationMs);
@@ -357,7 +370,7 @@ namespace Nuvio.Views.Shared
             sizeAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
             _visual.StartAnimation("Size", sizeAnimation);
             AnimateOpacity(1, ShowDurationMs);
-            AnimateCornerRadius(CornerRadius.TopLeft, radius, durationMs);
+            AnimateCornerRadius(_ringBorder.CornerRadius.TopLeft, radius, durationMs);
         }
 
         private void AnimateOpacity(float to, double durationMs)
@@ -613,7 +626,7 @@ namespace Nuvio.Views.Shared
         {
             if (Math.Abs(from - to) < 0.5)
             {
-                CornerRadius = new CornerRadius(to);
+                _ringBorder.CornerRadius = new CornerRadius(to);
                 return;
             }
             _radiusFrom = from;
@@ -633,12 +646,12 @@ namespace Nuvio.Views.Shared
             var t = elapsed / _radiusDurationMs;
             if (t >= 1)
             {
-                CornerRadius = new CornerRadius(_radiusTo);
+                _ringBorder.CornerRadius = new CornerRadius(_radiusTo);
                 StopRadiusAnimation();
                 return;
             }
             var eased = EvaluateCubicBezier(Math.Max(0, t), BezierX1, BezierY1, BezierX2, BezierY2);
-            CornerRadius = new CornerRadius(_radiusFrom + (_radiusTo - _radiusFrom) * eased);
+            _ringBorder.CornerRadius = new CornerRadius(_radiusFrom + (_radiusTo - _radiusFrom) * eased);
         }
 
         private void StopRadiusAnimation()
