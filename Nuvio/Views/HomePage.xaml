@@ -7,6 +7,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shared="using:Nuvio.Views.Shared"
     mc:Ignorable="d"
     XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
@@ -93,19 +94,19 @@
     </Page.Resources>
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
-        <!-- Backdrop: two cross-fading layers following the focused card, plus a shade. -->
+        <!-- Backdrop: two cross-fading layers following the focused card, live-blurred.
+             Blur only — no gradient and no flat shade, per Mohammed's call. -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
-            <Rectangle Fill="#33000000"/>
+            <!-- Real blur: the same Composition GaussianBlur brush the frosted
+                 sidebar uses (SidebarBackdropBlurBrush, BlurAmount 20). It blurs
+                 everything rendered beneath it — here, the two backdrop images.
+                 AcrylicBrush is not used: HostBackdrop renders only its fallback
+                 solid on Xbox. -->
             <Rectangle>
                 <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="#000D0E13"/>
-                        <GradientStop Offset="0.45" Color="#B30D0E13"/>
-                        <GradientStop Offset="0.75" Color="#FF0D0E13"/>
-                        <GradientStop Offset="1" Color="#FF0D0E13"/>
-                    </LinearGradientBrush>
+                    <shared:SidebarBackdropBlurBrush/>
                 </Rectangle.Fill>
             </Rectangle>
         </Grid>
