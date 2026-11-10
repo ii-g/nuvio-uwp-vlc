@@ -828,6 +828,37 @@ namespace Nuvio.Views
 
         // ---------- Backdrop ----------
 
+        // Dynamic gradient tint: the shade grades from fully transparent at
+        // the top to a dark peak at the bottom. Hero focus keeps the peak at
+        // 40% black (#66000000) so the fanart shows; any row focus deepens
+        // it to 80% (#CC000000) so the cards read. 200ms, same as the old
+        // dynamic blur. The XAML default is the hero peak, matching
+        // _shadeIsRow == false at startup.
+        private bool _shadeIsRow;
+        private static readonly Windows.UI.Color ShadePeakHero = Windows.UI.ColorHelper.FromArgb(0x66, 0, 0, 0);
+        private static readonly Windows.UI.Color ShadePeakRow = Windows.UI.ColorHelper.FromArgb(0xCC, 0, 0, 0);
+
+        private void SetBackdropShadeRowState(bool isRow)
+        {
+            if (_shadeIsRow == isRow) return;
+            _shadeIsRow = isRow;
+            var stop = BackdropShadePeakStop;
+            if (stop == null) return;
+            var target = isRow ? ShadePeakRow : ShadePeakHero;
+            if (stop.Color == target) return;
+            var animation = new ColorAnimation
+            {
+                To = target,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EnableDependentAnimation = true
+            };
+            var storyboard = new Storyboard();
+            Storyboard.SetTarget(animation, stop);
+            Storyboard.SetTargetProperty(animation, "Color");
+            storyboard.Children.Add(animation);
+            storyboard.Begin();
+        }
+
         private void OnGotFocus(object sender, RoutedEventArgs e)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
@@ -841,6 +872,7 @@ namespace Nuvio.Views
                 {
                     _lastFocusedKey = "meta:" + card.Meta.Id;
                     ShowBackdrop(card.Meta.Background);
+                    SetBackdropShadeRowState(true);
                     return;
                 }
                 var entry = item.Content as ProgressEntry;
@@ -848,6 +880,7 @@ namespace Nuvio.Views
                 {
                     _lastFocusedKey = "cw:" + entry.ContentId;
                     ShowBackdrop(entry.Background);
+                    SetBackdropShadeRowState(true);
                     return;
                 }
             }
@@ -859,6 +892,7 @@ namespace Nuvio.Views
                 // "enlarged" look. ShowBackdrop ignores empty, so the previous
                 // backdrop simply stays.
                 if (hero != null) ShowBackdrop(hero.Background);
+                SetBackdropShadeRowState(false);
             }
         }
 
