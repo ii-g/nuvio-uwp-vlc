@@ -559,6 +559,12 @@ namespace Nuvio
 
         private void AnimateSidebar(double targetWidth, bool labelsVisible)
         {
+            // Both logo elements must be Visible while either fades; the Completed
+            // handler pins Visibility with Opacity, so the wordmark can never paint
+            // outside the strip while collapsed (its 69.4 epx lockup overflows the
+            // 32 epx cell and build 232 showed its triangle left of the divider).
+            SidebarLogoIcon.Visibility = Visibility.Visible;
+            SidebarLogoWordmark.Visibility = Visibility.Visible;
             var storyboard = new Storyboard();
             var widthAnimation = new DoubleAnimation
             {
@@ -609,6 +615,8 @@ namespace Nuvio
                     label.Opacity = labelsVisible ? 1 : 0;
                 }
                 SidebarLogoIcon.Opacity = labelsVisible ? 0 : 1;
+                SidebarLogoWordmark.Visibility = labelsVisible ? Visibility.Visible : Visibility.Collapsed;
+                SidebarLogoIcon.Visibility = labelsVisible ? Visibility.Collapsed : Visibility.Visible;
             };
             _sidebarStoryboard = storyboard;
             storyboard.Begin();
