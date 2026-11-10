@@ -855,12 +855,29 @@ namespace Nuvio.Views
             {
                 _lastFocusedKey = "hero";
                 var hero = _viewModel.CurrentHero;
-                if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
+                // No poster fallback: a 300x450 poster blown up 3.2x is the
+                // "enlarged" look. ShowBackdrop ignores empty, so the previous
+                // backdrop simply stays.
+                if (hero != null) ShowBackdrop(hero.Background);
             }
+        }
+
+        // Backdrop URLs are normalized once, here, before any storing, so
+        // _backdropPendingUrl / _backdropCurrentUrl comparisons stay consistent:
+        // MetaHub medium (1280x720) -> large (3840x2160), TMDB w780/w1280 -> w1920.
+        private static string UpgradeBackdropUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return url;
+            url = url.Replace("images.metahub.space/background/medium/",
+                              "images.metahub.space/background/large/");
+            url = url.Replace("image.tmdb.org/t/p/w780/", "image.tmdb.org/t/p/w1920/")
+                     .Replace("image.tmdb.org/t/p/w1280/", "image.tmdb.org/t/p/w1920/");
+            return url;
         }
 
         private void ShowBackdrop(string url)
         {
+            url = UpgradeBackdropUrl(url);
             if (string.IsNullOrEmpty(url) || url == _backdropCurrentUrl) return;
             _backdropPendingUrl = url;
             _backdropTimer.Stop();
@@ -877,7 +894,11 @@ namespace Nuvio.Views
             BitmapImage image;
             try
             {
-                image = new BitmapImage(new Uri(url));
+                // Decode at the physical width (1920): the 3840-wide large
+                // source would otherwise decode fully (~33 MB per layer).
+                image = new BitmapImage();
+                image.DecodePixelWidth = 1920;
+                image.UriSource = new Uri(url);
             }
             catch (Exception ex)
             {
@@ -1036,7 +1057,7 @@ namespace Nuvio.Views
                 _viewModel.SetHeroIndex(_viewModel.HeroIndex + (action == "rb" ? 1 : -1));
                 UpdateDots();
                 var hero = _viewModel.CurrentHero;
-                if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
+                if (hero != null) ShowBackdrop(hero.Background);
                 _heroTimer.Stop();
                 _heroTimer.Start();
                 return true;
