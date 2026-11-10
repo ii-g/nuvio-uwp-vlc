@@ -103,11 +103,21 @@
                  sidebar uses (SidebarBackdropBlurBrush, BlurAmount 20). It blurs
                  everything rendered beneath it — here, the two backdrop images.
                  AcrylicBrush is not used: HostBackdrop renders only its fallback
-                 solid on Xbox. -->
+                 solid on Xbox. Graduated, not full-screen: the opacity mask is
+                 a vertical alpha ramp (no color, no shade) — transparent where
+                 the backdrop stays sharp, opaque where it is fully blurred.
+                 The stop offsets are animated from code-behind
+                 (SetBackdropBlurRowState) so the clear zone follows focus. -->
             <Rectangle>
                 <Rectangle.Fill>
                     <shared:SidebarBackdropBlurBrush/>
                 </Rectangle.Fill>
+                <Rectangle.OpacityMask>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop x:Name="BlurMaskClearStop" Offset="0.30" Color="#00000000"/>
+                        <GradientStop x:Name="BlurMaskFullStop" Offset="0.80" Color="#FF000000"/>
+                    </LinearGradientBrush>
+                </Rectangle.OpacityMask>
             </Rectangle>
         </Grid>
 
