@@ -342,14 +342,18 @@ namespace Nuvio.Views
         /// edge flush with the viewport edge — the end padding is 0 by
         /// Mohammed's call in build 241: the 68 epx end pad only disfigured
         /// the last poster) or fully hidden (its edge at the viewport edge).
-        /// The nudge is capped at 11 epx: the anchor pins the focused slot 6 epx
-        /// inside the start edge and the card sits 9 epx inside its slot, so
-        /// the 1.06 focus zoom (~2.6 epx) and the focus ring (~1 epx) leave
-        /// only ~11 epx of headroom before the focused card itself leaves the
-        /// viewport. A bigger straddle (a wide Continue card) is left as-is
-        /// rather than breaking the focused card. Skipped when no realized
-        /// card straddles the edge or the row does not scroll horizontally
-        /// (the vertical catalog grid).</summary>
+        /// There is no cap on the nudge (Mohammed's call: "اشيل الحد هذا"):
+        /// a wide Continue card can straddle by tens of epx and the straddle
+        /// is always resolved, however large the shift. The shift moves the
+        /// focused card too, so the direction is chosen with the focused card
+        /// in mind: showing the straddler shifts the row toward the start
+        /// edge, and when that would push the focused card out of the
+        /// viewport the straddler is hidden instead — hiding shifts the row
+        /// inward and can never cut the focused card. Which way is safe is
+        /// read off the focused card's live rect at the target offset, never
+        /// from a fixed threshold. Skipped when no realized card straddles
+        /// the edge or the row does not scroll horizontally (the vertical
+        /// catalog grid).</summary>
         private double SnapRowEnd(GridView row, ScrollViewer viewer, double target)
         {
             if (viewer.ScrollableWidth <= 0) return target;
@@ -387,11 +391,53 @@ namespace Nuvio.Views
             const double endPad = 0;
             var toVisible = endPad - straddleLeft;
             var toHidden = -straddleRight;
-            var nudge = Math.Abs(toVisible) <= Math.Abs(toHidden) ? toVisible : toHidden;
-            const double maxNudge = 11;
-            if (Math.Abs(nudge) > maxNudge) return target;
+            var showing = Math.Abs(toVisible) <= Math.Abs(toHidden);
+            var nudge = showing ? toVisible : toHidden;
+            // No cap (see the doc comment): the straddle is always resolved.
+            // But the shift moves the focused card as well — if the chosen
+            // shift would push it out of the viewport, take the other shift
+            // instead; it moves the focused card inward, so it is always
+            // safe. When focus is not in this row there is nothing to
+            // protect and the nearer shift is used as-is.
+            if (WouldCutFocusedCard(row, viewer, target, nudge))
+            {
+                nudge = showing ? toHidden : toVisible;
+            }
             var snapped = rtl ? target + nudge : target - nudge;
             return Math.Max(0, Math.Min(viewer.ScrollableWidth, snapped));
+        }
+
+        /// <summary>True when shifting this row's content by <paramref name="shift"/>
+        /// (physical epx, + = content moves right, as SnapRowEnd applies its
+        /// nudge) would push the focused card in this row out of the viewport.
+        /// The focused card's live visual rect at the target offset is measured
+        /// — the template root, so the 1.06 focus zoom and the focus ring are
+        /// inside the measured bounds — and no fixed threshold is used: the
+        /// headroom is whatever the card actually has. False when focus is not
+        /// in this row (nothing in this row to protect) or the shift keeps the
+        /// card fully inside.</summary>
+        private bool WouldCutFocusedCard(GridView row, ScrollViewer viewer, double target, double shift)
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null) return false;
+            if (!ReferenceEquals(FindAncestorGridView(focused), row)) return false;
+            var item = FindAncestorGridViewItem(focused);
+            if (item == null) return false;
+            // The template root carries the focus zoom (ScaleTransform), so its
+            // bounds are the card's visual bounds; fall back to the item
+            // itself if the template root is not reachable.
+            FrameworkElement visual = null;
+            if (VisualTreeHelper.GetChildrenCount(item) > 0)
+                visual = VisualTreeHelper.GetChild(item, 0) as FrameworkElement;
+            visual = visual ?? item;
+            var rect = visual.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, visual.ActualWidth, visual.ActualHeight));
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
+            var offsetShift = rtl ? target - viewer.HorizontalOffset : viewer.HorizontalOffset - target;
+            var left = physicalLeft + offsetShift + shift;
+            var right = physicalRight + offsetShift + shift;
+            return left < 0 || right > viewer.ViewportWidth;
         }
 
         /// <summary>Tidies a row that is already where it should be: if a card
