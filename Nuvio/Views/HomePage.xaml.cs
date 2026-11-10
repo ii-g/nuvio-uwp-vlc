@@ -9,7 +9,6 @@ using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
-using Nuvio.Views.Shared;
 using Windows.ApplicationModel.Resources;
 using Windows.Foundation;
 using Windows.UI.Xaml;
@@ -39,7 +38,6 @@ namespace Nuvio.Views
         private bool _backdropFrontIsA;
         private string _backdropCurrentUrl;
         private string _backdropPendingUrl;
-        private GraduatedBackdropBlurBrush _backdropBlurBrush;
         private string _lastFocusedKey;
         private GridView _lastAnchoredRow;
         private bool _rowDirectionLogged;
@@ -48,7 +46,6 @@ namespace Nuvio.Views
         {
             NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Required;
             InitializeComponent();
-            _backdropBlurBrush = BackdropBlurRect.Fill as GraduatedBackdropBlurBrush;
             var shell = MainPage.Current;
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
             DataContext = _viewModel;
@@ -836,9 +833,6 @@ namespace Nuvio.Views
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return;
             AnchorFocusedElement(focused);
-            // Dynamic graduated blur: the clear zone follows focus — hero
-            // focused keeps the top clear, any row focus pulls the blur up.
-            _backdropBlurBrush?.SetRowState(!IsDescendantOf(focused, HeroSection));
             var item = FindAncestorGridViewItem(focused);
             if (item != null)
             {
@@ -867,10 +861,6 @@ namespace Nuvio.Views
                 if (hero != null) ShowBackdrop(hero.Background);
             }
         }
-
-        // Dynamic graduated blur: the mask, its states and its animation
-        // live in the one shared definition (Views/Shared/
-        // GraduatedBackdropBlurBrush) — driven from OnGotFocus above.
 
         // Backdrop URLs are normalized once, here, before any storing, so
         // _backdropPendingUrl / _backdropCurrentUrl comparisons stay consistent:
