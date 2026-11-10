@@ -166,7 +166,10 @@
   </data>
   <!-- Milestone 2 strings: search + catalog. English values are the English keys from web/js/core/i18n.js. -->
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
-    <value>Search movies &amp; series</value>
+    <value>Movies, Shows, Cast, and More</value>
+  </data>
+  <data name="SearchPlaceholderEnglish.Text" xml:space="preserve">
+    <value>Movies, Shows, Cast, and More</value>
   </data>
   <data name="RecentSearchesTitle.Text" xml:space="preserve">
     <value>Recent Searches</value>
