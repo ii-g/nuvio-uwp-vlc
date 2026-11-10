@@ -142,6 +142,16 @@
                              1 epx above the art's bottom edge and the poster leaked out
                              below it.) -->
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
+                            <Border x:Name="FocusSheen" CornerRadius="6" Opacity="0" IsHitTestVisible="False">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop x:Name="SheenStop1" Color="#00FFFFFF" Offset="-0.55"/>
+                                        <GradientStop x:Name="SheenStop2" Color="#66FFFFFF" Offset="-0.48"/>
+                                        <GradientStop x:Name="SheenStop3" Color="#66FFFFFF" Offset="-0.42"/>
+                                        <GradientStop x:Name="SheenStop4" Color="#00FFFFFF" Offset="-0.35"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
                             <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" IsHitTestVisible="False"/>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
@@ -162,6 +172,11 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -171,6 +186,11 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
                                         <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -202,6 +222,18 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
+                            <Border x:Name="FocusSheen" CornerRadius="6" Opacity="0" IsHitTestVisible="False">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop x:Name="SheenStop1" Color="#00FFFFFF" Offset="-0.55"/>
+                                        <GradientStop x:Name="SheenStop2" Color="#66FFFFFF" Offset="-0.48"/>
+                                        <GradientStop x:Name="SheenStop3" Color="#66FFFFFF" Offset="-0.42"/>
+                                        <GradientStop x:Name="SheenStop4" Color="#00FFFFFF" Offset="-0.35"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
@@ -213,6 +245,11 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -220,6 +257,11 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
