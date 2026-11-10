@@ -227,6 +227,7 @@ namespace Nuvio
             _controller = new ControllerBridge((action, repeat) =>
             {
                 _userInputSeen = true;
+                FocusOverlay?.MarkUserInputSeen();
                 _router.Handle(action, repeat);
             });
 
@@ -366,6 +367,7 @@ namespace Nuvio
             // Any key reaching here is real user input: it arms focus-driven sidebar
             // expansion (the launch activation focus must not open the strip).
             _userInputSeen = true;
+            FocusOverlay?.MarkUserInputSeen();
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
             // natively, and while a dialog is open, where ContentDialog handles keys natively.
@@ -797,6 +799,10 @@ namespace Nuvio
                 SidebarLogoIcon.Opacity = labelsVisible ? 0 : 1;
                 SidebarLogoWordmark.Visibility = labelsVisible ? Visibility.Visible : Visibility.Collapsed;
                 SidebarLogoIcon.Visibility = labelsVisible ? Visibility.Collapsed : Visibility.Visible;
+                // The focused sidebar button changed width with the strip; the
+                // global focus overlay re-targets to its final bounds (its
+                // SizeChanged follow-up already tracks the animation).
+                FocusOverlay?.Refresh();
             };
             _sidebarStoryboard = storyboard;
             storyboard.Begin();
