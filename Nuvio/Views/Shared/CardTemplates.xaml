@@ -133,10 +133,17 @@
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
                         <!-- Web: the ring wraps the art only (.card.focused .card-art), 0.22rem
-                             (~1.75 epx) with the title outside it. Height is the art height, so
-                             the ring never swallows the title; Margin -1 puts it just outside
-                             the art like the web's box-shadow ring. -->
-                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}"/>
+                             (~1.75 epx) with the title outside it. The host Grid is the art
+                             height, so the ring never swallows the title; the ring stretches
+                             inside it with Margin -1, so it sits 1 epx outside the art on all
+                             four sides like the web's box-shadow ring. (An explicit Height on
+                             the ring itself did not do this: with VerticalAlignment Top the
+                             -1 margin only shifted the ring up 1 epx, so its bottom edge sat
+                             1 epx above the art's bottom edge and the poster leaked out
+                             below it.) -->
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
+                            <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" IsHitTestVisible="False"/>
+                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
