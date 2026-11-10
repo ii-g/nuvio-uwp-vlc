@@ -99,7 +99,6 @@ namespace Nuvio.Views
             await _viewModel.LoadAsync().ConfigureAwait(true);
             if (!_focusedOnce && (_viewModel.HasHero || _viewModel.IsEmpty))
             {
-                _focusedOnce = true;
                 FocusFirst();
             }
         }
@@ -130,23 +129,53 @@ namespace Nuvio.Views
             if (e.PropertyName == nameof(HomeViewModel.HeroIndex)) UpdateDots();
             if (!_focusedOnce && (_viewModel.HasHero || _viewModel.IsEmpty))
             {
-                _focusedOnce = true;
                 FocusFirst();
             }
         }
 
+        /// <summary>Moves initial focus into the content (hero play button, or the manage
+        /// addons button when the library is empty). Two launch bugs lived here: the
+        /// PropertyChanged handler fires synchronously when HasHero flips, before the
+        /// layout pass makes the hero button focusable, so a direct Focus() returns
+        /// false — and the old code spent the one-shot _focusedOnce flag before calling
+        /// FocusFirst, so the focus was never retried, initial focus stayed on
+        /// HomeButton, and the sidebar stayed open (build 216). The focus is now
+        /// deferred one dispatcher tick (after layout) and the flag is set only when
+        /// Focus() actually lands; a miss is retried by the next property change or
+        /// by OnNavigatedTo after LoadAsync. It also bails out if the user already
+        /// moved focus into the page, so a late tick never yanks focus away.</summary>
         private void FocusFirst()
         {
-            if (_viewModel.HasHero)
+            // Fire-and-forget: the IAsyncAction is deliberately not captured, so no
+            // `var _` shadows a later discard (that shadow caused CS0266 in MainPage).
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
             {
-                HeroPlayButton.Focus(FocusState.Programmatic);
-                return;
-            }
-            if (_viewModel.IsEmpty)
-            {
-                ManageAddonsButton.Focus(FocusState.Programmatic);
-            }
-            // Otherwise the input router focuses the first focusable element on first input.
+                if (_focusedOnce) return;
+                var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                if (focused != null && IsDescendantOf(focused, this))
+                {
+                    // The user already moved focus into the page: initial focus is done.
+                    _focusedOnce = true;
+                    return;
+                }
+                bool moved = false;
+                if (_viewModel.HasHero)
+                {
+                    moved = HeroPlayButton.Focus(FocusState.Programmatic);
+                }
+                else if (_viewModel.IsEmpty)
+                {
+                    moved = ManageAddonsButton.Focus(FocusState.Programmatic);
+                }
+                else
+                {
+                    // No hero and not empty: nothing to focus here, the input router
+                    // focuses the first focusable element on first input.
+                    _focusedOnce = true;
+                    return;
+                }
+                if (moved) _focusedOnce = true;
+            });
         }
 
         // ---------- Hero ----------
@@ -1017,10 +1046,12 @@ namespace Nuvio.Views
                 // Sidebar divider: on the content-facing edge (left in RTL, right in LTR).
                 return rtl ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
             if (parameter as string == "logo")
-                // Sidebar logo cell: the 22 epx icon must sit at the same start edge as the
-                // button icons (8 epx panel + 8 epx button padding), so the cell keeps 8 epx
-                // on the END side only — the old fixed Padding="8,0" left a 16 epx cell that
-                // shrank the icon. RTL: content [8,32] of the 32 epx inner strip.
+                // Sidebar logo icon Margin: the 22 epx icon must sit at the same start edge
+                // as the button icons (8 epx panel + 8 epx button padding). It is a Margin
+                // on the icon itself, not padding on the logo row: the row carries no
+                // padding so the wordmark can centre exactly in the full row width when
+                // expanded. The old fixed Padding="8,0" left a 16 epx cell that shrank
+                // the icon. RTL: content [8,32] of the 32 epx inner strip.
                 return rtl ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
