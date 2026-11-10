@@ -94,16 +94,18 @@
                 <!-- Empty state: a centred hero shown while no query is active and no
                      results exist (ViewModel.IsEmptyHero — first entry, or the query
                      cleared). The page cross-fades it against the results below. The
-                     magnifier sits in an accent circle with a soft accent halo (outer
-                     ring at 8% accent, inner at 20%); the title and the muted line sit
-                     under it, and the recent searches live under the hero as part of the
-                     empty state — a chip runs its query, as before. -->
+                     magnifier sits in a white circle with a soft white halo (outer
+                     ring at 8% white, inner at 20%) on the dark theme — build 241:
+                     the old blue accent circle is gone, only white/transparency
+                     here; the title and the muted line sit under it, and the recent
+                     searches live under the hero as part of the empty state — a chip
+                     runs its query, as before. -->
                 <Grid x:Name="EmptyHero" MinHeight="400">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                         <Grid Width="76" Height="76" HorizontalAlignment="Center">
-                            <Ellipse Width="76" Height="76" Fill="#142F6FED"/>
-                            <Ellipse Width="56" Height="56" Fill="#332F6FED"/>
-                            <FontIcon Glyph="&#xE721;" FontSize="24" Foreground="#FF3C7BFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Ellipse Width="76" Height="76" Fill="#14FFFFFF"/>
+                            <Ellipse Width="56" Height="56" Fill="#33FFFFFF"/>
+                            <FontIcon Glyph="&#xE721;" FontSize="24" Foreground="#FFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
                         <TextBlock x:Uid="SearchEmptyTitle" Text="Search" FontSize="17" FontWeight="Bold" Foreground="White" TextAlignment="Center" HorizontalAlignment="Center"/>
                         <TextBlock x:Uid="SearchEmptySubtitle" Text="Search for movies and series" FontSize="9" Foreground="#80FFFFFF" TextAlignment="Center" HorizontalAlignment="Center"/>
