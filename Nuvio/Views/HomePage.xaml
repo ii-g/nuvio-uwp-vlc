@@ -122,26 +122,21 @@
                 <Grid x:Name="HeroSection" Visibility="{Binding HasHero, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="272" Height="356">
                     <StackPanel x:Name="HeroContent" VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=hero}" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="352">
                         <Image x:Name="HeroLogo" Source="{Binding CurrentHero.Logo, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="240" MaxHeight="80" Visibility="{Binding CurrentHero.Logo, Converter={StaticResource StringToVisibilityConverter}}"/>
-                        <!-- Text shadow: a 1 epx offset black copy (60%) behind the title
-                             so white text reads on light fanart. UWP has no text-shadow
-                             property, so the shadow is a duplicate TextBlock whose layout
-                             properties mirror the real one exactly. -->
+                        <!-- Text glow: soft omnidirectional halo via shared:TextGlow
+                             (Composition DropShadow, blur 3, black 90%) so white text
+                             reads on light fanart. -->
                         <Grid Visibility="{Binding CurrentHero.Logo, Converter={StaticResource InverseStringToVisibilityConverter}}">
-                            <TextBlock Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <TextBlock x:Name="HeroTitle" Text="{Binding CurrentHero.Name}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="9" Margin="0,9,0,0">
                             <Grid>
-                                <TextBlock Text="{Binding HeroYear}" FontSize="9" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                <TextBlock Text="{Binding HeroYear}" FontSize="9" Foreground="#B8FFFFFF"/>
+                                <TextBlock Text="{Binding HeroYear}" FontSize="9" Foreground="#B8FFFFFF" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                             <Grid>
-                                <TextBlock Text="{Binding HeroRating}" FontSize="9" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                <TextBlock Text="{Binding HeroRating}" FontSize="9" Foreground="White"/>
+                                <TextBlock Text="{Binding HeroRating}" FontSize="9" Foreground="White" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                             <Grid>
-                                <TextBlock Text="{Binding HeroType}" FontSize="9" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                <TextBlock Text="{Binding HeroType}" FontSize="9" Foreground="#B8FFFFFF"/>
+                                <TextBlock Text="{Binding HeroType}" FontSize="9" Foreground="#B8FFFFFF" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding HeroGenres}" Margin="0,9,0,0">
@@ -154,16 +149,14 @@
                                 <DataTemplate>
                                     <Border Background="#1FFFFFFF" CornerRadius="8" Padding="6,1">
                                         <Grid>
-                                            <TextBlock Text="{Binding}" FontSize="8" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                            <TextBlock Text="{Binding}" FontSize="8"/>
+                                            <TextBlock Text="{Binding}" FontSize="8" shared:TextGlow.IsEnabled="True"/>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <Grid Margin="0,9,0,0">
-                            <TextBlock Text="{Binding HeroDescription}" FontSize="9" Foreground="#99000000" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock x:Name="HeroDescription" Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <TextBlock x:Name="HeroDescription" Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,13,0,0">
                             <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
@@ -186,8 +179,7 @@
                 <!-- Continue Watching -->
                 <StackPanel x:Name="ContinueSection" Visibility="{Binding HasContinueItems, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,13">
                     <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
-                        <TextBlock Text="{Binding Text, ElementName=ContinueTitleText}" FontSize="12" FontWeight="Bold" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                        <TextBlock x:Name="ContinueTitleText" x:Uid="ContinueWatchingTitle" Text="Continue Watching" FontSize="12" FontWeight="Bold"/>
+                        <TextBlock x:Uid="ContinueWatchingTitle" Text="Continue Watching" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                     </Grid>
                     <GridView x:Name="ContinueGridView" ItemsSource="{Binding ContinueItems}" ItemTemplate="{StaticResource ContinueCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="ContinueGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHome}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowBleed}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False">
                         <GridView.ItemsPanel>
@@ -205,12 +197,10 @@
                             <StackPanel Margin="0,0,0,13">
                                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
                                     <Grid>
-                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Bold" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                                     </Grid>
                                     <Grid VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Subtitle}" FontSize="8" Foreground="#99000000" IsHitTestVisible="False"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                                        <TextBlock Text="{Binding Subtitle}" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Subtitle}" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                                     </Grid>
                                     <ProgressRing IsActive="{Binding IsLoading}" Width="8" Height="8" Foreground="White"/>
                                 </StackPanel>
