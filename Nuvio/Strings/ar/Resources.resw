@@ -167,7 +167,10 @@
   </data>
   <!-- Milestone 2 strings: search + catalog. Arabic is the authored language; translations come from web/js/core/i18n.js. -->
   <data name="SearchBox.PlaceholderText" xml:space="preserve">
-    <value>ابحث عن أفلام ومسلسلات</value>
+    <value>أفلام، مسلسلات، ممثلون، والمزيد</value>
+  </data>
+  <data name="SearchPlaceholderEnglish.Text" xml:space="preserve">
+    <value>Movies, Shows, Cast, and More</value>
   </data>
   <data name="RecentSearchesTitle.Text" xml:space="preserve">
     <value>عمليات البحث الأخيرة</value>
