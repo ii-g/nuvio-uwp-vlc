@@ -458,9 +458,9 @@ namespace Nuvio.Views
         /// (web scrollIntoView's row part): scrolls only when the card sticks out past
         /// the row padding, never yanks it to the anchor. The anchor is for moves
         /// inside the row (AnchorRow). The pads are 0 epx at the flow end (build 241:
-        /// no end padding — the last card ends flush or hidden whole) and 6 epx at
-        /// the flow start (of the page's 68 epx start inset, 48 epx — the collapsed
-        /// strip's width — still sit outside the track).
+        /// no end padding — the last card ends flush or hidden whole) and the
+        /// hero-aligned inset at the flow start (RowStartAnchorInset: 108 epx RTL /
+        /// 26 epx LTR — the same place the first card rests, rowHome padding).
         /// The offset signs mirror AnchorRow: in RTL the offset grows as content
         /// moves right, in LTR as it moves left. The end is also tidied (SnapRowEnd)
         /// so a leftover offset never leaves a card half-cut at the end edge.</summary>
@@ -474,7 +474,10 @@ namespace Nuvio.Views
             // so rect.Left/Right are the start/end edges there, not the physical ones.
             var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
             var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
-            const double startPad = 6;
+            // The start pad is the hero-aligned inset (RowStartAnchorInset),
+            // i.e. the row padding the first card rests at — a card past it
+            // is pulled back to the hero edge.
+            var startPad = FlowDirectionToThicknessConverter.RowStartAnchorInset(rtl);
             const double endPad = 0;
             double? target = null;
             if (rtl)
@@ -500,8 +503,10 @@ namespace Nuvio.Views
         }
 
         /// <summary>Anchors a focused card to the row's flow-start edge (web
-        /// focusInHorizontalRow): right in RTL, left in LTR, one card-padding (6 epx)
-        /// inside the edge — the same place the first card rests. The offset is computed
+        /// focusInHorizontalRow): right in RTL, left in LTR, on the hero
+        /// content's start edge (RowStartAnchorInset: 108 epx RTL / 26 epx
+        /// LTR inside the track edge) — the same place the first card rests
+        /// (rowHome padding). The offset is computed
         /// from the card's on-screen rect, so no ratio is guessed: BringIntoView ratios
         /// are fractions of the flow extent, which is why 0.99 pinned the card to the
         /// flow end (the left edge in RTL) on build 162 instead of the start.</summary>
@@ -519,8 +524,9 @@ namespace Nuvio.Views
                 _rowDirectionLogged = true;
                 Log.Write("Row flow direction: " + (rtl ? "RTL" : "LTR"));
             }
-            // The row's own padding: the anchor sits where the first card rests (the web's
-            // scroll-padding), and the 1.06 focus zoom only overflows ~2.6 epx past it.
+            // The anchor sits where the first card rests (rowHome padding —
+            // the hero-aligned inset, RowStartAnchorInset), and the 1.06
+            // focus zoom only overflows ~2.6 epx past it.
             // TransformToVisual reports RTL-origin coordinates (x measured from the
             // flow-start edge): build 180 proved it — sidebarX=0 for a strip visibly at
             // 912..960 — so in RTL rect.Left is the card's START edge (physical right)
@@ -533,7 +539,7 @@ namespace Nuvio.Views
             // same in both directions.
             var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
             var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
-            const double startInset = 6;
+            var startInset = FlowDirectionToThicknessConverter.RowStartAnchorInset(rtl);
             double target;
             if (rtl)
             {
@@ -1356,9 +1362,20 @@ namespace Nuvio.Views
     /// the hero's start margin — in RTL the web reserves --rtl-safe-start (156 epx:
     /// the expanded sidebar's footprint) so the hero never slides under the open
     /// strip, i.e. 88 past the 68 page pad; in LTR the hero aligns with the first
-    /// card (6 past the pad).</summary>
+    /// card (6 past the pad). Parameters "rowHome" and "rowHeader": the home rows'
+    /// track padding and title inset — the start pad/inset is RowStartAnchorInset,
+    /// so the first card and the row title start on the hero content's start edge;
+    /// "row" keeps the old 6 epx start pad for pages with no hero (Search).</summary>
     internal sealed class FlowDirectionToThicknessConverter : Windows.UI.Xaml.Data.IValueConverter
     {
+        /// <summary>The home row's start anchor inset: the hero's start margin
+        /// (88 epx RTL / 6 epx LTR, the same value as the "hero" branch) plus
+        /// the start bleed (20 epx, the same value as the "rowBleed" branch) —
+        /// 108 epx RTL / 26 epx LTR inside the track edge. The first card rests
+        /// here (rowHome padding) and AnchorRow pins the focused card here, so
+        /// the row's start edge sits on the hero content's start edge.</summary>
+        internal static double RowStartAnchorInset(bool rtl) => (rtl ? 88 : 6) + 20;
+
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
@@ -1384,6 +1401,22 @@ namespace Nuvio.Views
                 // outside it. The vertical catalog grid keeps its own 6 epx padding (its
                 // end is the bottom, not a horizontal edge).
                 return rtl ? new Thickness(0, 9, 6, 12) : new Thickness(6, 9, 0, 12);
+            if (parameter as string == "rowHome")
+                // The home rows' track padding: same as "row" except the
+                // flow-start pad is RowStartAnchorInset — so the first card
+                // rests on the hero content's start edge (x=804 RTL, x=74
+                // LTR) instead of 6 epx inside the track edge. The track
+                // edge itself does not move (rowBleed still opens it to the
+                // sidebar's inner edge); only the rest position moves.
+                // Search rows keep "row": that page has no hero to align to.
+                return rtl ? new Thickness(0, 9, RowStartAnchorInset(rtl), 12) : new Thickness(RowStartAnchorInset(rtl), 9, 0, 12);
+            if (parameter as string == "rowHeader")
+                // The row title's start inset: the hero margin's start inset
+                // (88 epx RTL / 6 epx LTR — the same value as the "hero"
+                // branch), with no bottom margin — so the title starts on
+                // the hero content's start edge, on the same edge as the
+                // first card.
+                return rtl ? new Thickness(0, 0, 88, 0) : new Thickness(6, 0, 0, 0);
             if (parameter as string == "rowBleed")
                 // Two-sided bleed for the horizontal row track. The flow-END
                 // side is opened by the page's end inset (32 epx), so the
