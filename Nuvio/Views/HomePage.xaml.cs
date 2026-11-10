@@ -216,6 +216,11 @@ namespace Nuvio.Views
                         : Windows.UI.Color.FromArgb(0x4D, 0xFF, 0xFF, 0xFF)),
                 });
             }
+            // The LB/RB hint only means something when there is more than
+            // one slide to flip between.
+            var showBumpers = _viewModel.HeroItems.Count > 1;
+            LbChip.Visibility = showBumpers ? Visibility.Visible : Visibility.Collapsed;
+            RbChip.Visibility = showBumpers ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void HeroPlayButton_Click(object sender, RoutedEventArgs e)
@@ -918,18 +923,36 @@ namespace Nuvio.Views
             {
                 if (FocusFirstCardOfFirstRow()) return true;
             }
-            // Hero buttons: left/right moves focus between Play and Details
-            // first (the pre-build-241 behaviour). Build 241 made every
-            // left/right flip the carousel slide and keep focus on the button,
-            // so the two buttons could no longer be reached from each other.
-            // Flow-aware: towardStart is right in RTL, left in LTR; towardEnd
-            // is the opposite. Play sits at the start edge, Details at the
-            // end edge. Right never flips a slide. Left from Details advances
-            // one slide, clamped at the last slide; the dots, backdrop and
-            // auto-rotate timer follow the new slide (as in build 241). No
-            // wrap ever: right from Play opens the sidebar from any slide
-            // instead of wrapping to the last slide, and the advance stops at
-            // the last slide instead of wrapping to the first.
+            // RB / LB flip the hero carousel while focus stays on the hero
+            // button: RB advances one slide, LB goes back one, wrapping at
+            // both ends (SetHeroIndex wraps). Only while focus sits on the
+            // hero — the same scope the old D-pad flip had. The bridge sends
+            // "lb"/"rb" edge-triggered only (no hold-repeat), so one press is
+            // exactly one slide; the dots, backdrop and auto-rotate timer
+            // follow the new slide, as the manual flip always did. RB/LB are
+            // unused anywhere else in the native UI (the router ignores them
+            // outside the player, and the player is M4), so nothing else
+            // loses a binding.
+            if ((action == "lb" || action == "rb") && IsDescendantOf(focused, HeroSection))
+            {
+                if (_viewModel.HeroItems.Count < 2) return true;
+                _viewModel.SetHeroIndex(_viewModel.HeroIndex + (action == "rb" ? 1 : -1));
+                UpdateDots();
+                var hero = _viewModel.CurrentHero;
+                if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
+                _heroTimer.Stop();
+                _heroTimer.Start();
+                return true;
+            }
+            // Hero buttons: left/right only moves focus between Play and
+            // Details (the pre-build-241 behaviour). Flow-aware: towardStart
+            // is right in RTL, left in LTR; towardEnd is the opposite. Play
+            // sits at the start edge, Details at the end edge. Right never
+            // flips a slide, and left from Details no longer flips one
+            // either — slide flipping moved to RB/LB (above), which wraps.
+            // Toward the end edge from Details there is nowhere to go, so
+            // focus stays on Details. Toward the start edge from Play opens
+            // the sidebar from any slide.
             if ((action == "left" || action == "right") && IsDescendantOf(focused, HeroSection))
             {
                 var rtl = FlowDirection == FlowDirection.RightToLeft;
@@ -956,19 +979,9 @@ namespace Nuvio.Views
                         HeroPlayButton.Focus(FocusState.Programmatic);
                         return true;
                     }
-                    // Toward the end edge from Details: advance one slide
-                    // (the web nav-edge rule: forward is left in RTL, right
-                    // in LTR, and towardEnd is forward), clamped at the last
-                    // slide, never wrapping to the first.
-                    if (_viewModel.HeroIndex < _viewModel.HeroItems.Count - 1)
-                    {
-                        _viewModel.SetHeroIndex(_viewModel.HeroIndex + 1);
-                        UpdateDots();
-                        var hero = _viewModel.CurrentHero;
-                        if (hero != null) ShowBackdrop(hero.Background ?? hero.Poster);
-                        _heroTimer.Stop();
-                        _heroTimer.Start();
-                    }
+                    // Toward the end edge from Details: nowhere to go —
+                    // focus stays on Details. (Slide flipping used to live
+                    // here; it moved to RB/LB above.)
                     return true;
                 }
                 return false;
