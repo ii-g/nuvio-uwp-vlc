@@ -31,7 +31,18 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid x:Name="RootGrid" CornerRadius="{TemplateBinding CornerRadius}">
+                            <!-- State background (active / hover / pressed / focused) on its
+                                 own Border so it can hide while the strip is collapsed: its
+                                 Visibility follows SidebarLogoWordmark's, which AnimateSidebar
+                                 pins to Collapsed the moment a collapse starts and to Visible
+                                 the moment an expansion starts — so in the collapsed strip the
+                                 active page shows only the ActiveUnderline under the icon (no
+                                 circle: on the 32 epx-wide strip the pill would render as one),
+                                 and the pill background is back as soon as the strip opens.
+                                 ElementName resolves through the templated parent's namescope
+                                 (the page), where the wordmark lives. -->
+                            <Border x:Name="StateBackground" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" Visibility="{Binding Visibility, ElementName=SidebarLogoWordmark}"/>
                             <!-- The content is a Grid that fills the button (see the five buttons
                                  below): its first column is the icon at the flow-start edge and
                                  the label column stretches, with the label text aligned to the
@@ -66,7 +77,11 @@
                                      and differ only in surface depth. The active (selected-page)
                                      look is owned by SetSidebarActive: surface-2 bg + white
                                      text + the underline below (a thin light transparent line
-                                     under the icon, replacing the blue accent bar). -->
+                                     under the icon, replacing the blue accent bar). Collapsed,
+                                     the state background hides entirely (StateBackground follows
+                                     the wordmark's Visibility): on the 32 epx-wide strip the pill
+                                     would read as a circle behind the icon, so the active page
+                                     shows only the underline there. -->
                                 <VisualStateGroup x:Name="CommonStates">
                                     <!-- The 130 ms state cross-fade and the 0.96 press shrink from
                                          build 241 are removed: that animation is not what Mohammed
@@ -76,13 +91,13 @@
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateBackground" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#29FFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateBackground" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#29FFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -90,7 +105,7 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="StateBackground" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
