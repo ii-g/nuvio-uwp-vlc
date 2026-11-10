@@ -43,6 +43,7 @@ namespace Nuvio
         private bool _dialogOpen;
         private bool _sidebarExpanded;
         private Storyboard _sidebarStoryboard;
+        private bool _userInputSeen;
 
         internal AppSettings Settings { get; private set; }
         internal LocalStore Store { get; private set; }
@@ -93,11 +94,15 @@ namespace Nuvio
             Loaded += OnLoaded;
             // Collapsing sidebar (web: icons only, expands on focus/hover): expand when
             // a sidebar button gains focus, collapse when focus enters the page content.
-            HomeButton.GotFocus += (s, e) => ExpandSidebar();
-            SearchButton.GotFocus += (s, e) => ExpandSidebar();
-            LibraryButton.GotFocus += (s, e) => ExpandSidebar();
-            SettingsButton.GotFocus += (s, e) => ExpandSidebar();
-            ProfileButton.GotFocus += (s, e) => ExpandSidebar();
+            // Focus-driven expansion is gated on user input (ExpandSidebarOnFocus): at
+            // launch the framework parks initial focus on HomeButton before any input,
+            // and that activation focus must not open the strip — the strip starts
+            // collapsed. Pointer hover expands regardless (it is a user action).
+            HomeButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
+            SearchButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
+            LibraryButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
+            SettingsButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
+            ProfileButton.GotFocus += (s, e) => ExpandSidebarOnFocus();
             ContentFrame.GotFocus += (s, e) => CollapseSidebar();
             SidebarBorder.PointerEntered += (s, e) => ExpandSidebar();
             SidebarBorder.PointerExited += (s, e) => { if (!IsFocusInSidebar()) CollapseSidebar(); };
@@ -115,20 +120,14 @@ namespace Nuvio
             // flow-start edge through the shell grid's first column (right in RTL, left
             // in LTR), its divider faces the content, and its buttons' content sits at
             // the start edge in both states (web: icon at the start, labels fade), so
-            // the icons never move when the strip widens.
-            // The divider and the logo alignment are bound in MainPage.xaml (the
-            // "divider"/"logo" Thickness parameters and the alignment converter on each
-            // image's own FlowDirection): code-behind sets here did not reliably reach
-            // the render — build 180 still showed the divider on the outer edge and the
-            // logo off the icon column while the log proved RTL — the same one-time
-            // assignment failure the hero bindings fixed in the previous round, so the
-            // bindings own those two now and nothing here touches them.
-            var contentAlignment = rightToLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-            HomeButton.HorizontalContentAlignment = contentAlignment;
-            SearchButton.HorizontalContentAlignment = contentAlignment;
-            LibraryButton.HorizontalContentAlignment = contentAlignment;
-            SettingsButton.HorizontalContentAlignment = contentAlignment;
-            ProfileButton.HorizontalContentAlignment = contentAlignment;
+            // the icons never move when the strip widens. The divider, the logo and the
+            // button content alignment are bound in MainPage.xaml (the "divider"/"logo"
+            // Thickness parameters and the alignment converters on each element's own
+            // FlowDirection): code-behind sets here did not reliably reach the render —
+            // build 180 still showed the divider on the outer edge and the logo off the
+            // icon column while the log proved RTL, and build 216 still showed the
+            // labels left-aligned after two rounds of HorizontalContentAlignment sets —
+            // so the bindings own those now and nothing here touches them.
             Log.Write("Shell flow direction: " + (rightToLeft ? "RightToLeft" : "LeftToRight"));
         }
 
@@ -216,7 +215,11 @@ namespace Nuvio
             Stremio = new StremioService(Store);
             Navigation = new NavigationService(ContentFrame, Settings);
             _router = new NativeInputRouter(this, ContentFrame, Navigation);
-            _controller = new ControllerBridge((action, repeat) => _router.Handle(action, repeat));
+            _controller = new ControllerBridge((action, repeat) =>
+            {
+                _userInputSeen = true;
+                _router.Handle(action, repeat);
+            });
 
             try
             {
@@ -351,6 +354,9 @@ namespace Nuvio
 
         private void OnPreviewKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            // Any key reaching here is real user input: it arms focus-driven sidebar
+            // expansion (the launch activation focus must not open the strip).
+            _userInputSeen = true;
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
             // natively, and while a dialog is open, where ContentDialog handles keys natively.
@@ -440,6 +446,11 @@ namespace Nuvio
             var root = (sender as Button)?.Tag as string;
             if (string.IsNullOrEmpty(root)) return;
             Navigation?.NavigateRoot(root);
+            // The strip closes after a choice: the user picked a page, so the content
+            // takes the screen and the strip goes back to icons only. Focus stays on
+            // the chosen button (now in the collapsed strip); moving right enters the
+            // page, moving within the strip re-opens it.
+            CollapseSidebar();
         }
 
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
@@ -481,9 +492,34 @@ namespace Nuvio
         private static void SetSidebarActive(Button button, bool active)
         {
             if (button == null) return;
+            // Web .sidebar-item.active: --surface-2 bg + white text + the accent-strong
+            // bar at the start edge. Inactive items keep the muted text/icon (the style's
+            // Foreground setter). The bar lives inside the button template, so it is
+            // reached through the visual tree; a missing bar (template not applied yet)
+            // just skips that half of the look.
             button.Background = active
                 ? new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF))
                 : new Windows.UI.Xaml.Media.SolidColorBrush(Colors.Transparent);
+            button.Foreground = active
+                ? new Windows.UI.Xaml.Media.SolidColorBrush(Colors.White)
+                : new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+            var bar = FindTemplateChild(button, "ActiveBar");
+            if (bar != null) bar.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>Finds a named element inside a control's applied template.</summary>
+        private static FrameworkElement FindTemplateChild(DependencyObject root, string name)
+        {
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var element = child as FrameworkElement;
+                if (element != null && element.Name == name) return element;
+                var found = FindTemplateChild(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         /// <summary>
@@ -495,6 +531,19 @@ namespace Nuvio
         /// states are untouched, so expand/collapse cannot reintroduce the 0x800F1000
         /// animation crash.
         /// </summary>
+        /// <summary>Focus-driven expansion, gated on real user input. At launch the
+        /// framework parks initial focus on HomeButton before any input arrives; that
+        /// activation focus must not open the strip, or the app starts expanded (build
+        /// 216). The first controller poll or key arms the gate; pointer hover calls
+        /// ExpandSidebar directly and is unaffected. HomePage.FocusFirst is the other
+        /// half: once the hero loads it moves focus into the content, which collapses
+        /// the strip through ContentFrame.GotFocus.</summary>
+        private void ExpandSidebarOnFocus()
+        {
+            if (!_userInputSeen) return;
+            ExpandSidebar();
+        }
+
         private void ExpandSidebar()
         {
             if (_sidebarExpanded) return;
