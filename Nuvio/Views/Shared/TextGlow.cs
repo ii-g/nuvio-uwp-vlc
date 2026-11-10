@@ -78,7 +78,13 @@ namespace Nuvio.Views.Shared
         {
             public DropShadow Shadow;
             public SpriteVisual Visual;
-            public Visual ParentVisual;
+            // Children (VisualCollection) lives on ContainerVisual only,
+            // not on the base Visual class — touching it on a Visual is
+            // CS1061 (build 313). Store the parent as a ContainerVisual
+            // (null when the parent visual is not a container); the null
+            // guards in EnsureInserted and Detach then skip the glow
+            // instead of crashing.
+            public ContainerVisual ParentVisual;
             public Visual HostVisual;
             public bool IsInserted;
             public long TextChangedToken = -1;
@@ -161,7 +167,7 @@ namespace Nuvio.Views.Shared
                 var state = new GlowState
                 {
                     HostVisual = ElementCompositionPreview.GetElementVisual(element),
-                    ParentVisual = ElementCompositionPreview.GetElementVisual(parent),
+                    ParentVisual = ElementCompositionPreview.GetElementVisual(parent) as ContainerVisual,
                 };
                 SetState(element, state);
 
