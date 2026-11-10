@@ -211,14 +211,15 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <!-- Icon/label shadows: 1 epx offset black copies (60%) so the
-                                 white icons and labels read on light fanart behind the
-                                 frosted strip. The shadow label follows the real label's
-                                 Text and Opacity (collapse fade) via ElementName. -->
-                            <FontIcon Glyph="&#xE80F;" FontSize="14" VerticalAlignment="Center" Foreground="#99000000" IsHitTestVisible="False"><FontIcon.RenderTransform><TranslateTransform X="0" Y="1"/></FontIcon.RenderTransform></FontIcon>
-                            <FontIcon Glyph="&#xE80F;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="HomeIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
-                            <TextBlock Grid.Column="2" Text="{Binding Text, ElementName=HomeLabel}" FontSize="10" VerticalAlignment="Center" Opacity="{Binding Opacity, ElementName=HomeLabel}" Foreground="#99000000" IsHitTestVisible="False" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock Grid.Column="2" x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <!-- Icon/label glow: soft omnidirectional halo via
+                                 shared:TextGlow (Composition DropShadow, blur 3,
+                                 black 90%) so the white icons and labels read on
+                                 light fanart behind the frosted strip. The glow
+                                 lives on each icon/label's own visual, so it
+                                 follows the label's collapse fade and the icon
+                                 jiggle transform. -->
+                            <FontIcon Glyph="&#xE80F;" FontSize="14" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"><FontIcon.RenderTransform><CompositeTransform x:Name="HomeIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
+                            <TextBlock Grid.Column="2" x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                     </Button>
                     <Button x:Name="SearchButton" Style="{StaticResource SidebarButtonStyle}" Tag="search" Click="SidebarButton_Click">
@@ -228,10 +229,8 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center" Foreground="#99000000" IsHitTestVisible="False"><FontIcon.RenderTransform><TranslateTransform X="0" Y="1"/></FontIcon.RenderTransform></FontIcon>
-                            <FontIcon Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="SearchIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
-                            <TextBlock Grid.Column="2" Text="{Binding Text, ElementName=SearchLabel}" FontSize="10" VerticalAlignment="Center" Opacity="{Binding Opacity, ElementName=SearchLabel}" Foreground="#99000000" IsHitTestVisible="False" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock Grid.Column="2" x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <FontIcon Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"><FontIcon.RenderTransform><CompositeTransform x:Name="SearchIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
+                            <TextBlock Grid.Column="2" x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                     </Button>
                     <Button x:Name="LibraryButton" Style="{StaticResource SidebarButtonStyle}" Tag="library" Click="SidebarButton_Click">
@@ -241,10 +240,8 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE8F1;" FontSize="14" VerticalAlignment="Center" Foreground="#99000000" IsHitTestVisible="False"><FontIcon.RenderTransform><TranslateTransform X="0" Y="1"/></FontIcon.RenderTransform></FontIcon>
-                            <FontIcon Glyph="&#xE8F1;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="LibraryIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
-                            <TextBlock Grid.Column="2" Text="{Binding Text, ElementName=LibraryLabel}" FontSize="10" VerticalAlignment="Center" Opacity="{Binding Opacity, ElementName=LibraryLabel}" Foreground="#99000000" IsHitTestVisible="False" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock Grid.Column="2" x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <FontIcon Glyph="&#xE8F1;" FontSize="14" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"><FontIcon.RenderTransform><CompositeTransform x:Name="LibraryIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
+                            <TextBlock Grid.Column="2" x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                     </Button>
                     <Button x:Name="SettingsButton" Style="{StaticResource SidebarButtonStyle}" Tag="settings" Click="SidebarButton_Click">
@@ -254,10 +251,8 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE713;" FontSize="14" VerticalAlignment="Center" Foreground="#99000000" IsHitTestVisible="False"><FontIcon.RenderTransform><TranslateTransform X="0" Y="1"/></FontIcon.RenderTransform></FontIcon>
-                            <FontIcon Glyph="&#xE713;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="SettingsIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
-                            <TextBlock Grid.Column="2" Text="{Binding Text, ElementName=SettingsLabel}" FontSize="10" VerticalAlignment="Center" Opacity="{Binding Opacity, ElementName=SettingsLabel}" Foreground="#99000000" IsHitTestVisible="False" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock Grid.Column="2" x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <FontIcon Glyph="&#xE713;" FontSize="14" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"><FontIcon.RenderTransform><CompositeTransform x:Name="SettingsIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
+                            <TextBlock Grid.Column="2" x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                     </Button>
                     <Button x:Name="ProfileButton" Style="{StaticResource SidebarButtonStyle}" Tag="profile" Visibility="Collapsed" Click="SidebarButton_Click">
@@ -267,10 +262,8 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center" Foreground="#99000000" IsHitTestVisible="False"><FontIcon.RenderTransform><TranslateTransform X="0" Y="1"/></FontIcon.RenderTransform></FontIcon>
-                            <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="ProfileIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
-                            <TextBlock Grid.Column="2" Text="{Binding Text, ElementName=ProfileLabel}" FontSize="10" VerticalAlignment="Center" Opacity="{Binding Opacity, ElementName=ProfileLabel}" Foreground="#99000000" IsHitTestVisible="False" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"><TextBlock.RenderTransform><TranslateTransform X="0" Y="1"/></TextBlock.RenderTransform></TextBlock>
-                            <TextBlock Grid.Column="2" x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
+                            <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"><FontIcon.RenderTransform><CompositeTransform x:Name="ProfileIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
+                            <TextBlock Grid.Column="2" x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                     </Button>
                     </StackPanel>
