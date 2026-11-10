@@ -335,7 +335,7 @@ namespace Nuvio.Views
         /// card half-cut at the end edge. The card straddling the edge is found
         /// among the realized containers — not only the last card: the anchor
         /// pins the focused card to the start edge and the pitch (97 epx) does
-        /// not divide the viewport (860 epx), so a middle card settles ~10 epx
+        /// not divide the viewport (892 epx), so a middle card settles ~10 epx
         /// cut at the end edge (its title's first letter missing) while the
         /// last card is still far off-screen. If such a card is found, the
         /// target is nudged to the nearer offset where it is fully visible (its
@@ -1368,6 +1368,16 @@ namespace Nuvio.Views
                 // track. The vertical catalog grid keeps its own 6 epx padding (its
                 // end is the bottom, not a horizontal edge).
                 return rtl ? new Thickness(0, 9, 6, 12) : new Thickness(6, 9, 0, 12);
+            if (parameter as string == "rowBleed")
+                // One-sided bleed for the horizontal row track: the track's
+                // flow-END side is opened by the page's end inset (32 epx),
+                // so the track reaches the window edge on that side only and
+                // posters may extend past the old container edge without
+                // being cut by the track's ScrollViewer; the flow-START side
+                // keeps its 6 epx pad and its clip. RTL opens left, LTR
+                // opens right — the direction comes from the live
+                // FlowDirection, never from the language.
+                return rtl ? new Thickness(-32, 0, 0, 0) : new Thickness(0, 0, -32, 0);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
