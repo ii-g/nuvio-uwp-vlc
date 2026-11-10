@@ -9,6 +9,7 @@ using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
+using Nuvio.Views.Shared;
 using Windows.ApplicationModel.Resources;
 using Windows.Foundation;
 using Windows.UI.Xaml;
@@ -38,6 +39,7 @@ namespace Nuvio.Views
         private bool _backdropFrontIsA;
         private string _backdropCurrentUrl;
         private string _backdropPendingUrl;
+        private GraduatedBackdropBlurBrush _backdropBlurBrush;
         private string _lastFocusedKey;
         private GridView _lastAnchoredRow;
         private bool _rowDirectionLogged;
@@ -46,6 +48,7 @@ namespace Nuvio.Views
         {
             NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Required;
             InitializeComponent();
+            _backdropBlurBrush = BackdropBlurRect.Fill as GraduatedBackdropBlurBrush;
             var shell = MainPage.Current;
             _viewModel = new HomeViewModel(shell.Stremio, shell.Progress, shell.Settings, shell.Navigation);
             DataContext = _viewModel;
@@ -835,7 +838,7 @@ namespace Nuvio.Views
             AnchorFocusedElement(focused);
             // Dynamic graduated blur: the clear zone follows focus — hero
             // focused keeps the top clear, any row focus pulls the blur up.
-            SetBackdropBlurRowState(!IsDescendantOf(focused, HeroSection));
+            _backdropBlurBrush?.SetRowState(!IsDescendantOf(focused, HeroSection));
             var item = FindAncestorGridViewItem(focused);
             if (item != null)
             {
@@ -865,47 +868,9 @@ namespace Nuvio.Views
             }
         }
 
-        // Dynamic graduated blur: the blur rectangle's opacity mask is a
-        // vertical alpha ramp (transparent where the backdrop stays sharp,
-        // opaque where it is fully blurred). These two named stops are
-        // animated between the hero state (clear to 0.30, fully blurred
-        // from 0.80) and the row state (clear at the very top only, fully
-        // blurred from 0.30). ~200ms, same motion language as the rest of
-        // the page; a new animation retargets from the current value, so
-        // fast focus repeats stay smooth.
-        private bool _backdropBlurIsRowState;
-
-        private void SetBackdropBlurRowState(bool rowState)
-        {
-            if (_backdropBlurIsRowState == rowState) return;
-            _backdropBlurIsRowState = rowState;
-            AnimateBlurMask(rowState ? 0.0 : 0.30, rowState ? 0.30 : 0.80);
-        }
-
-        private void AnimateBlurMask(double clearTarget, double fullTarget)
-        {
-            var storyboard = new Storyboard();
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            var clearAnimation = new DoubleAnimation
-            {
-                To = clearTarget,
-                Duration = TimeSpan.FromMilliseconds(200),
-                EasingFunction = ease,
-            };
-            Storyboard.SetTarget(clearAnimation, BlurMaskClearStop);
-            Storyboard.SetTargetProperty(clearAnimation, "Offset");
-            var fullAnimation = new DoubleAnimation
-            {
-                To = fullTarget,
-                Duration = TimeSpan.FromMilliseconds(200),
-                EasingFunction = ease,
-            };
-            Storyboard.SetTarget(fullAnimation, BlurMaskFullStop);
-            Storyboard.SetTargetProperty(fullAnimation, "Offset");
-            storyboard.Children.Add(clearAnimation);
-            storyboard.Children.Add(fullAnimation);
-            storyboard.Begin();
-        }
+        // Dynamic graduated blur: the mask, its states and its animation
+        // live in the one shared definition (Views/Shared/
+        // GraduatedBackdropBlurBrush) — driven from OnGotFocus above.
 
         // Backdrop URLs are normalized once, here, before any storing, so
         // _backdropPendingUrl / _backdropCurrentUrl comparisons stay consistent:
