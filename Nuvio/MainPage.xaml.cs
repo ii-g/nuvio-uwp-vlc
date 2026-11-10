@@ -503,7 +503,25 @@ namespace Nuvio
                 ? new Windows.UI.Xaml.Media.SolidColorBrush(Colors.White)
                 : new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
             var underline = FindTemplateChild(button, "ActiveUnderline");
-            if (underline != null) underline.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            if (underline != null)
+            {
+                underline.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+                if (active)
+                {
+                    // Fade the underline in over 150 ms instead of popping it on:
+                    // the active item changes with navigation, so the line blends
+                    // in with the rest of the sidebar's motion (build 241 button
+                    // animation). A true slide between buttons would need a shared
+                    // underline outside the per-button template, so the fade is the
+                    // animation here; the line itself is unchanged.
+                    var fade = new DoubleAnimation { From = 0, To = 1, Duration = TimeSpan.FromMilliseconds(150), EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+                    var storyboard = new Storyboard();
+                    Storyboard.SetTarget(fade, underline);
+                    Storyboard.SetTargetProperty(fade, "Opacity");
+                    storyboard.Children.Add(fade);
+                    storyboard.Begin();
+                }
+            }
         }
 
         /// <summary>Finds a named element inside a control's applied template.</summary>
