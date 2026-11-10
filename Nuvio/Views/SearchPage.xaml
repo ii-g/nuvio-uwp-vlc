@@ -122,7 +122,7 @@
                                     <DataTemplate>
                                         <!-- Web .chip: height 2.7rem = 22 epx, radius 1.35rem = 11 epx,
                                              surface bg + 1 epx border token, text-2, SemiBold, gap .8rem = 6 epx. -->
-                                        <Button Content="{Binding}" Click="RecentChip_Click" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" Foreground="#B8FFFFFF" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0"/>
+                                        <Button Content="{Binding}" Click="RecentChip_Click" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" Foreground="#B8FFFFFF" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0" UseSystemFocusVisuals="False"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
