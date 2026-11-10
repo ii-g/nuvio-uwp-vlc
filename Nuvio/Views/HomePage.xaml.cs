@@ -261,11 +261,56 @@ namespace Nuvio.Views
             }
         }
 
+        /// <summary>Guards the row's flow end: a target offset must never leave the
+        /// last card half-cut at the end edge (build 232: THE WEIGHT cut ~20 epx by
+        /// a leftover offset a few epx short of max). If the last item would be
+        /// partially visible at the target, the target is nudged to the nearer
+        /// offset where it is fully visible (left edge at the 68 epx end padding)
+        /// or fully hidden (right edge at the viewport edge). Skipped when the last
+        /// container is not realized (then it is far off-screen, not partial) or
+        /// the row does not scroll horizontally (the vertical catalog grid).</summary>
+        private double SnapRowEnd(GridView row, ScrollViewer viewer, double target)
+        {
+            if (viewer.ScrollableWidth <= 0) return target;
+            if (row.Items.Count == 0) return target;
+            var last = row.ContainerFromIndex(row.Items.Count - 1) as GridViewItem;
+            if (last == null) return target;
+            var rect = last.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, last.ActualWidth, last.ActualHeight));
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
+            // The last item's edges at the target offset: in RTL the offset grows as
+            // content moves right, in LTR as it moves left.
+            var shift = rtl ? target - viewer.HorizontalOffset : viewer.HorizontalOffset - target;
+            var lastLeft = physicalLeft + shift;
+            var lastRight = physicalRight + shift;
+            if (lastLeft >= 0 || lastRight <= 0) return target;
+            const double endPad = 68;
+            var toVisible = endPad - lastLeft;
+            var toHidden = -lastRight;
+            var nudge = Math.Abs(toVisible) <= Math.Abs(toHidden) ? toVisible : toHidden;
+            var snapped = rtl ? target + nudge : target - nudge;
+            return Math.Max(0, Math.Min(viewer.ScrollableWidth, snapped));
+        }
+
+        /// <summary>Tidies a row that is already where it should be: if its last card
+        /// is half-cut at the end edge from an earlier offset, scrolls it to the
+        /// nearer fully-visible or fully-hidden offset (SnapRowEnd).</summary>
+        private void TidyRowEnd(GridView row, ScrollViewer viewer)
+        {
+            var tidied = SnapRowEnd(row, viewer, viewer.HorizontalOffset);
+            if (Math.Abs(tidied - viewer.HorizontalOffset) > 1) SmoothScrollTo(viewer, tidied, null);
+        }
+
         /// <summary>Keeps a newly entered row's focused card inside the padded viewport
         /// (web scrollIntoView's row part): scrolls only when the card sticks out past
-        /// the 6 epx row padding, never yanks it to the anchor. The anchor is for moves
-        /// inside the row (AnchorRow). The offset signs mirror AnchorRow: in RTL the
-        /// offset grows as content moves right, in LTR as it moves left.</summary>
+        /// the row padding, never yanks it to the anchor. The anchor is for moves
+        /// inside the row (AnchorRow). The pads are the web's scroll-padding: 68 epx
+        /// at the flow end (the row track's end padding), 6 epx at the flow start
+        /// (the page's 68 epx start inset sits outside the track). The offset signs
+        /// mirror AnchorRow: in RTL the offset grows as content moves right, in LTR
+        /// as it moves left. The end is also tidied (SnapRowEnd) so a leftover offset
+        /// never leaves the last card half-cut.</summary>
         private void KeepCardInView(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
@@ -276,19 +321,29 @@ namespace Nuvio.Views
             // so rect.Left/Right are the start/end edges there, not the physical ones.
             var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
             var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
-            const double pad = 6;
+            const double startPad = 6;
+            const double endPad = 68;
             double? target = null;
             if (rtl)
             {
-                if (physicalLeft < pad) target = viewer.HorizontalOffset + (pad - physicalLeft);
-                else if (physicalRight > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + ((viewer.ViewportWidth - pad) - physicalRight);
+                if (physicalLeft < endPad) target = viewer.HorizontalOffset + (endPad - physicalLeft);
+                else if (physicalRight > viewer.ViewportWidth - startPad) target = viewer.HorizontalOffset + ((viewer.ViewportWidth - startPad) - physicalRight);
             }
             else
             {
-                if (physicalLeft < pad) target = viewer.HorizontalOffset + (physicalLeft - pad);
-                else if (physicalRight > viewer.ViewportWidth - pad) target = viewer.HorizontalOffset + (physicalRight - (viewer.ViewportWidth - pad));
+                if (physicalLeft < startPad) target = viewer.HorizontalOffset + (physicalLeft - startPad);
+                else if (physicalRight > viewer.ViewportWidth - endPad) target = viewer.HorizontalOffset + (physicalRight - (viewer.ViewportWidth - endPad));
             }
-            if (target.HasValue) SmoothScrollTo(viewer, target.Value, null);
+            if (target.HasValue)
+            {
+                SmoothScrollTo(viewer, SnapRowEnd(row, viewer, target.Value), null);
+            }
+            else
+            {
+                // The focused card is already inside, but the row's end may still be
+                // half-cut from an earlier offset: tidy it without moving the card.
+                TidyRowEnd(row, viewer);
+            }
         }
 
         /// <summary>Anchors a focused card to the row's flow-start edge (web
@@ -333,17 +388,25 @@ namespace Nuvio.Views
                 // moves right, so the item's right edge moves right with it.
                 var anchor = viewer.ViewportWidth - startInset;
                 var delta = anchor - physicalRight;
-                if (Math.Abs(delta) <= 1) return;
+                if (Math.Abs(delta) <= 1)
+                {
+                    TidyRowEnd(row, viewer);
+                    return;
+                }
                 target = viewer.HorizontalOffset + delta;
             }
             else
             {
                 var anchor = startInset;
                 var delta = physicalLeft - anchor;
-                if (Math.Abs(delta) <= 1) return;
+                if (Math.Abs(delta) <= 1)
+                {
+                    TidyRowEnd(row, viewer);
+                    return;
+                }
                 target = viewer.HorizontalOffset + delta;
             }
-            SmoothScrollTo(viewer, target, null);
+            SmoothScrollTo(viewer, SnapRowEnd(row, viewer, target), null);
         }
 
         /// <summary>Anchors the current row's block at 16% of the page height (web
@@ -1045,19 +1108,22 @@ namespace Nuvio.Views
             if (parameter as string == "divider")
                 // Sidebar divider: on the content-facing edge (left in RTL, right in LTR).
                 return rtl ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
-            if (parameter as string == "logo")
-                // Sidebar logo icon Margin: the 22 epx icon must sit at the same start edge
-                // as the button icons (8 epx panel + 8 epx button padding). It is a Margin
-                // on the icon itself, not padding on the logo row: the row carries no
-                // padding so the wordmark can centre exactly in the full row width when
-                // expanded. The old fixed Padding="8,0" left a 16 epx cell that shrank
-                // the icon. RTL: content [8,32] of the 32 epx inner strip.
-                return rtl ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
             if (parameter as string == "activeUnderline")
                 // Active-item underline Margin: the line sits under the icon column,
                 // 6 epx in from the flow-start edge and 3 epx up from the button's
                 // bottom edge.
                 return rtl ? new Thickness(0, 0, 6, 3) : new Thickness(6, 0, 0, 3);
+            if (parameter as string == "row")
+                // Horizontal row track padding (web .row-track): the flow-end side
+                // carries the content inset (68 epx, --content-left) inside the
+                // scrollable track, the flow-start side one card-padding (6 epx);
+                // the page's own 68 epx start inset sits outside the track. Build
+                // 232 showed the last poster cut ~20 epx at the row's end: with
+                // only 6 epx of end padding a leftover offset a few epx short of
+                // max already cuts it, and the web's 68 epx is the margin that
+                // keeps it whole. The vertical catalog grid keeps its own 6 epx
+                // padding (its end is the bottom, not a horizontal edge).
+                return rtl ? new Thickness(68, 9, 6, 12) : new Thickness(6, 9, 68, 12);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
