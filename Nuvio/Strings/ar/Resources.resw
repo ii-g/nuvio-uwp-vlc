@@ -185,6 +185,12 @@
     <value>Nothing found for "{0}".</value>
     <comment>TODO i18n: no Arabic translation in web/js/core/i18n.js; ships in English.</comment>
   </data>
+  <data name="SearchEmptyTitle.Text" xml:space="preserve">
+    <value>بحث</value>
+  </data>
+  <data name="SearchEmptySubtitle.Text" xml:space="preserve">
+    <value>ابحث عن أفلام ومسلسلات</value>
+  </data>
   <data name="CatalogUnavailableTitle" xml:space="preserve">
     <value>القائمة غير متاحة</value>
   </data>
