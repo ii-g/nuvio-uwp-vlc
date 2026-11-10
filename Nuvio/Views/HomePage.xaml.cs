@@ -331,43 +331,70 @@ namespace Nuvio.Views
             }
         }
 
-        /// <summary>Guards the row's flow end: a target offset must never leave the
-        /// last card half-cut at the end edge. If the last item would be partially
-        /// visible at the target, the target is nudged to the nearer offset where
-        /// it is fully visible (its edge flush with the viewport edge — the end
-        /// padding is 0 by Mohammed's call in build 241: the 68 epx end pad only
-        /// disfigured the last poster) or fully hidden (its edge at the viewport
-        /// edge). Skipped when the last container is not realized (then it is far
-        /// off-screen, not partial) or the row does not scroll horizontally (the
-        /// vertical catalog grid).</summary>
+        /// <summary>Guards the row's flow end: a target offset must never leave a
+        /// card half-cut at the end edge. The card straddling the edge is found
+        /// among the realized containers — not only the last card: the anchor
+        /// pins the focused card to the start edge and the pitch (97 epx) does
+        /// not divide the viewport (860 epx), so a middle card settles ~10 epx
+        /// cut at the end edge (its title's first letter missing) while the
+        /// last card is still far off-screen. If such a card is found, the
+        /// target is nudged to the nearer offset where it is fully visible (its
+        /// edge flush with the viewport edge — the end padding is 0 by
+        /// Mohammed's call in build 241: the 68 epx end pad only disfigured
+        /// the last poster) or fully hidden (its edge at the viewport edge).
+        /// The nudge is capped at 11 epx: the anchor pins the focused slot 6 epx
+        /// inside the start edge and the card sits 9 epx inside its slot, so
+        /// the 1.06 focus zoom (~2.6 epx) and the focus ring (~1 epx) leave
+        /// only ~11 epx of headroom before the focused card itself leaves the
+        /// viewport. A bigger straddle (a wide Continue card) is left as-is
+        /// rather than breaking the focused card. Skipped when no realized
+        /// card straddles the edge or the row does not scroll horizontally
+        /// (the vertical catalog grid).</summary>
         private double SnapRowEnd(GridView row, ScrollViewer viewer, double target)
         {
             if (viewer.ScrollableWidth <= 0) return target;
             if (row.Items.Count == 0) return target;
-            var last = row.ContainerFromIndex(row.Items.Count - 1) as GridViewItem;
-            if (last == null) return target;
-            var rect = last.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, last.ActualWidth, last.ActualHeight));
             var rtl = row.FlowDirection == FlowDirection.RightToLeft;
-            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
-            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
-            // The last item's edges at the target offset: in RTL the offset grows as
-            // content moves right, in LTR as it moves left.
-            var shift = rtl ? target - viewer.HorizontalOffset : viewer.HorizontalOffset - target;
-            var lastLeft = physicalLeft + shift;
-            var lastRight = physicalRight + shift;
-            if (lastLeft >= 0 || lastRight <= 0) return target;
-            // Build 241: no end padding at all — the last card ends flush with the
-            // viewport edge (lastLeft 0) or hidden whole (lastRight 0), never
-            // half-cut behind a gap.
+            // The straddler at the target offset: walk the realized containers
+            // from the far end; at most one slot can cross the edge.
+            double straddleLeft = 0;
+            double straddleRight = 0;
+            var found = false;
+            for (var i = row.Items.Count - 1; i >= 0; i--)
+            {
+                var item = row.ContainerFromIndex(i) as GridViewItem;
+                if (item == null) continue;
+                var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
+                var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+                var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
+                // The item's edges at the target offset: in RTL the offset grows as
+                // content moves right, in LTR as it moves left.
+                var shift = rtl ? target - viewer.HorizontalOffset : viewer.HorizontalOffset - target;
+                var left = physicalLeft + shift;
+                var right = physicalRight + shift;
+                if (left < 0 && right > 0)
+                {
+                    straddleLeft = left;
+                    straddleRight = right;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return target;
+            // Build 241: no end padding at all — the straddling card ends flush with
+            // the viewport edge (straddleLeft 0) or hidden whole (straddleRight 0),
+            // never half-cut behind a gap.
             const double endPad = 0;
-            var toVisible = endPad - lastLeft;
-            var toHidden = -lastRight;
+            var toVisible = endPad - straddleLeft;
+            var toHidden = -straddleRight;
             var nudge = Math.Abs(toVisible) <= Math.Abs(toHidden) ? toVisible : toHidden;
+            const double maxNudge = 11;
+            if (Math.Abs(nudge) > maxNudge) return target;
             var snapped = rtl ? target + nudge : target - nudge;
             return Math.Max(0, Math.Min(viewer.ScrollableWidth, snapped));
         }
 
-        /// <summary>Tidies a row that is already where it should be: if its last card
+        /// <summary>Tidies a row that is already where it should be: if a card
         /// is half-cut at the end edge from an earlier offset, scrolls it to the
         /// nearer fully-visible or fully-hidden offset (SnapRowEnd).</summary>
         private void TidyRowEnd(GridView row, ScrollViewer viewer)
@@ -384,7 +411,7 @@ namespace Nuvio.Views
         /// the flow start (the page's 68 epx start inset sits outside the track).
         /// The offset signs mirror AnchorRow: in RTL the offset grows as content
         /// moves right, in LTR as it moves left. The end is also tidied (SnapRowEnd)
-        /// so a leftover offset never leaves the last card half-cut.</summary>
+        /// so a leftover offset never leaves a card half-cut at the end edge.</summary>
         private void KeepCardInView(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
