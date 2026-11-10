@@ -12,9 +12,6 @@ using Nuvio.ViewModels;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.System;
-using Windows.UI;
-using Windows.UI.Text;
-using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -40,13 +37,6 @@ namespace Nuvio.Views
         private bool _focusFirstResult;
         private Storyboard _heroFadeStoryboard;
         private Storyboard _resultsFadeStoryboard;
-        // On-screen keyboard row (Apple TV style), in layout order: keyboard key,
-        // SPACE, letters a to z, backspace. The D-pad moves between these keys by
-        // index, so the row and the navigation share this one list.
-        private readonly List<Button> _keyboardKeys = new List<Button>();
-        private Button _lastKeyButton;
-        private Button _firstLetterKey;
-
         // Dynamic background (Apple TV style): the focused result's poster art,
         // decoded at 48x72 and box-blurred, cross-faded between two image layers
         // under a dark gradient. The art is cached by poster URL, so a poster
@@ -75,7 +65,6 @@ namespace Nuvio.Views
         {
             NavigationCacheMode = NavigationCacheMode.Required;
             InitializeComponent();
-            BuildKeyboardRow();
             var shell = MainPage.Current;
             _viewModel = new SearchViewModel(shell.Stremio, shell.Progress, shell.Store, shell.Navigation);
             DataContext = _viewModel;
@@ -87,102 +76,7 @@ namespace Nuvio.Views
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             SearchBox.TextChanged += OnSearchBoxTextChanged;
             SearchBox.KeyDown += OnSearchBoxKeyDown;
-            SearchBox.GotFocus += OnSearchBoxGotFocus;
-            SearchBox.LostFocus += OnSearchBoxLostFocus;
             GotFocus += OnGotFocus;
-        }
-
-        /// <summary>Builds the on-screen keyboard row (Apple TV style): a keyboard
-        /// key, SPACE, the Latin letters a to z, and backspace. Letters are 22 epx
-        /// wide on a 3 epx gap (26 letters = 647 epx), SPACE is 48 and the two icon
-        /// keys are 30, so the whole row fits the ~860 epx content width. The keys
-        /// are built here rather than in XAML so the row and the D-pad navigation
-        /// share the one ordered _keyboardKeys list.</summary>
-        private void BuildKeyboardRow()
-        {
-            AddKey("keyboard", new FontIcon { Glyph = "\uE636", FontSize = 14 }, 30);
-            AddKey("space", "SPACE", 48);
-            for (var c = 'a'; c <= 'z'; c++)
-            {
-                var key = AddKey(c.ToString(), c.ToString(), 22);
-                if (c == 'a') _firstLetterKey = key;
-            }
-            AddKey("backspace", new FontIcon { Glyph = "\uE750", FontSize = 12 }, 30);
-        }
-
-        private Button AddKey(string tag, object content, double width)
-        {
-            // Dark surface-2 keys, white text, no system focus visuals: the focus
-            // ring is the 2 epx accent border set by KeyButton_GotFocus, matching
-            // the search bar's single accent ring.
-            var button = new Button
-            {
-                Tag = tag,
-                Content = content,
-                Width = width,
-                MinHeight = 30,
-                Background = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF)),
-                Foreground = new SolidColorBrush(Colors.White),
-                FontSize = 10,
-                FontWeight = FontWeights.SemiBold,
-                BorderBrush = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(0),
-                Margin = new Thickness(0, 0, 3, 0),
-                UseSystemFocusVisuals = false,
-            };
-            button.Click += KeyButton_Click;
-            button.GotFocus += KeyButton_GotFocus;
-            button.LostFocus += KeyButton_LostFocus;
-            _keyboardKeys.Add(button);
-            KeyboardRow.Children.Add(button);
-            return button;
-        }
-
-        /// <summary>Every key appends to the search box (backspace deletes one
-        /// char), so the 700 ms debounce runs the search exactly as if typed.
-        /// Focus stays on the key, so the user can keep typing. The keyboard key
-        /// focuses the box and asks the InputPane to show the Xbox system keyboard
-        /// (Arabic, numbers, symbols) for anything the Latin row cannot type.</summary>
-        private void KeyButton_Click(object sender, RoutedEventArgs e)
-        {
-            var tag = (sender as Button)?.Tag as string;
-            if (string.IsNullOrEmpty(tag)) return;
-            if (tag == "keyboard")
-            {
-                SearchBox.Focus(FocusState.Programmatic);
-                InputPane.GetForCurrentView().TryShow();
-                return;
-            }
-            if (tag == "backspace")
-            {
-                if (SearchBox.Text.Length > 0)
-                {
-                    SearchBox.Text = SearchBox.Text.Substring(0, SearchBox.Text.Length - 1);
-                    SearchBox.SelectionStart = SearchBox.Text.Length;
-                }
-                return;
-            }
-            SearchBox.Text += tag == "space" ? " " : tag;
-            SearchBox.SelectionStart = SearchBox.Text.Length;
-        }
-
-        private void KeyButton_GotFocus(object sender, RoutedEventArgs e)
-        {
-            var button = sender as Button;
-            if (button == null) return;
-            _lastKeyButton = button;
-            button.BorderBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x2F, 0x6F, 0xED));
-            button.BorderThickness = new Thickness(2);
-        }
-
-        private void KeyButton_LostFocus(object sender, RoutedEventArgs e)
-        {
-            var button = sender as Button;
-            if (button == null) return;
-            button.BorderBrush = new SolidColorBrush(Colors.Transparent);
-            button.BorderThickness = new Thickness(1);
         }
 
         /// <summary>Same re-assert as HomePage: the frame can set the hosted page's
@@ -381,21 +275,11 @@ namespace Nuvio.Views
             if (card != null && card.Meta != null) _viewModel.OpenTitle(card.Meta);
         }
 
-        // Search-bar focus state: the native single ring is the accent border —
-        // focused = 2 epx accent, unfocused = 1 epx --border. The TextBox's own
-        // system focus visuals are off (XAML), so this border is the only focus
-        // indicator; the web's white inversion was not ported (it would break the
-        // dark bar the redesign just made consistent).
-        private void OnSearchBoxGotFocus(object sender, RoutedEventArgs e)
+        // Tapping anywhere in the borderless field (magnifier, English line)
+        // focuses the box; the TextBox itself handles taps on its own text.
+        private void SearchField_Tapped(object sender, TappedRoutedEventArgs e)
         {
-            SearchBarBorder.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x2F, 0x6F, 0xED));
-            SearchBarBorder.BorderThickness = new Thickness(2);
-        }
-
-        private void OnSearchBoxLostFocus(object sender, RoutedEventArgs e)
-        {
-            SearchBarBorder.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
-            SearchBarBorder.BorderThickness = new Thickness(1);
+            SearchBox.Focus(FocusState.Programmatic);
         }
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
@@ -408,7 +292,7 @@ namespace Nuvio.Views
 
         /// <summary>Updates the dynamic background from the focused element: a
         /// focused result card shows its poster art (blurred) behind the page;
-        /// focus anywhere else keeps the last art so typing on the keyboard row
+        /// focus anywhere else keeps the last art so typing in the search box
         /// does not flicker the background; the empty hero resets to the dark
         /// default (see UpdateEmptyHero).</summary>
         private async void UpdateDynamicBackground(DependencyObject focused)
@@ -601,50 +485,22 @@ namespace Nuvio.Views
         // while XYFocus measures moving cards (and the 1.06 focus zoom) and can
         // skip or mis-pick a neighbour mid-glide. Falls through to XYFocus when
         // the neighbour is not realized yet.
-        // The on-screen keyboard row is indexed the same way: left/right move
-        // between keys (the row is LTR, so left is the previous key), up goes to
-        // the search box, down goes to the first result (or the first recent chip
-        // while the empty hero shows). Down from the search box enters the row at
-        // the last-used key (or 'a'), and up from the first results row or a
-        // recent chip returns to it. At the row's ends left/right fall through so
-        // the router's geometric move can carry focus to the sidebar.
+        // No on-screen keyboard row any more (Apple TV field only): down from the
+        // search box goes to the first result (or the first recent chip while the
+        // empty hero shows), and up from the first results row or a recent chip
+        // returns straight to the box. At the row's ends left/right fall through
+        // so the router's geometric move can carry focus to the sidebar.
         public bool HandleAction(string action, bool repeat)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return false;
-            var key = focused as Button;
-            if (key != null && _keyboardKeys.Contains(key))
-            {
-                var index = _keyboardKeys.IndexOf(key);
-                if (action == "left" || action == "right")
-                {
-                    var target = index + (action == "left" ? -1 : 1);
-                    if (target >= 0 && target < _keyboardKeys.Count)
-                    {
-                        _keyboardKeys[target].Focus(FocusState.Programmatic);
-                        return true;
-                    }
-                    return false;
-                }
-                if (action == "up")
-                {
-                    SearchBox.Focus(FocusState.Programmatic);
-                    return true;
-                }
-                if (action == "down")
-                {
-                    return FocusDownFromKeyboardRow();
-                }
-                return false;
-            }
             if (action == "down" && ReferenceEquals(focused, SearchBox))
             {
-                FocusKeyboardRow();
-                return true;
+                return FocusDownFromSearchBox();
             }
             if (action == "up" && (IsFirstResultsRow(focused) || IsDescendantOf(focused, EmptyHero)))
             {
-                FocusKeyboardRow();
+                SearchBox.Focus(FocusState.Programmatic);
                 return true;
             }
             if (action == "left" || action == "right")
@@ -679,18 +535,10 @@ namespace Nuvio.Views
             return false;
         }
 
-        /// <summary>Focuses the keyboard row at the last-used key, or 'a' when no
-        /// key has had focus yet.</summary>
-        private void FocusKeyboardRow()
-        {
-            var key = _lastKeyButton ?? _firstLetterKey;
-            if (key != null) key.Focus(FocusState.Programmatic);
-        }
-
-        /// <summary>Down from the keyboard row: the first result when results exist,
+        /// <summary>Down from the search box: the first result when results exist,
         /// else the first recent chip while the empty hero shows, else nowhere (the
         /// move is swallowed so the router does not wander).</summary>
-        private bool FocusDownFromKeyboardRow()
+        private bool FocusDownFromSearchBox()
         {
             if (TryFocusFirstResult()) return true;
             if (_viewModel.IsRecentVisible)
