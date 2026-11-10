@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
@@ -8,6 +9,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Navigation;
 
 namespace Nuvio.Views
@@ -25,6 +27,8 @@ namespace Nuvio.Views
         private readonly FocusScrollHelper _scrollHelper = new FocusScrollHelper();
         private readonly DispatcherTimer _debounceTimer;
         private bool _focusFirstResult;
+        private Storyboard _heroFadeStoryboard;
+        private Storyboard _resultsFadeStoryboard;
 
         public SearchPage()
         {
@@ -38,6 +42,7 @@ namespace Nuvio.Views
             _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DebounceMs) };
             _debounceTimer.Tick += OnDebounceTick;
             _viewModel.SearchCompleted += OnSearchCompleted;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             SearchBox.TextChanged += OnSearchBoxTextChanged;
             SearchBox.KeyDown += OnSearchBoxKeyDown;
             SearchBox.GotFocus += OnSearchBoxGotFocus;
@@ -72,6 +77,7 @@ namespace Nuvio.Views
             }
             _focusFirstResult = false;
             RunSearch(SearchBox.Text);
+            UpdateEmptyHero(false);
             SearchBox.Focus(FocusState.Programmatic);
         }
 
@@ -117,6 +123,78 @@ namespace Nuvio.Views
             if (!_focusFirstResult) return;
             _focusFirstResult = false;
             FocusFirstResult();
+        }
+
+        private void OnViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(SearchViewModel.IsEmptyHero))
+            {
+                UpdateEmptyHero(true);
+            }
+        }
+
+        /// <summary>Shows the empty-state hero or the results, cross-fading between them.
+        /// The hero is bound to the ViewModel state (no query and no results), never to
+        /// a timer: typing a query fades it out and the results in; clearing the query
+        /// brings it back. The no-animation path pins the initial (or back-navigation)
+        /// state at once.</summary>
+        private void UpdateEmptyHero(bool animate)
+        {
+            var empty = _viewModel.IsEmptyHero;
+            if (animate)
+            {
+                _heroFadeStoryboard = FadeContainer(EmptyHero, empty, _heroFadeStoryboard);
+                _resultsFadeStoryboard = FadeContainer(ResultsContainer, !empty, _resultsFadeStoryboard);
+            }
+            else
+            {
+                EmptyHero.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+                EmptyHero.Opacity = 1;
+                ResultsContainer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+                ResultsContainer.Opacity = 1;
+            }
+        }
+
+        /// <summary>Fades one container in or out (150 ms, the sidebar label fade). A
+        /// container already in the target state is pinned instead of replaying the
+        /// fade; a running fade is stopped and superseded. The Completed handler pins
+        /// the end state only if the ViewModel still wants it, so a newer
+        /// UpdateEmptyHero call wins over a stale fade.</summary>
+        private Storyboard FadeContainer(UIElement element, bool show, Storyboard previous)
+        {
+            if (previous != null) previous.Stop();
+            var visible = element.Visibility == Visibility.Visible && element.Opacity > 0;
+            if (visible == show)
+            {
+                element.Opacity = show ? 1 : 0;
+                element.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                return null;
+            }
+            if (show)
+            {
+                element.Visibility = Visibility.Visible;
+                element.Opacity = 0;
+            }
+            var storyboard = new Storyboard();
+            var fade = new DoubleAnimation
+            {
+                To = show ? 1 : 0,
+                Duration = TimeSpan.FromMilliseconds(150),
+            };
+            Storyboard.SetTarget(fade, element);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+            storyboard.Children.Add(fade);
+            var target = element;
+            var showTarget = show;
+            storyboard.Completed += (s, e) =>
+            {
+                var stillWanted = ReferenceEquals(target, EmptyHero) ? _viewModel.IsEmptyHero : !_viewModel.IsEmptyHero;
+                if (stillWanted != showTarget) return;
+                target.Opacity = showTarget ? 1 : 0;
+                if (!showTarget) target.Visibility = Visibility.Collapsed;
+            };
+            storyboard.Begin();
+            return storyboard;
         }
 
         private void FocusFirstResult()
