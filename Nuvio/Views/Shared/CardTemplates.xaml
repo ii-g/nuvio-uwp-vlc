@@ -115,13 +115,10 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: focus zoom only (web: scale 1.06). The ring used to
-         live here (art-only, 1.75 epx white); it is gone because the global
-         focus overlay draws the one ring for every focused element, and a
-         template ring would double it. Selection is off; click is via
-         IsItemClickEnabled. The framework's own focus rectangle around the
-         whole item (art + title) stays disabled via UseSystemFocusVisuals:
-         with the overlay it would be a second ring too. -->
+    <!-- Card containers: focus ring + zoom (web: scale 1.06 + white ring). Selection is off; click is via IsItemClickEnabled.
+         The framework also draws its own focus rectangle around the whole item (art + title) unless
+         UseSystemFocusVisuals is off; with the template's art-only ring that made two overlapping
+         rings, so the system one is disabled and the template ring is the only one. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
         <Setter Property="Margin" Value="0,0,9,0"/>
         <Setter Property="Padding" Value="0"/>
@@ -135,16 +132,20 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <!-- No FocusRing here any more: the global focus overlay
-                             (Views/Shared/GlobalFocusOverlay.cs, hosted on the
-                             shell root) draws the one ring for every focused
-                             element, art-only for cards, so a template ring
-                             would double it. The zoom below stays: it is the
-                             card's own focus cue, not a ring. -->
+                        <!-- Web: the ring wraps the art only (.card.focused .card-art), 0.22rem
+                             (~1.75 epx) with the title outside it. Height is the art height, so
+                             the ring never swallows the title; Margin -1 puts it just outside
+                             the art like the web's box-shadow ring. -->
+                        <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}"/>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
-                                <VisualState x:Name="PointerOver"/>
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.25"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="#99FFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
                                 <VisualState x:Name="Pressed"/>
                             </VisualStateGroup>
                             <VisualStateGroup x:Name="FocusStates">
@@ -152,6 +153,8 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -159,6 +162,8 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
