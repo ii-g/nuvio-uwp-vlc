@@ -1,7 +1,8 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:views="using:Nuvio.Views">
+    xmlns:views="using:Nuvio.Views"
+    xmlns:shared="using:Nuvio.Views.Shared">
 
     <!-- Shared value converters (classes live in Views/HomePage.xaml.cs). -->
     <views:PosterImageConverter x:Key="PosterImageConverter"/>
@@ -18,6 +19,18 @@
     <views:FlowDirectionToHorizontalAlignmentConverter x:Key="FlowDirectionToHorizontalAlignmentConverter"/>
     <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
     <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
+
+    <!-- Shared focus frame gradient (Fluent 2 Design card frame, recolored):
+         light whites on glass: white to pale icy blue, 70% alpha so the
+         frosted blur band under it shows through. The 0.5 stop is the
+         contrast stop: it is what reads on a white poster. -->
+    <LinearGradientBrush x:Key="FocusFrameGradientBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#B3FFFFFF"/>
+        <GradientStop Offset="0.25" Color="#B3E8F2FF"/>
+        <GradientStop Offset="0.5" Color="#B3B4D8FF"/>
+        <GradientStop Offset="0.75" Color="#B3E8F2FF"/>
+        <GradientStop Offset="1" Color="#B3FFFFFF"/>
+    </LinearGradientBrush>
 
     <!-- A poster card (components/cards.js posterCard): art, watched check, progress bar, title. -->
     <DataTemplate x:Key="PosterCardTemplate">
@@ -115,10 +128,18 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: focus ring + zoom (web: scale 1.06 + white ring). Selection is off; click is via IsItemClickEnabled.
-         The framework also draws its own focus rectangle around the whole item (art + title) unless
-         UseSystemFocusVisuals is off; with the template's art-only ring that made two overlapping
-         rings, so the system one is disabled and the template ring is the only one. -->
+    <!-- Card containers: glass gradient focus frame + zoom. The frame is the
+         Fluent 2 Design card frame, recolored to light whites on glass:
+         a 3 epx diagonal gradient border (FocusFrameGradientBrush) over a
+         frosted blur band (SidebarBackdropBlurBrush, GaussianBlur 20) with a
+         2 epx #FAFAFA ring inside it, on the focused card only. It replaces
+         the old white ring (1.25 hover / 1.75 focus) and the F sheen
+         (FocusSheen, removed): one frame, no sheen, no glow. Selection is
+         off; click is via IsItemClickEnabled. The framework also draws its
+         own focus rectangle around the whole item (art + title) unless
+         UseSystemFocusVisuals is off; with the template's art-only frame
+         that made two overlapping frames, so the system one is disabled
+         and the template frame is the only one. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
         <Setter Property="Margin" Value="0,0,9,0"/>
         <Setter Property="Padding" Value="0"/>
@@ -132,35 +153,36 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <!-- Web: the ring wraps the art only (.card.focused .card-art), 0.22rem
-                             (~1.75 epx) with the title outside it. The host Grid is the art
-                             height, so the ring never swallows the title; the ring stretches
-                             inside it with Margin -1, so it sits 1 epx outside the art on all
-                             four sides like the web's box-shadow ring. (An explicit Height on
-                             the ring itself did not do this: with VerticalAlignment Top the
-                             -1 margin only shifted the ring up 1 epx, so its bottom edge sat
-                             1 epx above the art's bottom edge and the poster leaked out
-                             below it.) -->
+                        <!-- The frame wraps the art only, 3 epx, CornerRadius 7 (the
+                             focus ring's radius, not the site's 20), with the title
+                             outside it. The host Grid is the art height, so the frame
+                             never swallows the title; the frame stretches inside it
+                             with Margin -1, so it sits 1 epx outside the art on all
+                             four sides. (An explicit Height on the frame itself did
+                             not do this: with VerticalAlignment Top the -1 margin
+                             only shifted the frame up 1 epx, so its bottom edge sat
+                             1 epx above the art's bottom edge and the poster leaked
+                             out below it.) Three layers, all Opacity 0 until focus:
+                             FocusGlassBand (frosted blur band), FocusRing (light
+                             gradient border) and FocusInnerRing (2 epx #FAFAFA
+                             ring inside the gradient). -->
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
-                            <Border x:Name="FocusSheen" CornerRadius="6" Opacity="0" IsHitTestVisible="False">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop x:Name="SheenStop1" Color="#00FFFFFF" Offset="-0.55"/>
-                                        <GradientStop x:Name="SheenStop2" Color="#66FFFFFF" Offset="-0.48"/>
-                                        <GradientStop x:Name="SheenStop3" Color="#66FFFFFF" Offset="-0.42"/>
-                                        <GradientStop x:Name="SheenStop4" Color="#00FFFFFF" Offset="-0.35"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
+                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderBrush="White" BorderThickness="0" CornerRadius="7" Margin="-1" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="4" Margin="2" Opacity="0" IsHitTestVisible="False"/>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.25"/></ObjectAnimationUsingKeyFrames>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="#99FFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -170,13 +192,9 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -184,13 +202,9 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderThickness"><DiscreteObjectKeyFrame KeyTime="0" Value="1.75"/></ObjectAnimationUsingKeyFrames>
-                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="BorderBrush"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -207,12 +221,13 @@
     </Style>
 
     <!-- Catalog grid containers: the same card + 1.06 focus zoom as
-         CardGridViewItemStyle, but no focus ring. In the catalog's ItemsWrapGrid
-         the ring renders as a thin rectangle inside the poster (build 224 photo)
-         instead of wrapping the art as it does in the home rows (ItemsStackPanel),
-         so the catalog drops the ring entirely and the zoom is the only focus cue.
-         The web's focused card also scales 1.06; its ring is a box-shadow around
-         the art, which the shared ring cannot reproduce in this grid. -->
+         CardGridViewItemStyle, with the same glass gradient focus frame.
+         (The old ring was dropped here because in the catalog's
+         ItemsWrapGrid it rendered as a thin rectangle inside the poster
+         (build 224 photo) instead of wrapping the art as it does in the
+         home rows (ItemsStackPanel); the frame now uses the same host
+         Grid as the home style, so it is back on the same terms. Watch
+         the visual test for a repeat of the build 224 rectangle.) -->
     <Style x:Key="CatalogGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CardGridViewItemStyle}">
         <Setter Property="Template">
             <Setter.Value>
@@ -223,21 +238,24 @@
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
-                            <Border x:Name="FocusSheen" CornerRadius="6" Opacity="0" IsHitTestVisible="False">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop x:Name="SheenStop1" Color="#00FFFFFF" Offset="-0.55"/>
-                                        <GradientStop x:Name="SheenStop2" Color="#66FFFFFF" Offset="-0.48"/>
-                                        <GradientStop x:Name="SheenStop3" Color="#66FFFFFF" Offset="-0.42"/>
-                                        <GradientStop x:Name="SheenStop4" Color="#00FFFFFF" Offset="-0.35"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
+                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.BorderBrush>
                             </Border>
+                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="4" Margin="2" Opacity="0" IsHitTestVisible="False"/>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
-                                <VisualState x:Name="PointerOver"/>
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
                                 <VisualState x:Name="Pressed"/>
                             </VisualStateGroup>
                             <VisualStateGroup x:Name="FocusStates">
@@ -245,11 +263,9 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -257,11 +273,9 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusSheen" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop1" Storyboard.TargetProperty="Offset" From="-0.55" To="1.45" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop2" Storyboard.TargetProperty="Offset" From="-0.48" To="1.52" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop3" Storyboard.TargetProperty="Offset" From="-0.42" To="1.58" Duration="0:0:2.5" RepeatBehavior="Forever"/>
-                                        <DoubleAnimation Storyboard.TargetName="SheenStop4" Storyboard.TargetProperty="Offset" From="-0.35" To="1.65" Duration="0:0:2.5" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
