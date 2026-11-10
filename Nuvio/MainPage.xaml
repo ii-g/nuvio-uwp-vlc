@@ -31,7 +31,10 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="PressScale"/>
+                            </Grid.RenderTransform>
                             <!-- The content is a Grid that fills the button (see the five buttons
                                  below): its first column is the icon at the flow-start edge and
                                  the label column stretches, with the label text aligned to the
@@ -68,21 +71,81 @@
                                      text + the underline below (a thin light transparent line
                                      under the icon, replacing the blue accent bar). -->
                                 <VisualStateGroup x:Name="CommonStates">
-                                    <VisualState x:Name="Normal"/>
+                                    <VisualStateGroup.Transitions>
+                                        <!-- State changes cross-fade instead of snapping (build 241:
+                                             sidebar-button animation): the background/foreground
+                                             blend over 130 ms with an ease-out, in step with the
+                                             strip's 220 ms expand. Cheap on Series S — a few brush
+                                             interpolations, no per-frame work, and focus moves are
+                                             untouched (the 400/110 repeat still drives them). -->
+                                        <VisualTransition GeneratedDuration="0:0:0.13">
+                                            <VisualTransition.GeneratedEasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </VisualTransition.GeneratedEasingFunction>
+                                        </VisualTransition>
+                                    </VisualStateGroup.Transitions>
+                                    <VisualState x:Name="Normal">
+                                        <Storyboard>
+                                            <!-- Release rebound: the press shrink eases back to full
+                                                 size over 180 ms. -->
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </VisualState>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#29FFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <!-- Light press: shrink to 0.96 over 120 ms; release
+                                                 eases back via Normal/PointerOver above. -->
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.96" Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.96" Duration="0:0:0.12">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
                                 <VisualStateGroup x:Name="FocusStates">
+                                    <VisualStateGroup.Transitions>
+                                        <!-- Same 130 ms cross-fade as CommonStates, so gaining or
+                                             losing focus blends the background/foreground instead
+                                             of snapping them. -->
+                                        <VisualTransition GeneratedDuration="0:0:0.13">
+                                            <VisualTransition.GeneratedEasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </VisualTransition.GeneratedEasingFunction>
+                                        </VisualTransition>
+                                    </VisualStateGroup.Transitions>
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
@@ -151,48 +214,79 @@
                      at the same start offset as the button icons (8 epx panel + 8 epx
                      button padding); the NUVIO wordmark fades in with the labels on
                      expand, so the strip shows the icon alone when collapsed. -->
+                <Grid>
+                    <!-- Permanent light streak (build 241): Mohammed asked for the bright
+                         vertical smear to stay, always, instead of blinking with the hero
+                         slides. The frosted blur samples the hero backdrop behind the
+                         strip, so its bright patches moved and changed with every slide;
+                         this static streak is painted over the blur (under the buttons)
+                         and never moves: a soft white/blue vertical band, brightest at
+                         the top, fading into the strip tint toward the bottom. It
+                         stretches with the strip, so it reads the same collapsed (48)
+                         and expanded (136). The blur brush itself is untouched. -->
+                    <Rectangle IsHitTestVisible="False">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                <GradientStop Offset="0" Color="#00FFFFFF"/>
+                                <GradientStop Offset="0.3" Color="#12A8C8FF"/>
+                                <GradientStop Offset="0.5" Color="#2EFFFFFF"/>
+                                <GradientStop Offset="0.7" Color="#12A8C8FF"/>
+                                <GradientStop Offset="1" Color="#00FFFFFF"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
+                    <Rectangle IsHitTestVisible="False">
+                        <Rectangle.Fill>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Offset="0" Color="#00000000"/>
+                                <GradientStop Offset="0.55" Color="#0016171D"/>
+                                <GradientStop Offset="1" Color="#B316171D"/>
+                            </LinearGradientBrush>
+                        </Rectangle.Fill>
+                    </Rectangle>
                 <Grid Margin="8,19,8,19">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" Margin="0,0,0,24">
+                    <Grid Grid.Row="0" Margin="0,0,0,24" FlowDirection="LeftToRight">
                         <!-- The collapsed icon is the wordmark's own triangle: a 22 epx
-                             Canvas holding the wordmark image at 22 epx high, clipped to
-                             its left 22 epx so only the triangle shows. A Canvas arranges
-                             its child at full size (a 22 epx Border or Grid would squeeze
-                             the image to 22 epx wide and show the whole lockup shrunk),
-                             and the clip is on the Image itself. The icon is centred in
-                             the 32 epx inner strip, so it sits on the button-icon column
-                             like the other icons: the old flow-aware Right alignment and
-                             "logo" margin put it 4 epx left of the icons. The wordmark is
-                             69.4 epx wide in a 32 epx cell, so it overflows past the strip
-                             on the content side and its triangle lands left of the divider,
-                             over the search field; Opacity alone could not keep it hidden
-                             while collapsed (build 232 showed the triangle outside the
-                             strip), so it is Visibility=Collapsed when collapsed as well:
-                             AnimateSidebar pins Visibility with Opacity, and the XAML
-                             default is Collapsed. icon.png carries a black
-                             inner triangle (measured: an opaque black triangle around a
-                             small white play glyph) while the wordmark's play glyph is
-                             white on the gradient, so the collapsed icon showed a black
-                             play and the expanded lockup a white one; one asset now, white
-                             play in both states. The wordmark's triangle ends at 20 epx of
-                             the 22 epx height and its "nuvio" text starts at 24.3 epx, so
-                             the 22 epx clip shows the whole triangle and none of the text.
-                             The wordmark is centered in the full row width when expanded
-                             (build 216: start-aligned, its centre sat ~17 epx off the
-                             strip's centre). The row itself carries no padding any more,
-                             so the centring is exact. The two share one cell and cross-fade
-                             (AnimateSidebar) — never triangle + nuvio + triangle as in
-                             build 162. -->
-                        <Canvas x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Image Source="ms-appx:///web/assets/wordmark.png" Height="22">
-                                <Image.Clip>
-                                    <RectangleGeometry Rect="0,0,22,22"/>
-                                </Image.Clip>
-                            </Image>
-                        </Canvas>
+                             box holding the wordmark image at 22 epx high, clipped to
+                             its left 22 epx so only the triangle shows. Build 241 proved
+                             the old Canvas wrong: the triangle sat about 47 epx left of
+                             the strip centre, clear of the divider over the hero. A Canvas
+                             lays its 69.4 epx wide child out from the RTL flow-start edge,
+                             so the 22 epx clip window landed 69.4 minus 22 = 47.4 epx left
+                             of the cell. The b96c542 wordmark-overflow theory was wrong:
+                             that triangle would straddle the divider at 901..923, not sit
+                             clear of it. No Canvas any more: a plain 22 epx Grid, clipped
+                             to its own bounds, in an explicitly LeftToRight row, so the
+                             triangle is the image's physical left 22 epx, centred in the
+                             32 epx cell on the button-icon column exactly like the other
+                             icons. The LeftToRight is on this logo row only: the button
+                             labels below still inherit RTL, so their alignment is
+                             untouched. The wordmark is 69.4 epx wide in a 32 epx cell, so
+                             it overflows past the strip on the content side while
+                             collapsed; Opacity alone could not keep it hidden (build 232
+                             showed the triangle outside the strip), so it is
+                             Visibility=Collapsed when collapsed as well: AnimateSidebar
+                             pins Visibility with Opacity, and the XAML default is
+                             Collapsed. The wordmark's play glyph is white on the gradient
+                             in both states. The wordmark's triangle ends at 20 epx of the
+                             22 epx height and its "nuvio" text starts at 24.3 epx, so the
+                             22 epx clip shows the whole triangle and none of the text. The
+                             wordmark is centered in the full row width when expanded
+                             (build 216: start-aligned, its centre sat about 17 epx off
+                             the strip's centre). The row itself carries no padding any
+                             more, so the centring is exact. The two share one cell and
+                             cross-fade (AnimateSidebar), never triangle + nuvio + triangle
+                             as in build 162. -->
+                        <Grid x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid.Clip>
+                                <RectangleGeometry Rect="0,0,22,22"/>
+                            </Grid.Clip>
+                            <Image Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Grid>
                         <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Visibility="Collapsed"/>
                     </Grid>
                     <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
@@ -252,6 +346,7 @@
                         </Grid>
                     </Button>
                     </StackPanel>
+                </Grid>
                 </Grid>
             </Border>
 
