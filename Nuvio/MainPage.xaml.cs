@@ -492,19 +492,18 @@ namespace Nuvio
         private static void SetSidebarActive(Button button, bool active)
         {
             if (button == null) return;
-            // Web .sidebar-item.active: --surface-2 bg + white text + the accent-strong
-            // bar at the start edge. Inactive items keep the muted text/icon (the style's
-            // Foreground setter). The bar lives inside the button template, so it is
-            // reached through the visual tree; a missing bar (template not applied yet)
-            // just skips that half of the look.
+            // The active look: surface-2 bg + white text + a thin light transparent
+            // underline under the icon. The underline lives inside the button template,
+            // so it is reached through the visual tree; a missing underline (template
+            // not applied yet) just skips that half of the look.
             button.Background = active
                 ? new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF))
                 : new Windows.UI.Xaml.Media.SolidColorBrush(Colors.Transparent);
             button.Foreground = active
                 ? new Windows.UI.Xaml.Media.SolidColorBrush(Colors.White)
                 : new Windows.UI.Xaml.Media.SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
-            var bar = FindTemplateChild(button, "ActiveBar");
-            if (bar != null) bar.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            var underline = FindTemplateChild(button, "ActiveUnderline");
+            if (underline != null) underline.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         }
 
         /// <summary>Finds a named element inside a control's applied template.</summary>
