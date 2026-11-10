@@ -701,6 +701,17 @@ namespace Nuvio
         {
             if (_sidebarExpanded) return;
             _sidebarExpanded = true;
+            // Always Verity tones while the strip is open (Mohammed's call):
+            // the strip's live blur samples the hero, and the white Verity
+            // logo is the bright band at the strip's start edge, so pin the
+            // carousel to the Verity slide on expand — whatever slide is
+            // current. The hero auto-rotate is already frozen while expanded,
+            // so the slide stays on Verity until the strip collapses. Only
+            // the Home page has a hero; other pages leave the tones as they
+            // are. Visible side effect, disclosed: the hero title/logo/
+            // description/dots jump to Verity as the menu opens.
+            var home = ContentFrame.Content as HomePage;
+            if (home != null) home.PinHeroToReferenceSlide();
             AnimateSidebar(136, true);
         }
 
