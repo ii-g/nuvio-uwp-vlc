@@ -833,6 +833,9 @@ namespace Nuvio.Views
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return;
             AnchorFocusedElement(focused);
+            // Dynamic graduated blur: the clear zone follows focus — hero
+            // focused keeps the top clear, any row focus pulls the blur up.
+            SetBackdropBlurRowState(!IsDescendantOf(focused, HeroSection));
             var item = FindAncestorGridViewItem(focused);
             if (item != null)
             {
@@ -860,6 +863,48 @@ namespace Nuvio.Views
                 // backdrop simply stays.
                 if (hero != null) ShowBackdrop(hero.Background);
             }
+        }
+
+        // Dynamic graduated blur: the blur rectangle's opacity mask is a
+        // vertical alpha ramp (transparent where the backdrop stays sharp,
+        // opaque where it is fully blurred). These two named stops are
+        // animated between the hero state (clear to 0.30, fully blurred
+        // from 0.80) and the row state (clear at the very top only, fully
+        // blurred from 0.30). ~200ms, same motion language as the rest of
+        // the page; a new animation retargets from the current value, so
+        // fast focus repeats stay smooth.
+        private bool _backdropBlurIsRowState;
+
+        private void SetBackdropBlurRowState(bool rowState)
+        {
+            if (_backdropBlurIsRowState == rowState) return;
+            _backdropBlurIsRowState = rowState;
+            AnimateBlurMask(rowState ? 0.0 : 0.30, rowState ? 0.30 : 0.80);
+        }
+
+        private void AnimateBlurMask(double clearTarget, double fullTarget)
+        {
+            var storyboard = new Storyboard();
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var clearAnimation = new DoubleAnimation
+            {
+                To = clearTarget,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = ease,
+            };
+            Storyboard.SetTarget(clearAnimation, BlurMaskClearStop);
+            Storyboard.SetTargetProperty(clearAnimation, "Offset");
+            var fullAnimation = new DoubleAnimation
+            {
+                To = fullTarget,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = ease,
+            };
+            Storyboard.SetTarget(fullAnimation, BlurMaskFullStop);
+            Storyboard.SetTargetProperty(fullAnimation, "Offset");
+            storyboard.Children.Add(clearAnimation);
+            storyboard.Children.Add(fullAnimation);
+            storyboard.Begin();
         }
 
         // Backdrop URLs are normalized once, here, before any storing, so
