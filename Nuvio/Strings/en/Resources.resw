@@ -183,6 +183,12 @@
   <data name="SearchNoResultsMessage" xml:space="preserve">
     <value>Nothing found for "{0}".</value>
   </data>
+  <data name="SearchEmptyTitle.Text" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="SearchEmptySubtitle.Text" xml:space="preserve">
+    <value>Search for movies and series</value>
+  </data>
   <data name="CatalogUnavailableTitle" xml:space="preserve">
     <value>Catalog unavailable</value>
   </data>
