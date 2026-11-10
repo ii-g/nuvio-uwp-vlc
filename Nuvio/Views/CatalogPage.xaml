@@ -52,7 +52,7 @@
         </ItemsControl>
 
         <!-- Poster grid -->
-        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,7,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
+        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,7,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
                     <ItemsWrapGrid Orientation="Horizontal"/>
