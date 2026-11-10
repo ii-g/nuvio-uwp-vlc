@@ -16,7 +16,7 @@
             <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding Message}" FontSize="18" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
             <TextBlock Text="{Binding Milestone}" FontSize="16" Foreground="#80FFFFFF" TextAlignment="Center"/>
-            <Button x:Name="BackButton" x:Uid="BackButton" Content="Back" MinWidth="160" HorizontalAlignment="Center" Click="BackButton_Click"/>
+            <Button x:Name="BackButton" x:Uid="BackButton" Content="Back" MinWidth="160" HorizontalAlignment="Center" Click="BackButton_Click" UseSystemFocusVisuals="False"/>
         </StackPanel>
     </Grid>
 </Page>
