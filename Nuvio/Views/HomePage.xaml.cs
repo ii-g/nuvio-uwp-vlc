@@ -549,7 +549,10 @@ namespace Nuvio.Views
                 var delta = anchor - physicalRight;
                 if (Math.Abs(delta) <= 1)
                 {
-                    TidyRowEnd(row, viewer);
+                    // Already on the anchor: do nothing. Tidying here would
+                    // apply the end-edge nudge (SnapRowEnd) and push the card
+                    // off the anchor by the straddle — the same nudge the
+                    // exact target below deliberately skips (see below).
                     return;
                 }
                 target = viewer.HorizontalOffset + delta;
@@ -560,12 +563,30 @@ namespace Nuvio.Views
                 var delta = physicalLeft - anchor;
                 if (Math.Abs(delta) <= 1)
                 {
-                    TidyRowEnd(row, viewer);
+                    // Already on the anchor: do not tidy (see above).
                     return;
                 }
                 target = viewer.HorizontalOffset + delta;
             }
-            SmoothScrollTo(viewer, SnapRowEnd(row, viewer, target), null);
+            // The anchor target is used exactly, without SnapRowEnd's
+            // end-edge nudge — the nudge is what broke the alignment. The
+            // pitch (97 epx) does not divide the viewport (912 epx), so at
+            // the exact anchor a card always straddles the end edge by the
+            // same amount as at rest (28 epx for the 88 epx poster cards:
+            // card k+8 spans [-60, 28] at the anchor for focus index k),
+            // and the nudge moved the strip by that straddle on every
+            // in-row move, leaving the focused card 28 epx off the hero
+            // edge. At rest the anchor held only because the offset clamp
+            // (0) blocked the nudge — which is exactly why the row looked
+            // aligned at rest and lost it as soon as focus moved. The sliver
+            // the nudge was hiding is the same 28 epx the approved rest
+            // state already shows at the end edge (the anchor offsets are
+            // exact multiples of the pitch from rest, so the end-edge
+            // pattern is identical), so skipping the nudge here changes
+            // nothing at the end edge — it only restores the anchor. The
+            // guard stays active where the offset is not anchor-determined:
+            // row entry (KeepCardInView) and TidyRowEnd.
+            SmoothScrollTo(viewer, target, null);
         }
 
         /// <summary>Anchors the current row's block at 16% of the page height (web
@@ -1425,13 +1446,14 @@ namespace Nuvio.Views
                 // minus the collapsed sidebar's 48 epx — so the track edge
                 // lands on the sidebar's inner edge (x=912 collapsed, RTL)
                 // and a card is never cut 20 epx short of the strip. The
-                // first card still rests one 6 epx pad inside the track edge
-                // (818..906 at rest in RTL), and the edge stays fixed at the
-                // collapsed strip: the sidebar is an overlay above the
-                // content, so expanding it never moves the track. RTL opens
-                // left 32 / right 20, LTR opens left 20 / right 32 — the
-                // direction comes from the live FlowDirection, never from
-                // the language.
+                // home rows' first card rests on the hero edge (716..804 at
+                // rest in RTL, rowHome padding — build 2a55b17 moved it off
+                // the old 6 epx pad); search rows keep the 6 epx pad. The
+                // edge stays fixed at the collapsed strip: the sidebar is an
+                // overlay above the content, so expanding it never moves the
+                // track. RTL opens left 32 / right 20, LTR opens left 20 /
+                // right 32 — the direction comes from the live FlowDirection,
+                // never from the language.
                 return rtl ? new Thickness(-32, 0, -20, 0) : new Thickness(-20, 0, -32, 0);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
