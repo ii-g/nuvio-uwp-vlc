@@ -99,25 +99,20 @@
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
-            <!-- Real blur: the same Composition GaussianBlur brush the frosted
-                 sidebar uses (SidebarBackdropBlurBrush, BlurAmount 20). It blurs
-                 everything rendered beneath it — here, the two backdrop images.
-                 AcrylicBrush is not used: HostBackdrop renders only its fallback
-                 solid on Xbox. Graduated, not full-screen: the opacity mask is
-                 a vertical alpha ramp (no color, no shade) — transparent where
-                 the backdrop stays sharp, opaque where it is fully blurred.
-                 The stop offsets are animated from code-behind
-                 (SetBackdropBlurRowState) so the clear zone follows focus. -->
-            <Rectangle>
+            <!-- Graduated blur: one shared Composition definition
+                 (Views/Shared/GraduatedBackdropBlurBrush) — a
+                 CompositionMaskBrush whose source is the same GaussianBlur
+                 the frosted sidebar uses (BlurAmount 20) and whose mask
+                 is a vertical alpha ramp: transparent where the backdrop
+                 stays sharp, opaque where it is fully blurred. No
+                 OpacityMask exists in UWP (WPF only — build 297 failed
+                 with WMC0011 for that), so the graduation lives in
+                 Composition, not XAML. The brush is driven from
+                 OnGotFocus so the clear zone follows focus. -->
+            <Rectangle x:Name="BackdropBlurRect">
                 <Rectangle.Fill>
-                    <shared:SidebarBackdropBlurBrush/>
+                    <shared:GraduatedBackdropBlurBrush/>
                 </Rectangle.Fill>
-                <Rectangle.OpacityMask>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop x:Name="BlurMaskClearStop" Offset="0.30" Color="#00000000"/>
-                        <GradientStop x:Name="BlurMaskFullStop" Offset="0.80" Color="#FF000000"/>
-                    </LinearGradientBrush>
-                </Rectangle.OpacityMask>
             </Rectangle>
         </Grid>
 
