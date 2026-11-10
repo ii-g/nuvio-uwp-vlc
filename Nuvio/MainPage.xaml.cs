@@ -69,6 +69,12 @@ namespace Nuvio
             }
         }
 
+        /// <summary>True while the sidebar strip is expanded (136 epx, labels visible).
+        /// HomePage freezes the hero auto-rotate while this is true: the strip's live
+        /// blur samples the hero backdrop, so a timer flip while the menu is open
+        /// would change the frosted menu under the user's hands.</summary>
+        public bool IsSidebarExpanded => _sidebarExpanded;
+
         public MainPage()
         {
             Log.Write("Main page starting");
