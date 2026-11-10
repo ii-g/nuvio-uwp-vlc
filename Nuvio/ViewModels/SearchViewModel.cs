@@ -107,6 +107,7 @@ namespace Nuvio.ViewModels
         private bool _isNoResults;
         private string _noResultsMessage;
         private bool _isRecentVisible;
+        private bool _isEmptyHero;
 
         public SearchViewModel(StremioService stremio, ProgressService progress, LocalStore store, NavigationService navigation)
         {
@@ -116,6 +117,8 @@ namespace Nuvio.ViewModels
             _navigation = navigation;
             _dispatcher = Window.Current.Dispatcher;
             var _ = LoadRecentAsync();
+            Rows.CollectionChanged += (s, e) => UpdateEmptyHero();
+            UpdateEmptyHero();
         }
 
         /// <summary>Raised when a run's rows have all finished (or there were no providers),
@@ -130,6 +133,18 @@ namespace Nuvio.ViewModels
         {
             get { return _isRecentVisible; }
             private set { SetProperty(ref _isRecentVisible, value); }
+        }
+
+        /// <summary>The empty-state hero shows while no query is active and no results
+        /// exist: first entry, or the query cleared. It hides the moment a query runs
+        /// or results land; a query with no results shows the No Results state instead,
+        /// and no providers shows the No Providers state. IsLoading is deliberately
+        /// not part of the condition: the empty-query run flips it briefly, and the
+        /// hero must not flicker out and back on first entry.</summary>
+        public bool IsEmptyHero
+        {
+            get { return _isEmptyHero; }
+            private set { SetProperty(ref _isEmptyHero, value); }
         }
 
         public bool IsNoProviders
@@ -189,6 +204,11 @@ namespace Nuvio.ViewModels
             IsRecentVisible = RecentSearches.Count > 0 && string.IsNullOrEmpty(_lastQuery);
         }
 
+        private void UpdateEmptyHero()
+        {
+            IsEmptyHero = string.IsNullOrEmpty(_lastQuery) && Rows.Count == 0 && !IsNoProviders;
+        }
+
         /// <summary>Port of search.js run(): the same query twice is a no-op; an empty
         /// query shows recent searches; remember() runs before the providers check.</summary>
         public async Task RunAsync(string query)
@@ -207,10 +227,11 @@ namespace Nuvio.ViewModels
                     NoResultsMessage = null;
                     Rows.Clear();
                     UpdateRecentVisible();
+                    UpdateEmptyHero();
                 }).ConfigureAwait(false);
                 if (string.IsNullOrEmpty(q))
                 {
-                    await RunOnUi(() => { IsLoading = false; }).ConfigureAwait(false);
+                    await RunOnUi(() => { IsLoading = false; UpdateEmptyHero(); }).ConfigureAwait(false);
                     RaiseSearchCompleted();
                     return;
                 }
@@ -224,7 +245,7 @@ namespace Nuvio.ViewModels
                 catch (Exception ex)
                 {
                     Log.Error("Loading search providers failed", ex);
-                    await RunOnUi(() => { IsLoading = false; }).ConfigureAwait(false);
+                    await RunOnUi(() => { IsLoading = false; UpdateEmptyHero(); }).ConfigureAwait(false);
                     RaiseSearchCompleted();
                     return;
                 }
@@ -234,6 +255,7 @@ namespace Nuvio.ViewModels
                     {
                         IsNoProviders = true;
                         IsLoading = false;
+                        UpdateEmptyHero();
                     }).ConfigureAwait(false);
                     RaiseSearchCompleted();
                     return;
@@ -266,13 +288,14 @@ namespace Nuvio.ViewModels
                         NoResultsMessage = string.Format(S("SearchNoResultsMessage", "Nothing found for \"{0}\"."), q);
                     }
                     IsLoading = false;
+                    UpdateEmptyHero();
                 }).ConfigureAwait(false);
                 RaiseSearchCompleted();
             }
             catch (Exception ex)
             {
                 Log.Error("Search failed", ex);
-                await RunOnUi(() => { IsLoading = false; }).ConfigureAwait(false);
+                await RunOnUi(() => { IsLoading = false; UpdateEmptyHero(); }).ConfigureAwait(false);
                 RaiseSearchCompleted();
             }
         }
