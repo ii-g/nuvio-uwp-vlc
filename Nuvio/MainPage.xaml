@@ -31,10 +31,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" RenderTransformOrigin="0.5,0.5">
-                            <Grid.RenderTransform>
-                                <ScaleTransform x:Name="PressScale"/>
-                            </Grid.RenderTransform>
+                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}">
                             <!-- The content is a Grid that fills the button (see the five buttons
                                  below): its first column is the icon at the flow-start edge and
                                  the label column stretches, with the label text aligned to the
@@ -71,81 +68,26 @@
                                      text + the underline below (a thin light transparent line
                                      under the icon, replacing the blue accent bar). -->
                                 <VisualStateGroup x:Name="CommonStates">
-                                    <VisualStateGroup.Transitions>
-                                        <!-- State changes cross-fade instead of snapping (build 241:
-                                             sidebar-button animation): the background/foreground
-                                             blend over 130 ms with an ease-out, in step with the
-                                             strip's 220 ms expand. Cheap on Series S — a few brush
-                                             interpolations, no per-frame work, and focus moves are
-                                             untouched (the 400/110 repeat still drives them). -->
-                                        <VisualTransition GeneratedDuration="0:0:0.13">
-                                            <VisualTransition.GeneratedEasingFunction>
-                                                <CubicEase EasingMode="EaseOut"/>
-                                            </VisualTransition.GeneratedEasingFunction>
-                                        </VisualTransition>
-                                    </VisualStateGroup.Transitions>
-                                    <VisualState x:Name="Normal">
-                                        <Storyboard>
-                                            <!-- Release rebound: the press shrink eases back to full
-                                                 size over 180 ms. -->
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                        </Storyboard>
-                                    </VisualState>
+                                    <!-- The 130 ms state cross-fade and the 0.96 press shrink from
+                                         build 241 are removed: that animation is not what Mohammed
+                                         meant by button animation. The icon itself moves on focus
+                                         arrival instead (MainPage.xaml.cs PlaySidebarIconAnimation),
+                                         while state changes snap as before build 241. -->
+                                    <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.18">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#29FFFFFF"/></ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
-                                            <!-- Light press: shrink to 0.96 over 120 ms; release
-                                                 eases back via Normal/PointerOver above. -->
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleX" To="0.96" Duration="0:0:0.12">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="PressScale" Storyboard.TargetProperty="ScaleY" To="0.96" Duration="0:0:0.12">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <CubicEase EasingMode="EaseOut"/>
-                                                </DoubleAnimation.EasingFunction>
-                                            </DoubleAnimation>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
                                 <VisualStateGroup x:Name="FocusStates">
-                                    <VisualStateGroup.Transitions>
-                                        <!-- Same 130 ms cross-fade as CommonStates, so gaining or
-                                             losing focus blends the background/foreground instead
-                                             of snapping them. -->
-                                        <VisualTransition GeneratedDuration="0:0:0.13">
-                                            <VisualTransition.GeneratedEasingFunction>
-                                                <CubicEase EasingMode="EaseOut"/>
-                                            </VisualTransition.GeneratedEasingFunction>
-                                        </VisualTransition>
-                                    </VisualStateGroup.Transitions>
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/></ObjectAnimationUsingKeyFrames>
@@ -214,36 +156,6 @@
                      at the same start offset as the button icons (8 epx panel + 8 epx
                      button padding); the NUVIO wordmark fades in with the labels on
                      expand, so the strip shows the icon alone when collapsed. -->
-                <Grid>
-                    <!-- Permanent light streak (build 241): Mohammed asked for the bright
-                         vertical smear to stay, always, instead of blinking with the hero
-                         slides. The frosted blur samples the hero backdrop behind the
-                         strip, so its bright patches moved and changed with every slide;
-                         this static streak is painted over the blur (under the buttons)
-                         and never moves: a soft white/blue vertical band, brightest at
-                         the top, fading into the strip tint toward the bottom. It
-                         stretches with the strip, so it reads the same collapsed (48)
-                         and expanded (136). The blur brush itself is untouched. -->
-                    <Rectangle IsHitTestVisible="False">
-                        <Rectangle.Fill>
-                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                <GradientStop Offset="0" Color="#00FFFFFF"/>
-                                <GradientStop Offset="0.3" Color="#12A8C8FF"/>
-                                <GradientStop Offset="0.5" Color="#2EFFFFFF"/>
-                                <GradientStop Offset="0.7" Color="#12A8C8FF"/>
-                                <GradientStop Offset="1" Color="#00FFFFFF"/>
-                            </LinearGradientBrush>
-                        </Rectangle.Fill>
-                    </Rectangle>
-                    <Rectangle IsHitTestVisible="False">
-                        <Rectangle.Fill>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                <GradientStop Offset="0" Color="#00000000"/>
-                                <GradientStop Offset="0.55" Color="#0016171D"/>
-                                <GradientStop Offset="1" Color="#B316171D"/>
-                            </LinearGradientBrush>
-                        </Rectangle.Fill>
-                    </Rectangle>
                 <Grid Margin="8,19,8,19">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -270,8 +182,10 @@
                              collapsed; Opacity alone could not keep it hidden (build 232
                              showed the triangle outside the strip), so it is
                              Visibility=Collapsed when collapsed as well: AnimateSidebar
-                             pins Visibility with Opacity, and the XAML default is
-                             Collapsed. The wordmark's play glyph is white on the gradient
+                             hides it the moment a collapse starts, not at the end of the
+                             150 ms fade (while it stays Visible it paints "nuvio" past
+                             the strip edge, and a superseded animation never pins its
+                             end state), and the XAML default is Collapsed. The wordmark's play glyph is white on the gradient
                              in both states. The wordmark's triangle ends at 20 epx of the
                              22 epx height and its "nuvio" text starts at 24.3 epx, so the
                              22 epx clip shows the whole triangle and none of the text. The
@@ -297,7 +211,7 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE80F;" FontSize="14" VerticalAlignment="Center"/>
+                            <FontIcon Glyph="&#xE80F;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="HomeIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
                             <TextBlock Grid.Column="2" x:Name="HomeLabel" x:Uid="SidebarHomeLabel" Text="Home" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
                         </Grid>
                     </Button>
@@ -308,7 +222,7 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center"/>
+                            <FontIcon Glyph="&#xE721;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="SearchIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
                             <TextBlock Grid.Column="2" x:Name="SearchLabel" x:Uid="SidebarSearchLabel" Text="Search" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
                         </Grid>
                     </Button>
@@ -319,7 +233,7 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE8F1;" FontSize="14" VerticalAlignment="Center"/>
+                            <FontIcon Glyph="&#xE8F1;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="LibraryIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
                             <TextBlock Grid.Column="2" x:Name="LibraryLabel" x:Uid="SidebarLibraryLabel" Text="Library" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
                         </Grid>
                     </Button>
@@ -330,7 +244,7 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE713;" FontSize="14" VerticalAlignment="Center"/>
+                            <FontIcon Glyph="&#xE713;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="SettingsIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
                             <TextBlock Grid.Column="2" x:Name="SettingsLabel" x:Uid="SidebarSettingsLabel" Text="Settings" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
                         </Grid>
                     </Button>
@@ -341,12 +255,11 @@
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center"/>
+                            <FontIcon Glyph="&#xE77B;" FontSize="14" VerticalAlignment="Center"><FontIcon.RenderTransform><CompositeTransform x:Name="ProfileIconTransform" CenterX="7" CenterY="7"/></FontIcon.RenderTransform></FontIcon>
                             <TextBlock Grid.Column="2" x:Name="ProfileLabel" x:Uid="SidebarSwitchProfileLabel" Text="Switch profile" FontSize="10" VerticalAlignment="Center" Opacity="0" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}"/>
                         </Grid>
                     </Button>
                     </StackPanel>
-                </Grid>
                 </Grid>
             </Border>
 
