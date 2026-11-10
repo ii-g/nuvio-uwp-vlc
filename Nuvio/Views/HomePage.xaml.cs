@@ -340,7 +340,7 @@ namespace Nuvio.Views
         /// card half-cut at the end edge. The card straddling the edge is found
         /// among the realized containers — not only the last card: the anchor
         /// pins the focused card to the start edge and the pitch (97 epx) does
-        /// not divide the viewport (892 epx), so a middle card settles ~10 epx
+        /// not divide the viewport (912 epx), so a middle card settles ~10 epx
         /// cut at the end edge (its title's first letter missing) while the
         /// last card is still far off-screen. If such a card is found, the
         /// target is nudged to the nearer offset where it is fully visible (its
@@ -459,7 +459,8 @@ namespace Nuvio.Views
         /// the row padding, never yanks it to the anchor. The anchor is for moves
         /// inside the row (AnchorRow). The pads are 0 epx at the flow end (build 241:
         /// no end padding — the last card ends flush or hidden whole) and 6 epx at
-        /// the flow start (the page's 68 epx start inset sits outside the track).
+        /// the flow start (of the page's 68 epx start inset, 48 epx — the collapsed
+        /// strip's width — still sit outside the track).
         /// The offset signs mirror AnchorRow: in RTL the offset grows as content
         /// moves right, in LTR as it moves left. The end is also tidied (SnapRowEnd)
         /// so a leftover offset never leaves a card half-cut at the end edge.</summary>
@@ -1377,20 +1378,28 @@ namespace Nuvio.Views
                 // 241: Mohammed asked for the end padding to go entirely ("no use
                 // at the row's end but to disfigure the poster"), so the last card
                 // ends flush with the viewport edge or hidden whole, never half-cut
-                // behind a gap. The page's own 68 epx start inset sits outside the
-                // track. The vertical catalog grid keeps its own 6 epx padding (its
+                // behind a gap. Of the page's 68 epx start inset, 20 epx now
+                // sit inside the track (the start-side bleed to the sidebar's
+                // inner edge) and the collapsed strip's own 48 epx remain
+                // outside it. The vertical catalog grid keeps its own 6 epx padding (its
                 // end is the bottom, not a horizontal edge).
                 return rtl ? new Thickness(0, 9, 6, 12) : new Thickness(6, 9, 0, 12);
             if (parameter as string == "rowBleed")
-                // One-sided bleed for the horizontal row track: the track's
-                // flow-END side is opened by the page's end inset (32 epx),
-                // so the track reaches the window edge on that side only and
-                // posters may extend past the old container edge without
-                // being cut by the track's ScrollViewer; the flow-START side
-                // keeps its 6 epx pad and its clip. RTL opens left, LTR
-                // opens right — the direction comes from the live
-                // FlowDirection, never from the language.
-                return rtl ? new Thickness(-32, 0, 0, 0) : new Thickness(0, 0, -32, 0);
+                // Two-sided bleed for the horizontal row track. The flow-END
+                // side is opened by the page's end inset (32 epx), so the
+                // track reaches the window edge on that side. The flow-START
+                // side is opened by 20 epx — the page's 68 epx start inset
+                // minus the collapsed sidebar's 48 epx — so the track edge
+                // lands on the sidebar's inner edge (x=912 collapsed, RTL)
+                // and a card is never cut 20 epx short of the strip. The
+                // first card still rests one 6 epx pad inside the track edge
+                // (818..906 at rest in RTL), and the edge stays fixed at the
+                // collapsed strip: the sidebar is an overlay above the
+                // content, so expanding it never moves the track. RTL opens
+                // left 32 / right 20, LTR opens left 20 / right 32 — the
+                // direction comes from the live FlowDirection, never from
+                // the language.
+                return rtl ? new Thickness(-32, 0, -20, 0) : new Thickness(-20, 0, -32, 0);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
