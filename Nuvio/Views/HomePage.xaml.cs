@@ -834,8 +834,17 @@ namespace Nuvio.Views
             // hero, so the router's XYFocus move carried focus to an unrelated
             // element (build 241: focus landed somewhere unknown, most plausibly a
             // sidebar button, and the strip opened). Swallow it; focus stays on the
-            // button. Down is untouched: it leaves the hero for the first row.
+            // button.
             if (action == "up" && IsDescendantOf(focused, HeroSection)) return true;
+            // Down from a hero button lands on the first card (index 0) of the
+            // first row: XYFocus would pick the geometrically nearest card under
+            // the buttons (an end card in RTL, since the buttons sit mid-row
+            // under the hero's start edge), not the row's first card. When no
+            // row has items yet, fall through to the router's XYFocus.
+            if (action == "down" && IsDescendantOf(focused, HeroSection))
+            {
+                if (FocusFirstCardOfFirstRow()) return true;
+            }
             // Hero buttons: left/right moves focus between Play and Details
             // first (the pre-build-241 behaviour). Build 241 made every
             // left/right flip the carousel slide and keep focus on the button,
@@ -845,7 +854,7 @@ namespace Nuvio.Views
             // end edge. Right never flips a slide. Left from Details advances
             // one slide, clamped at the last slide; the dots, backdrop and
             // auto-rotate timer follow the new slide (as in build 241). No
-            // wrap ever: right from Play on the first slide opens the sidebar
+            // wrap ever: right from Play opens the sidebar from any slide
             // instead of wrapping to the last slide, and the advance stops at
             // the last slide instead of wrapping to the first.
             if ((action == "left" || action == "right") && IsDescendantOf(focused, HeroSection))
@@ -859,13 +868,12 @@ namespace Nuvio.Views
                         HeroDetailsButton.Focus(FocusState.Programmatic);
                         return true;
                     }
-                    // Toward the start edge from Play: at the first slide open
-                    // the sidebar; on any other slide stay put (no flip, no
-                    // wrap).
-                    if (_viewModel.HeroIndex == 0)
-                    {
-                        MainPage.Current?.FocusSidebar();
-                    }
+                    // Toward the start edge from Play: open the sidebar from
+                    // any slide. The old first-slide-only rule left the strip
+                    // unreachable from the hero in practice: the carousel
+                    // auto-rotates every 9 s and advances by hand, so the
+                    // hero is almost never on slide 0. No flip, no wrap.
+                    MainPage.Current?.FocusSidebar();
                     return true;
                 }
                 if (IsDescendantOf(focused, HeroDetailsButton))
@@ -945,6 +953,48 @@ namespace Nuvio.Views
             {
                 var item = node as GridViewItem;
                 if (item != null) return item;
+            }
+            return null;
+        }
+
+        /// <summary>Focuses the first card (index 0) of the first row with items
+        /// (the Continue row when it has items, else the first catalog row).
+        /// Returns false when no row has a realized first card, so the caller
+        /// falls through to the router's XYFocus.</summary>
+        private bool FocusFirstCardOfFirstRow()
+        {
+            var grid = FindFirstRowGrid();
+            if (grid == null || grid.Items.Count == 0) return false;
+            var container = grid.ContainerFromIndex(0) as GridViewItem;
+            if (container == null)
+            {
+                grid.ScrollIntoView(grid.Items[0]);
+                grid.UpdateLayout();
+                container = grid.ContainerFromIndex(0) as GridViewItem;
+            }
+            if (container == null) return false;
+            container.Focus(FocusState.Programmatic);
+            return true;
+        }
+
+        /// <summary>Finds the first row grid in page order (Continue first, then
+        /// catalog rows), skipping grids with no items or no size — a collapsed
+        /// section (Continue with no items) has neither.</summary>
+        private GridView FindFirstRowGrid()
+        {
+            return FindFirstRowGrid(ContentStack);
+        }
+
+        private static GridView FindFirstRowGrid(DependencyObject root)
+        {
+            if (root == null) return null;
+            var grid = root as GridView;
+            if (grid != null && grid.Items.Count > 0 && grid.ActualWidth > 0) return grid;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindFirstRowGrid(VisualTreeHelper.GetChild(root, i));
+                if (found != null) return found;
             }
             return null;
         }
