@@ -11,6 +11,7 @@ using Windows.UI.Xaml.Hosting;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Shapes;
+using Nuvio.Diagnostics;
 using Nuvio.Views;
 
 namespace Nuvio.Views.Shared
@@ -22,14 +23,20 @@ namespace Nuvio.Views.Shared
     /// page root (MainPage.xaml, last child of RootGrid); it follows
     /// FocusManager.GotFocus on its own, so no page wires anything per element.
     ///
-    /// Motion: Composition animations on the ring's Visual (Offset + Size +
-    /// Opacity) with a cubic-bezier ease-out (0.22, 1, 0.36, 1), ~200 ms. Every
-    /// retarget starts from the ring's CURRENT animated values (the previous
-    /// animation is stopped and its live values read back), so a fast focus
-    /// change at the 110 ms repeat rate glides from mid-flight instead of
-    /// jumping or restarting from the target. RadiusX/RadiusY have no Composition
-    /// animation type, so it morphs with the same curve through a bounded
-    /// CompositionTarget.Rendering loop that detaches itself when done.
+    /// Motion: Composition animations on the ring's Visual (Offset +
+    /// Opacity) with a cubic-bezier ease-out (0.22, 1, 0.36, 1), ~200 ms.
+    /// The ring's Size is layout-driven (Width/Height on the Grid and the
+    /// Rectangle): a XAML element's content is drawn at its layout size,
+    /// so a Composition Size animation on the element Visual can never
+    /// make a 0x0 ring visible — and any layout pass resets the animated
+    /// Visual.Size to 0 (that is why build 268 showed no ring anywhere).
+    /// Size and RadiusX/RadiusY have no Composition animation type, so
+    /// they morph together through a bounded CompositionTarget.Rendering
+    /// loop with the same curve and duration, which detaches itself when
+    /// done. Every retarget starts from the ring's CURRENT values (the
+    /// live layout size and radius), so a fast focus change at the 110 ms
+    /// repeat rate glides from mid-flight instead of jumping or restarting
+    /// from the target.
     ///
     /// Look (dark theme, TV/game-UI language): a glassy white ring (~90%
     /// white, 2 epx) with a faint white wash (8%) and a soft white DropShadow
@@ -60,8 +67,8 @@ namespace Nuvio.Views.Shared
     /// 220 ms expand/collapse (whose buttons change width as the strip
     /// moves). MainPage also calls Refresh() when the expand/collapse
     /// storyboard completes. A window resize re-targets through the host's
-    /// SizeChanged (a layout pass resets the animated Visual.Size to the
-    /// Border's 0 layout size, so the ring re-snaps instead of vanishing).
+    /// SizeChanged; the layout size survives layout passes (Width/Height
+    /// are explicit values), so the ring never resets to 0.
     ///
     /// Coordinates are physical: every rect is measured with TransformToVisual
     /// against the shell root, the same rule the scroller uses (TransformToVisual
@@ -113,11 +120,15 @@ namespace Nuvio.Views.Shared
         private Rect _targetRect;
         private double _targetRadius;
 
-        private bool _radiusAnimating;
+        // Size + radius morph state (Rendering loop): the ring's size is
+        // layout-driven, so both interpolate here on the same curve.
+        private bool _morphAnimating;
+        private Vector2 _morphFromSize;
+        private Vector2 _morphToSize;
         private double _radiusFrom;
         private double _radiusTo;
-        private DateTime _radiusStart;
-        private double _radiusDurationMs;
+        private DateTime _morphStart;
+        private double _morphDurationMs;
 
         public GlobalFocusOverlay()
         {
@@ -196,7 +207,7 @@ namespace Nuvio.Views.Shared
             if (!_attached) return;
             _attached = false;
             DetachFollowerSubscriptions();
-            StopRadiusAnimation();
+            StopMorphAnimation();
             Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnMaskRendering;
             _maskRefreshQueued = false;
             if (_host != null) _host.SizeChanged -= OnHostSizeChanged;
@@ -224,8 +235,9 @@ namespace Nuvio.Views.Shared
                 // shadow lives on a SpriteVisual (SpriteVisual.Shadow,
                 // since 14393). The sprite is the ring Rectangle's element
                 // child visual, so it inherits the ring Visual's animated
-                // Offset/Opacity — but NOT its Size, so the sprite's Size
-                // is animated with the same keyframes in Retarget.
+                // Offset/Opacity — but NOT its Size, so SetLayoutSize feeds
+                // the sprite the ring's live layout size on every morph
+                // tick (and on snap).
                 // The sprite carries no Brush: it draws nothing, and the
                 // shadow's shape comes from DropShadow.Mask, fed by the
                 // ring Rectangle's own alpha (Shape.GetAlphaMask, since
@@ -386,8 +398,14 @@ namespace Nuvio.Views.Shared
             DetachFollowerSubscriptions();
             _currentElement = element;
             AttachFollowerSubscriptions(element);
+            var wasVisible = _visible;
             Retarget(rect, radius, durationMs);
             _visible = true;
+            // One line per show transition (not per move): the rect the ring
+            // was given and the layout size it actually got — the pair that
+            // diagnoses a future invisible-ring report at a glance.
+            if (!wasVisible) Log.Write("FocusOverlay: show " + element.GetType().Name
+                + " rect=" + rect + " layout=" + Width + "x" + Height);
         }
 
         private void RetargetCurrent(double durationMs)
@@ -405,6 +423,7 @@ namespace Nuvio.Views.Shared
             _currentElement = null;
             if (!_visible) return;
             _visible = false;
+            Log.Write("FocusOverlay: hide");
             // Keep the last rect: a quick re-show glides from where the ring
             // already is instead of growing from the origin.
             AnimateOpacity(0, HideDurationMs);
@@ -415,15 +434,19 @@ namespace Nuvio.Views.Shared
             if (_visual == null || _compositor == null) return;
             var targetOffset = new Vector3((float)rect.X, (float)rect.Y, 0);
             var targetSize = new Vector2((float)rect.Width, (float)rect.Height);
-            if (_visual.Size == Vector2.Zero)
+            // The ring's size is layout-driven: the snap condition is the
+            // layout size (Width/Height), never _visual.Size. A Composition
+            // Size animation on the element Visual cannot draw the ring —
+            // the Rectangle's Fill/Stroke are rasterised at its layout
+            // size, which was 0x0, so build 268 showed no ring anywhere —
+            // and any layout pass resets the animated Visual.Size to 0.
+            var currentSize = new Vector2((float)Width, (float)Height);
+            if (currentSize == Vector2.Zero)
             {
-                // First placement (or a layout pass reset the animated size
-                // to the ring's 0 layout size, e.g. on window resize):
-                // snap into place and fade in only — growing from the
-                // origin would read as a jump.
+                // First placement: snap into place and fade in only —
+                // growing from the origin would read as a jump.
                 _visual.Offset = targetOffset;
-                _visual.Size = targetSize;
-                if (_shadowSprite != null) _shadowSprite.Size = targetSize;
+                SetLayoutSize(targetSize);
                 _ringRect.RadiusX = radius;
                 _ringRect.RadiusY = radius;
                 _targetRect = rect;
@@ -452,33 +475,31 @@ namespace Nuvio.Views.Shared
             // retarget at the 110 ms repeat rate continues from mid-flight
             // instead of jumping back to an old endpoint.
             _visual.StopAnimation("Offset");
-            _visual.StopAnimation("Size");
             _visual.StopAnimation("Opacity");
             var offsetAnimation = _compositor.CreateVector3KeyFrameAnimation();
             offsetAnimation.InsertKeyFrame(0f, _visual.Offset);
             offsetAnimation.InsertKeyFrame(1f, targetOffset, _ease);
             offsetAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
             _visual.StartAnimation("Offset", offsetAnimation);
-            var sizeAnimation = _compositor.CreateVector2KeyFrameAnimation();
-            sizeAnimation.InsertKeyFrame(0f, _visual.Size);
-            sizeAnimation.InsertKeyFrame(1f, targetSize, _ease);
-            sizeAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
-            _visual.StartAnimation("Size", sizeAnimation);
-            // The shadow sprite is the ring's child visual: it inherits the
-            // ring Visual's Offset/Opacity, but its Size must be animated
-            // with the same keyframes, or the glow would sit at a stale
-            // size while the ring glides.
-            if (_shadowSprite != null)
-            {
-                _shadowSprite.StopAnimation("Size");
-                var shadowSizeAnimation = _compositor.CreateVector2KeyFrameAnimation();
-                shadowSizeAnimation.InsertKeyFrame(0f, _shadowSprite.Size);
-                shadowSizeAnimation.InsertKeyFrame(1f, targetSize, _ease);
-                shadowSizeAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
-                _shadowSprite.StartAnimation("Size", shadowSizeAnimation);
-            }
             AnimateOpacity(1, ShowDurationMs);
-            AnimateRadius(_ringRect.RadiusX, radius, durationMs);
+            // Size and radius morph through the bounded Rendering loop:
+            // Width/Height are layout values, interpolated on the same
+            // cubic-bezier curve and duration. No Composition Size
+            // animation on the element Visual — layout owns that size.
+            AnimateMorph(currentSize, targetSize, _ringRect.RadiusX, radius, durationMs);
+        }
+
+        /// <summary>Drives the ring's size through layout (Width/Height on
+        /// the Grid and the Rectangle) and feeds the same live size to the
+        /// shadow sprite, which is a pure Composition visual and takes its
+        /// size from here, not from _visual.Size.</summary>
+        private void SetLayoutSize(Vector2 size)
+        {
+            Width = size.X;
+            Height = size.Y;
+            _ringRect.Width = size.X;
+            _ringRect.Height = size.Y;
+            if (_shadowSprite != null) _shadowSprite.Size = size;
         }
 
         private void AnimateOpacity(float to, double durationMs)
@@ -724,53 +745,65 @@ namespace Nuvio.Views.Shared
         }
 
         // ------------------------------------------------------------------
-        // Radius morph: RadiusX/RadiusY have no Composition animation type,
-        // so they interpolate on the same cubic-bezier curve through a bounded
-        // Rendering loop that detaches itself when the morph finishes (or when
-        // a new retarget restarts it from the live radius).
+        // Size + radius morph: neither has a Composition animation type on
+        // a XAML element (Size belongs to layout; RadiusX/RadiusY are plain
+        // properties), so both interpolate on the same cubic-bezier curve
+        // through a bounded Rendering loop that detaches itself when the
+        // morph finishes (or when a new retarget restarts it from the live
+        // size and radius). Setting Width/Height every tick is a layout
+        // pass per frame, but the subtree is one Grid + one Rectangle, so
+        // the cost is negligible for a 200 ms glide.
         // ------------------------------------------------------------------
 
-        private void AnimateRadius(double from, double to, double durationMs)
+        private void AnimateMorph(Vector2 sizeFrom, Vector2 sizeTo, double radiusFrom, double radiusTo, double durationMs)
         {
-            if (Math.Abs(from - to) < 0.5)
+            var sizeDelta = Math.Abs(sizeTo.X - sizeFrom.X) + Math.Abs(sizeTo.Y - sizeFrom.Y);
+            if (sizeDelta < 1 && Math.Abs(radiusFrom - radiusTo) < 0.5)
             {
-                _ringRect.RadiusX = to;
-                _ringRect.RadiusY = to;
+                SetLayoutSize(sizeTo);
+                _ringRect.RadiusX = radiusTo;
+                _ringRect.RadiusY = radiusTo;
                 return;
             }
-            _radiusFrom = from;
-            _radiusTo = to;
-            _radiusStart = DateTime.UtcNow;
-            _radiusDurationMs = durationMs;
-            if (!_radiusAnimating)
+            _morphFromSize = sizeFrom;
+            _morphToSize = sizeTo;
+            _radiusFrom = radiusFrom;
+            _radiusTo = radiusTo;
+            _morphStart = DateTime.UtcNow;
+            _morphDurationMs = durationMs;
+            if (!_morphAnimating)
             {
-                _radiusAnimating = true;
-                Windows.UI.Xaml.Media.CompositionTarget.Rendering += OnRadiusRendering;
+                _morphAnimating = true;
+                Windows.UI.Xaml.Media.CompositionTarget.Rendering += OnMorphRendering;
             }
         }
 
-        private void OnRadiusRendering(object sender, object e)
+        private void OnMorphRendering(object sender, object e)
         {
-            var elapsed = (DateTime.UtcNow - _radiusStart).TotalMilliseconds;
-            var t = elapsed / _radiusDurationMs;
+            var elapsed = (DateTime.UtcNow - _morphStart).TotalMilliseconds;
+            var t = elapsed / _morphDurationMs;
             if (t >= 1)
             {
+                SetLayoutSize(_morphToSize);
                 _ringRect.RadiusX = _radiusTo;
                 _ringRect.RadiusY = _radiusTo;
-                StopRadiusAnimation();
+                StopMorphAnimation();
                 return;
             }
             var eased = EvaluateCubicBezier(Math.Max(0, t), BezierX1, BezierY1, BezierX2, BezierY2);
+            var width = _morphFromSize.X + (_morphToSize.X - _morphFromSize.X) * eased;
+            var height = _morphFromSize.Y + (_morphToSize.Y - _morphFromSize.Y) * eased;
+            SetLayoutSize(new Vector2((float)width, (float)height));
             var radius = _radiusFrom + (_radiusTo - _radiusFrom) * eased;
             _ringRect.RadiusX = radius;
             _ringRect.RadiusY = radius;
         }
 
-        private void StopRadiusAnimation()
+        private void StopMorphAnimation()
         {
-            if (!_radiusAnimating) return;
-            _radiusAnimating = false;
-            Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnRadiusRendering;
+            if (!_morphAnimating) return;
+            _morphAnimating = false;
+            Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnMorphRendering;
         }
 
         private static double EvaluateCubicBezier(double t, double x1, double y1, double x2, double y2)
