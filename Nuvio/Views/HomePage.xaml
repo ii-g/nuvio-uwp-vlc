@@ -142,7 +142,17 @@
                             <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
                         </StackPanel>
                     </StackPanel>
-                    <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="4" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}, ConverterParameter=invert}" VerticalAlignment="Bottom" Margin="0,0,0,24"/>
+                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}, ConverterParameter=invert}" VerticalAlignment="Bottom" Margin="0,0,0,24">
+                        <StackPanel Orientation="Horizontal" Spacing="4" FlowDirection="LeftToRight" VerticalAlignment="Center">
+                            <Border x:Name="LbChip" Background="#1FFFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center">
+                                <TextBlock Text="LB" FontSize="7" FontWeight="SemiBold" Foreground="#B8FFFFFF"/>
+                            </Border>
+                            <StackPanel x:Name="HeroDots" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"/>
+                            <Border x:Name="RbChip" Background="#1FFFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center">
+                                <TextBlock Text="RB" FontSize="7" FontWeight="SemiBold" Foreground="#B8FFFFFF"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Continue Watching -->
