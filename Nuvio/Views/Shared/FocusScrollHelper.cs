@@ -208,13 +208,14 @@ namespace Nuvio.Views
         }
 
         /// <summary>Guards the row's flow end: a target offset must never leave the
-        /// last card half-cut at the end edge (build 232: THE WEIGHT cut ~20 epx by
-        /// a leftover offset a few epx short of max). If the last item would be
-        /// partially visible at the target, the target is nudged to the nearer
-        /// offset where it is fully visible (left edge at the 68 epx end padding)
-        /// or fully hidden (right edge at the viewport edge). Skipped when the last
-        /// container is not realized (then it is far off-screen, not partial) or
-        /// the row does not scroll horizontally (the vertical catalog grid).</summary>
+        /// last card half-cut at the end edge. If the last item would be partially
+        /// visible at the target, the target is nudged to the nearer offset where
+        /// it is fully visible (its edge flush with the viewport edge — the end
+        /// padding is 0 by Mohammed's call in build 241: the 68 epx end pad only
+        /// disfigured the last poster) or fully hidden (its edge at the viewport
+        /// edge). Skipped when the last container is not realized (then it is far
+        /// off-screen, not partial) or the row does not scroll horizontally (the
+        /// vertical catalog grid).</summary>
         private double SnapRowEnd(GridView row, ScrollViewer viewer, double target)
         {
             if (viewer.ScrollableWidth <= 0) return target;
@@ -231,7 +232,10 @@ namespace Nuvio.Views
             var lastLeft = physicalLeft + shift;
             var lastRight = physicalRight + shift;
             if (lastLeft >= 0 || lastRight <= 0) return target;
-            const double endPad = 68;
+            // Build 241: no end padding at all — the last card ends flush with the
+            // viewport edge (lastLeft 0) or hidden whole (lastRight 0), never
+            // half-cut behind a gap.
+            const double endPad = 0;
             var toVisible = endPad - lastLeft;
             var toHidden = -lastRight;
             var nudge = Math.Abs(toVisible) <= Math.Abs(toHidden) ? toVisible : toHidden;
@@ -251,12 +255,12 @@ namespace Nuvio.Views
         /// <summary>Keeps a newly entered row's focused card inside the padded viewport
         /// (web scrollIntoView's row part): scrolls only when the card sticks out past
         /// the row padding, never yanks it to the anchor. The anchor is for moves
-        /// inside the row (AnchorRow). The pads are the web's scroll-padding: 68 epx
-        /// at the flow end (the row track's end padding), 6 epx at the flow start
-        /// (the page's 68 epx start inset sits outside the track). The offset signs
-        /// mirror AnchorRow: in RTL the offset grows as content moves right, in LTR
-        /// as it moves left. The end is also tidied (SnapRowEnd) so a leftover offset
-        /// never leaves the last card half-cut.</summary>
+        /// inside the row (AnchorRow). The pads are 0 epx at the flow end (build 241:
+        /// no end padding — the last card ends flush or hidden whole) and 6 epx at
+        /// the flow start (the page's 68 epx start inset sits outside the track).
+        /// The offset signs mirror AnchorRow: in RTL the offset grows as content
+        /// moves right, in LTR as it moves left. The end is also tidied (SnapRowEnd)
+        /// so a leftover offset never leaves the last card half-cut.</summary>
         private void KeepCardInView(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
@@ -268,7 +272,7 @@ namespace Nuvio.Views
             var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
             var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
             const double startPad = 6;
-            const double endPad = 68;
+            const double endPad = 0;
             double? target = null;
             if (rtl)
             {
