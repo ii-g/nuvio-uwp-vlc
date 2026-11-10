@@ -1053,6 +1053,11 @@ namespace Nuvio.Views
                 // expanded. The old fixed Padding="8,0" left a 16 epx cell that shrank
                 // the icon. RTL: content [8,32] of the 32 epx inner strip.
                 return rtl ? new Thickness(0, 0, 8, 0) : new Thickness(8, 0, 0, 0);
+            if (parameter as string == "activeUnderline")
+                // Active-item underline Margin: the line sits under the icon column,
+                // 6 epx in from the flow-start edge and 3 epx up from the button's
+                // bottom edge.
+                return rtl ? new Thickness(0, 0, 6, 3) : new Thickness(6, 0, 0, 3);
             return rtl ? new Thickness(32, 0, 68, 0) : new Thickness(68, 0, 32, 0);
         }
 
