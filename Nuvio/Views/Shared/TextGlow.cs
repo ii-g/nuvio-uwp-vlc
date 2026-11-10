@@ -2,7 +2,6 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
-using Windows.Foundation.Metadata;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.UI;
@@ -64,8 +63,8 @@ namespace Nuvio.Views.Shared
     /// from the XAML tree: the glow must be a sibling of the host visual,
     /// directly below it, and the only reliable way to find that sibling
     /// slot is the host visual's own Composition parent (Visual.Parent),
-    /// falling back to the XAML ancestors via GetElementVisual /
-    /// GetContainerVisual. The first behind-text version took the XAML
+    /// falling back to the XAML ancestors via GetElementVisual cast to
+    /// ContainerVisual. The first behind-text version took the XAML
     /// parent's GetElementVisual "as ContainerVisual" and silently
     /// skipped the glow when the cast failed — which is what happened on
     /// Xbox (build 314/315: no glow anywhere, no crash) — and it never
@@ -358,9 +357,10 @@ namespace Nuvio.Views.Shared
 
             // 2) Fallback: the XAML ancestors. GetElementVisual returns
             // a base Visual handout, which is not guaranteed to be a
-            // ContainerVisual (that is why GetContainerVisual exists);
-            // try both, and walk up until one of them yields a
-            // container.
+            // ContainerVisual; cast it and walk up until one of the
+            // ancestors yields a container. (GetContainerVisual is a
+            // WinUI 3-only API and does not exist on UWP's
+            // ElementCompositionPreview, so it cannot be used here.)
             composedOffset = hostVisual.Offset;
             restMatrix = Matrix4x4.Identity;
             var ancestor = VisualTreeHelper.GetParent(element) as UIElement;
@@ -400,20 +400,6 @@ namespace Nuvio.Views.Shared
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("TextGlow: element visual failed: " + ex.Message);
-            }
-            // GetContainerVisual is the API Microsoft ships for exactly
-            // this (the container backing a XAML container); gate it in
-            // case the running OS predates it.
-            try
-            {
-                if (ApiInformation.IsMethodPresent("Windows.UI.Xaml.Hosting.ElementCompositionPreview", "GetContainerVisual"))
-                {
-                    return ElementCompositionPreview.GetContainerVisual(element) as ContainerVisual;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("TextGlow: container visual failed: " + ex.Message);
             }
             return null;
         }
