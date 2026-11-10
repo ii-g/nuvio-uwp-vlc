@@ -108,7 +108,6 @@
     </Compile>
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
     <Compile Include="Views\Shared\SidebarBackdropBlurBrush.cs" />
-    <Compile Include="Views\Shared\GlobalFocusOverlay.cs" />
     <Compile Include="Views\PlaceholderPage.xaml.cs">
       <DependentUpon>PlaceholderPage.xaml</DependentUpon>
     </Compile>
