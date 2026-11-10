@@ -45,10 +45,13 @@
                                  owns this alignment any more. SetFlowDirection no longer sets
                                  HorizontalContentAlignment; the Grid columns do the work. -->
                             <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Stretch" VerticalAlignment="Center" Padding="{TemplateBinding Padding}"/>
-                            <!-- Active-item accent bar (web .sidebar-item.active::before): a 2 epx
-                                 accent-strong bar, 13 epx tall, 3 epx from the flow-start edge.
-                                 SetSidebarActive shows it for the current page only. -->
-                            <Border x:Name="ActiveBar" Width="2" Height="13" CornerRadius="1" Background="#FF3C7BFF" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center" Margin="3,0" Visibility="Collapsed"/>
+                            <!-- Active-item underline: a thin light transparent line under
+                                 the icon (2 epx, #33FFFFFF), 6 epx in from the flow-start
+                                 edge and 3 epx up from the button's bottom edge.
+                                 SetSidebarActive shows it for the current page only. The
+                                 blue accent bar is gone on purpose: on the frosted strip
+                                 it read as a stray blue tick on the button's edge. -->
+                            <Border x:Name="ActiveUnderline" Width="18" Height="2" CornerRadius="1" Background="#33FFFFFF" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=activeUnderline}" Visibility="Collapsed"/>
                             <VisualStateManager.VisualStateGroups>
                                 <!-- Button states, matched to the web sidebar (web/css/app.css):
                                      default = transparent bg, muted text/icon (the style's
@@ -62,7 +65,8 @@
                                      merely selected — so all four states stay in the dark theme
                                      and differ only in surface depth. The active (selected-page)
                                      look is owned by SetSidebarActive: surface-2 bg + white
-                                     text + the accent bar above (web .sidebar-item.active). -->
+                                     text + the underline below (a thin light transparent line
+                                     under the icon, replacing the blue accent bar). -->
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
@@ -153,16 +157,34 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" Margin="0,0,0,24">
-                        <!-- The wordmark already contains the triangle, so the icon and the
-                             wordmark share one cell and cross-fade (AnimateSidebar): collapsed
-                             shows the icon alone, expanded shows the full lockup once — never
-                             triangle + nuvio + triangle as in build 162. The icon carries the
-                             "logo" start offset on its own Margin so it sits on the button-icon
-                             column when collapsed; the wordmark is centered in the full row
-                             width when expanded (build 216: start-aligned, its centre sat ~17 epx
-                             off the strip's centre). The row itself carries no padding any more,
-                             so the centring is exact. -->
-                        <Image x:Name="SidebarLogoIcon" Source="ms-appx:///web/assets/icon.png" Width="22" Height="22" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=logo}"/>
+                        <!-- The collapsed icon is the wordmark's own triangle: a 22 epx
+                             Canvas holding the wordmark image at 22 epx high, clipped to
+                             its left 22 epx so only the triangle shows. A Canvas arranges
+                             its child at full size (a 22 epx Border or Grid would squeeze
+                             the image to 22 epx wide and show the whole lockup shrunk),
+                             and the clip is on the Image itself, so the triangle lands
+                             exactly on the button-icon column. icon.png carries a black
+                             inner triangle (measured: an opaque black triangle around a
+                             small white play glyph) while the wordmark's play glyph is
+                             white on the gradient, so the collapsed icon showed a black
+                             play and the expanded lockup a white one; one asset now, white
+                             play in both states. The wordmark's triangle ends at 20 epx of
+                             the 22 epx height and its "nuvio" text starts at 24.3 epx, so
+                             the 22 epx clip shows the whole triangle and none of the text.
+                             The Canvas keeps the "logo" start offset on its own Margin;
+                             the wordmark is centered in the full row width when expanded
+                             (build 216: start-aligned, its centre sat ~17 epx off the
+                             strip's centre). The row itself carries no padding any more,
+                             so the centring is exact. The two share one cell and cross-fade
+                             (AnimateSidebar) — never triangle + nuvio + triangle as in
+                             build 162. -->
+                        <Canvas x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=logo}">
+                            <Image Source="ms-appx:///web/assets/wordmark.png" Height="22">
+                                <Image.Clip>
+                                    <RectangleGeometry Rect="0,0,22,22"/>
+                                </Image.Clip>
+                            </Image>
+                        </Canvas>
                         <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"/>
                     </Grid>
                     <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
