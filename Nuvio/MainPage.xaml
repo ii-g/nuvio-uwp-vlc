@@ -162,8 +162,17 @@
                              its left 22 epx so only the triangle shows. A Canvas arranges
                              its child at full size (a 22 epx Border or Grid would squeeze
                              the image to 22 epx wide and show the whole lockup shrunk),
-                             and the clip is on the Image itself, so the triangle lands
-                             exactly on the button-icon column. icon.png carries a black
+                             and the clip is on the Image itself. The icon is centred in
+                             the 32 epx inner strip, so it sits on the button-icon column
+                             like the other icons: the old flow-aware Right alignment and
+                             "logo" margin put it 4 epx left of the icons. The wordmark is
+                             69.4 epx wide in a 32 epx cell, so it overflows past the strip
+                             on the content side and its triangle lands left of the divider,
+                             over the search field; Opacity alone could not keep it hidden
+                             while collapsed (build 232 showed the triangle outside the
+                             strip), so it is Visibility=Collapsed when collapsed as well:
+                             AnimateSidebar pins Visibility with Opacity, and the XAML
+                             default is Collapsed. icon.png carries a black
                              inner triangle (measured: an opaque black triangle around a
                              small white play glyph) while the wordmark's play glyph is
                              white on the gradient, so the collapsed icon showed a black
@@ -171,21 +180,20 @@
                              play in both states. The wordmark's triangle ends at 20 epx of
                              the 22 epx height and its "nuvio" text starts at 24.3 epx, so
                              the 22 epx clip shows the whole triangle and none of the text.
-                             The Canvas keeps the "logo" start offset on its own Margin;
-                             the wordmark is centered in the full row width when expanded
+                             The wordmark is centered in the full row width when expanded
                              (build 216: start-aligned, its centre sat ~17 epx off the
                              strip's centre). The row itself carries no padding any more,
                              so the centring is exact. The two share one cell and cross-fade
                              (AnimateSidebar) — never triangle + nuvio + triangle as in
                              build 162. -->
-                        <Canvas x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Center" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=logo}">
+                        <Canvas x:Name="SidebarLogoIcon" Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Image Source="ms-appx:///web/assets/wordmark.png" Height="22">
                                 <Image.Clip>
                                     <RectangleGeometry Rect="0,0,22,22"/>
                                 </Image.Clip>
                             </Image>
                         </Canvas>
-                        <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0"/>
+                        <Image x:Name="SidebarLogoWordmark" Source="ms-appx:///web/assets/wordmark.png" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0" Visibility="Collapsed"/>
                     </Grid>
                     <StackPanel x:Name="SidebarItemsPanel" Grid.Row="1" VerticalAlignment="Center" Margin="0,-48,0,0" Spacing="5">
                     <Button x:Name="HomeButton" Style="{StaticResource SidebarButtonStyle}" Tag="home" Click="SidebarButton_Click">
