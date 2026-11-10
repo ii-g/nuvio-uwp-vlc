@@ -293,7 +293,7 @@ namespace Nuvio.Views
         }
 
         // Anchor the focused element the way the old web UI did (focus.js): the
-        // focused card stays at the row's start edge while the strip glides beneath
+        // card before the focused one stays at the row's start edge while the strip glides beneath
         // it, and the focused row sits ~16% down the page. StartBringIntoView jumps
         // per move instead of gliding, which is why the UI felt fast even at a slower
         // repeat rate — so the anchor now drives the smooth scroller below, a port
@@ -315,8 +315,8 @@ namespace Nuvio.Views
             var rowChanged = row == null || !ReferenceEquals(row, _lastAnchoredRow);
             if (row != null && item != null)
             {
-                // Within a row the focused card is pinned to the start edge (web
-                // focusInHorizontalRow); entering a row from elsewhere only keeps the
+                // Within a row the card before the focused one is pinned to the start edge (AnchorRow);
+                // entering a row from elsewhere only keeps the
                 // card inside the padded viewport (web scrollIntoView) instead of
                 // yanking the strip to the anchor.
                 if (rowChanged) KeepCardInView(row, item);
@@ -502,80 +502,47 @@ namespace Nuvio.Views
             }
         }
 
-        /// <summary>Anchors a focused card to the row's flow-start edge (web
-        /// focusInHorizontalRow): right in RTL, left in LTR, on the hero
-        /// content's start edge (RowStartAnchorInset: 108 epx RTL / 26 epx
-        /// LTR inside the track edge) — the same place the first card rests
-        /// (rowHome padding). The offset is computed
-        /// from the card's on-screen rect, so no ratio is guessed: BringIntoView ratios
-        /// are fractions of the flow extent, which is why 0.99 pinned the card to the
-        /// flow end (the left edge in RTL) on build 162 instead of the start.</summary>
+        /// <summary>Anchors a row after an in-row focus move — but not on the
+        /// focused card itself: on the card just before it toward the flow
+        /// start (index k-1), whose start edge lands on the hero content's
+        /// start edge (RowStartAnchorInset: 108 epx RTL / 26 epx LTR inside
+        /// the track edge) — the same place the first card rests (rowHome
+        /// padding). The focused card then rests one pitch inside the hero
+        /// edge, with the previous card fully visible at the edge instead
+        /// of sliding under the sidebar. Mohammed's call on build 292:
+        /// with focus on Primetime (index 2) Halloween (index 1, the first
+        /// fully-visible card from the start side) must sit exactly on the
+        /// hero edge — pinning the focused card itself put Halloween 97 epx
+        /// past the edge, at the sidebar seam, and the row visibly lost the
+        /// hero alignment as soon as it scrolled (at rest, index 0, it was
+        /// perfect). For index 0 there is no previous card: the target is
+        /// the rest offset 0. The offset is computed from the anchored
+        /// card's on-screen rect, so no ratio is guessed and wide Continue
+        /// cards (176 epx) work the same way: BringIntoView ratios are
+        /// fractions of the flow extent, which is why 0.99 pinned the card
+        /// to the flow end (the left edge in RTL) on build 162 instead of
+        /// the start.</summary>
         private void AnchorRow(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
             if (viewer == null || item == null) return;
-            var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
-            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
             // The rows inherit the page direction, so this line proves in the Xbox log
             // which way the rows actually render (build 170: Arabic labels with an LTR
             // layout left the user unable to tell whether the rows were RTL or LTR).
             if (!_rowDirectionLogged)
             {
                 _rowDirectionLogged = true;
-                Log.Write("Row flow direction: " + (rtl ? "RTL" : "LTR"));
+                Log.Write("Row flow direction: " + (row.FlowDirection == FlowDirection.RightToLeft ? "RTL" : "LTR"));
             }
-            // The anchor sits where the first card rests (rowHome padding —
-            // the hero-aligned inset, RowStartAnchorInset), and the 1.06
-            // focus zoom only overflows ~2.6 epx past it.
-            // TransformToVisual reports RTL-origin coordinates (x measured from the
-            // flow-start edge): build 180 proved it — sidebarX=0 for a strip visibly at
-            // 912..960 — so in RTL rect.Left is the card's START edge (physical right)
-            // and rect.Right its END edge (physical left), the reverse of the physical
-            // reading the previous anchor used. That pinned the focused card to the flow
-            // END (physical left) and threw the row several cards off per press, which is
-            // why the scroll felt broken, the first card showed as a sliver at the start
-            // edge, and the target container could virtualize away mid-row (falling back
-            // to a second XYFocus move). Flip to physical edges so the anchor reads the
-            // same in both directions.
-            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
-            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
-            var startInset = FlowDirectionToThicknessConverter.RowStartAnchorInset(rtl);
             double target;
-            if (rtl)
-            {
-                // Start edge is the physical right; in RTL the offset grows as the content
-                // moves right, so the item's right edge moves right with it.
-                var anchor = viewer.ViewportWidth - startInset;
-                var delta = anchor - physicalRight;
-                if (Math.Abs(delta) <= 1)
-                {
-                    // Already on the anchor: do nothing. Tidying here would
-                    // apply the end-edge nudge (SnapRowEnd) and push the card
-                    // off the anchor by the straddle — the same nudge the
-                    // exact target below deliberately skips (see below).
-                    return;
-                }
-                target = viewer.HorizontalOffset + delta;
-            }
-            else
-            {
-                var anchor = startInset;
-                var delta = physicalLeft - anchor;
-                if (Math.Abs(delta) <= 1)
-                {
-                    // Already on the anchor: do not tidy (see above).
-                    return;
-                }
-                target = viewer.HorizontalOffset + delta;
-            }
+            if (!TryComputeRowAnchorTarget(row, item, viewer, out target)) return;
             // The anchor target is used exactly, without SnapRowEnd's
             // end-edge nudge — the nudge is what broke the alignment. The
             // pitch (97 epx) does not divide the viewport (912 epx), so at
             // the exact anchor a card always straddles the end edge by the
-            // same amount as at rest (28 epx for the 88 epx poster cards:
-            // card k+8 spans [-60, 28] at the anchor for focus index k),
+            // same amount as at rest (28 epx for the 88 epx poster cards),
             // and the nudge moved the strip by that straddle on every
-            // in-row move, leaving the focused card 28 epx off the hero
+            // in-row move, leaving the anchored card 28 epx off the hero
             // edge. At rest the anchor held only because the offset clamp
             // (0) blocked the nudge — which is exactly why the row looked
             // aligned at rest and lost it as soon as focus moved. The sliver
@@ -586,6 +553,97 @@ namespace Nuvio.Views
             // nothing at the end edge — it only restores the anchor. The
             // guard stays active where the offset is not anchor-determined:
             // row entry (KeepCardInView) and TidyRowEnd.
+            _anchorGlideViewers.Add(viewer);
+            _anchorSettlePasses[viewer] = 0;
+            SmoothScrollTo(viewer, target, null);
+        }
+
+        /// <summary>Computes the offset that puts the anchor card's start edge
+        /// on the hero edge: the card before the focused one toward the flow
+        /// start (index k-1), or the rest offset 0 when focus is on the first
+        /// card. The anchor card is measured live (TransformToVisual reports
+        /// RTL-origin coordinates — build 180 — so the physical edges are
+        /// flipped back before use), which also makes the target correct
+        /// mid-glide: the delta is read off the card's current on-screen
+        /// rect, so retargeting during the 110 ms repeat only moves the
+        /// destination, never the start point. Returns false when the row is
+        /// already on the anchor (|delta| ≤ 1 epx — tidying there would apply
+        /// SnapRowEnd's nudge and push the card off it) or when the anchor
+        /// card is not realized (the caller then leaves the row alone; the
+        /// focused card's neighbour is adjacent and on screen, so this is
+        /// only a virtualization fallback).</summary>
+        private bool TryComputeRowAnchorTarget(GridView row, GridViewItem item, ScrollViewer viewer, out double target)
+        {
+            target = 0;
+            var index = row.IndexFromContainer(item);
+            if (index < 0) return false;
+            if (index == 0)
+            {
+                // No previous card: the anchor is the rest position.
+                if (Math.Abs(viewer.HorizontalOffset) <= 1) return false;
+                target = 0;
+                return true;
+            }
+            var anchorItem = row.ContainerFromIndex(index - 1) as GridViewItem;
+            if (anchorItem == null) return false;
+            var rect = anchorItem.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, anchorItem.ActualWidth, anchorItem.ActualHeight));
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            // TransformToVisual reports RTL-origin coordinates (x measured from the
+            // flow-start edge): build 180 proved it — sidebarX=0 for a strip visibly at
+            // 912..960 — so in RTL rect.Left is the card's START edge (physical right)
+            // and rect.Right its END edge (physical left), the reverse of the physical
+            // reading the previous anchor used. Flip to physical edges so the anchor reads the
+            // same in both directions.
+            var physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            var physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
+            var startInset = FlowDirectionToThicknessConverter.RowStartAnchorInset(rtl);
+            double delta;
+            if (rtl)
+            {
+                // Start edge is the physical right; in RTL the offset grows as the content
+                // moves right, so the item's right edge moves right with it.
+                delta = (viewer.ViewportWidth - startInset) - physicalRight;
+            }
+            else
+            {
+                delta = physicalLeft - startInset;
+            }
+            if (Math.Abs(delta) <= 1) return false;
+            target = viewer.HorizontalOffset + delta;
+            return true;
+        }
+
+        /// <summary>Settles an anchor glide: build 292's photo showed the row
+        /// resting about one pitch short of its anchor after scrolling — the
+        /// exponential glide's destination was right, but the strip never
+        /// arrived. After a glide issued by AnchorRow snaps to its target,
+        /// re-measure the anchor from the live rects and, if the row is still
+        /// off by more than 1 epx, re-issue the glide toward the recomputed
+        /// target. At most two re-issues per focus move, and only when the
+        /// recomputed target is reachable (inside [0, ScrollableWidth] — at
+        /// the row's tail the anchor cannot hold and the row is left where
+        /// the clamp put it). Only anchor glides are verified: glides from
+        /// KeepCardInView/TidyRowEnd deliberately do not yank the row to the
+        /// anchor, so they are never in _anchorGlideViewers.</summary>
+        private void VerifyRowAnchor(ScrollViewer viewer, double snappedTarget)
+        {
+            if (viewer == null || !_anchorGlideViewers.Contains(viewer)) return;
+            _anchorGlideViewers.Remove(viewer);
+            var row = FindAncestorGridView(viewer);
+            if (row == null) return;
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null || !ReferenceEquals(FindAncestorGridView(focused), row)) return;
+            var item = FindAncestorGridViewItem(focused);
+            if (item == null) return;
+            double target;
+            if (!TryComputeRowAnchorTarget(row, item, viewer, out target)) return;
+            if (target < 0 || target > viewer.ScrollableWidth) return;
+            if (Math.Abs(target - snappedTarget) <= 1) return;
+            int passes;
+            _anchorSettlePasses.TryGetValue(viewer, out passes);
+            if (passes >= 2) return;
+            _anchorSettlePasses[viewer] = passes + 1;
+            _anchorGlideViewers.Add(viewer);
             SmoothScrollTo(viewer, target, null);
         }
 
@@ -653,6 +711,8 @@ namespace Nuvio.Views
         private const double SmoothTauMs = 105;
         private const double SmoothSnapEpsilon = 0.6;
         private readonly Dictionary<ScrollViewer, SmoothScrollState> _smoothScrolls = new Dictionary<ScrollViewer, SmoothScrollState>();
+        private readonly HashSet<ScrollViewer> _anchorGlideViewers = new HashSet<ScrollViewer>();
+        private readonly Dictionary<ScrollViewer, int> _anchorSettlePasses = new Dictionary<ScrollViewer, int>();
         private bool _smoothScrollHandlerAttached;
 
         /// <summary>Glides a ScrollViewer toward the given offsets (web smoothScrollTo).
@@ -684,6 +744,7 @@ namespace Nuvio.Views
         {
             var now = DateTime.UtcNow;
             var anyRunning = false;
+            var snappedHorizontal = new List<KeyValuePair<ScrollViewer, double>>();
             foreach (var pair in _smoothScrolls.ToArray())
             {
                 var viewer = pair.Key;
@@ -704,6 +765,7 @@ namespace Nuvio.Views
                     var distance = state.TargetH.Value - current;
                     if (Math.Abs(distance) < SmoothSnapEpsilon)
                     {
+                        snappedHorizontal.Add(new KeyValuePair<ScrollViewer, double>(viewer, state.TargetH.Value));
                         viewer.ChangeView(state.TargetH.Value, null, null, true);
                         state.TargetH = null;
                     }
@@ -744,6 +806,13 @@ namespace Nuvio.Views
             {
                 _smoothScrollHandlerAttached = false;
                 CompositionTarget.Rendering -= OnSmoothScrollRendering;
+            }
+            // Anchor settle: a snapped anchor glide is verified against the
+            // live anchor (see VerifyRowAnchor) — a re-issue, if any,
+            // re-attaches the Rendering handler through SmoothScrollTo.
+            foreach (var snapped in snappedHorizontal)
+            {
+                VerifyRowAnchor(snapped.Key, snapped.Value);
             }
         }
 
