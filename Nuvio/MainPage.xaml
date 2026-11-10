@@ -28,6 +28,12 @@
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="Padding" Value="8,0"/>
             <Setter Property="CornerRadius" Value="14"/>
+            <!-- The global focus overlay is the only ring for these buttons:
+                 the system-drawn focus rectangle would double it (build 251
+                 photos: a white oval around the focused button on top of the
+                 focus fill). The Focused state's surface-2 fill stays: it is
+                 the button's state, not a ring. -->
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -105,7 +111,7 @@
         </Style>
     </Page.Resources>
 
-    <Grid Background="Black">
+    <Grid x:Name="RootGrid" Background="Black">
         <!-- Native Windows Media Foundation surface; controls are drawn by the native UI above it. -->
         <MediaPlayerElement x:Name="MediaElement" x:Load="False" SizeChanged="MediaElement_SizeChanged"
                             Opacity="0" IsHitTestVisible="False" IsTabStop="False"
@@ -274,10 +280,19 @@
                 <TextBlock x:Name="LoadErrorTitle" Text="Couldn't load Nuvio" FontSize="28" Foreground="White" HorizontalAlignment="Center" />
                 <TextBlock x:Name="LoadErrorText" Foreground="#B3FFFFFF" TextWrapping="Wrap" TextAlignment="Left" FlowDirection="LeftToRight" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
-                    <Button x:Name="RetryButton" Content="Retry" MinWidth="160" />
-                    <Button x:Name="BuiltInButton" Content="Use the built-in app" MinWidth="160" Visibility="Collapsed" />
+                    <Button x:Name="RetryButton" Content="Retry" MinWidth="160" UseSystemFocusVisuals="False" />
+                    <Button x:Name="BuiltInButton" Content="Use the built-in app" MinWidth="160" Visibility="Collapsed" UseSystemFocusVisuals="False" />
                 </StackPanel>
             </StackPanel>
         </Grid>
+
+        <!-- Global animated focus overlay: one ring for every interactive
+             element in the shell (sidebar, cards, hero buttons, chips,
+             search field). It sits last so it paints above the content, the
+             sidebar and the toast, follows FocusManager on its own, and is
+             never hit-testable or focusable itself. See
+             Views/Shared/GlobalFocusOverlay.cs for the motion, the radius
+             map and the visibility rules. -->
+        <shared:GlobalFocusOverlay x:Name="FocusOverlay" IsHitTestVisible="False"/>
     </Grid>
 </Page>
