@@ -34,6 +34,29 @@
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE721;" FontSize="14" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
                         <TextBox x:Name="SearchBox" x:Uid="SearchBox" Grid.Column="2" PlaceholderText="Search movies &amp; series" PlaceholderForeground="#80FFFFFF" FontSize="11" Background="Transparent" BorderThickness="0" Foreground="White" Height="35" Padding="0" VerticalAlignment="Center" IsSpellCheckEnabled="False" UseSystemFocusVisuals="False">
+                            <TextBox.Resources>
+                                <!-- The default TextBox template inverts to a white background on
+                                     focus (TextControlBackgroundFocused) with an accent border:
+                                     on the dark theme that reads as a blinding white pill with a
+                                     blue ring (build 216). The pill's own focus ring is the outer
+                                     Border's accent border (GotFocus/LostFocus in the code-behind),
+                                     so the box itself stays dark in every state: surface-2 like
+                                     the bar, no template border, white text, muted placeholder. -->
+                                <SolidColorBrush x:Key="TextControlBackground" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#1AFFFFFF"/>
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#1AFFFFFF"/>
+                                <SolidColorBrush x:Key="TextControlBackgroundDisabled" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlBorderBrushDisabled" Color="Transparent"/>
+                                <SolidColorBrush x:Key="TextControlForeground" Color="White"/>
+                                <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="White"/>
+                                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="White"/>
+                                <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#80FFFFFF"/>
+                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#80FFFFFF"/>
+                                <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#80FFFFFF"/>
+                            </TextBox.Resources>
                             <TextBox.InputScope>
                                 <InputScope>
                                     <InputScope.Names>
@@ -45,25 +68,47 @@
                     </Grid>
                 </Border>
 
-                <!-- Recent searches -->
-                <StackPanel Visibility="{Binding IsRecentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,12,0,0">
-                    <TextBlock x:Uid="RecentSearchesTitle" Text="Recent Searches" FontSize="12" FontWeight="Bold"/>
-                    <ItemsControl ItemsSource="{Binding RecentSearches}" Margin="0,7,0,0">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <!-- Web .chip: height 2.7rem = 22 epx, radius 1.35rem = 11 epx,
-                                     surface bg + 1 epx border token, text-2, SemiBold, gap .8rem = 6 epx. -->
-                                <Button Content="{Binding}" Click="RecentChip_Click" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" Foreground="#B8FFFFFF" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                <!-- Empty state: a centred hero shown while no query is active and no
+                     results exist (ViewModel.IsEmptyHero — first entry, or the query
+                     cleared). The page cross-fades it against the results below. The
+                     magnifier sits in an accent circle with a soft accent halo (outer
+                     ring at 8% accent, inner at 20%); the title and the muted line sit
+                     under it, and the recent searches live under the hero as part of the
+                     empty state — a chip runs its query, as before. -->
+                <Grid x:Name="EmptyHero" MinHeight="400">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <Grid Width="76" Height="76" HorizontalAlignment="Center">
+                            <Ellipse Width="76" Height="76" Fill="#142F6FED"/>
+                            <Ellipse Width="56" Height="56" Fill="#332F6FED"/>
+                            <FontIcon Glyph="&#xE721;" FontSize="24" Foreground="#FF3C7BFF" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <TextBlock x:Uid="SearchEmptyTitle" Text="Search" FontSize="17" FontWeight="Bold" Foreground="White" TextAlignment="Center" HorizontalAlignment="Center"/>
+                        <TextBlock x:Uid="SearchEmptySubtitle" Text="Search for movies and series" FontSize="9" Foreground="#80FFFFFF" TextAlignment="Center" HorizontalAlignment="Center"/>
+                        <!-- Recent searches -->
+                        <StackPanel Visibility="{Binding IsRecentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,16,0,0" HorizontalAlignment="Center">
+                            <TextBlock x:Uid="RecentSearchesTitle" Text="Recent Searches" FontSize="12" FontWeight="Bold" TextAlignment="Center" HorizontalAlignment="Center"/>
+                            <ItemsControl ItemsSource="{Binding RecentSearches}" Margin="0,7,0,0" HorizontalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- Web .chip: height 2.7rem = 22 epx, radius 1.35rem = 11 epx,
+                                             surface bg + 1 epx border token, text-2, SemiBold, gap .8rem = 6 epx. -->
+                                        <Button Content="{Binding}" Click="RecentChip_Click" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" Foreground="#B8FFFFFF" FontWeight="SemiBold" Padding="10,4" CornerRadius="11" FontSize="8" MinHeight="22" Margin="0,0,6,0"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
 
+                <!-- Results (rows + loading + no-providers + no-results): hidden while the
+                     empty hero shows; the page cross-fades the two. -->
+                <Grid x:Name="ResultsContainer">
+                <StackPanel>
                 <!-- One row per search catalog -->
                 <ItemsControl ItemsSource="{Binding Rows}" Margin="0,8,0,0">
                     <ItemsControl.ItemTemplate>
@@ -103,6 +148,8 @@
                         <TextBlock x:Uid="SearchNoResultsTitle" Text="No results" FontSize="14" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding NoResultsMessage}" FontSize="9" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
                     </StackPanel>
+                </Grid>
+                </StackPanel>
                 </Grid>
             </StackPanel>
         </ScrollViewer>
