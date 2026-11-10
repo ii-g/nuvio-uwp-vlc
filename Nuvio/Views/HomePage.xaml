@@ -166,7 +166,7 @@
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <!-- Backdrop: two cross-fading layers following the focused card, live-blurred.
-             Blur only — no gradient and no flat shade, per Mohammed's call. -->
+             Light blur 6 + a light bottom gradient (option B, per Mohammed's call). -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
@@ -183,6 +183,20 @@
             <Rectangle x:Name="BackdropBlurRect">
                 <Rectangle.Fill>
                     <shared:GraduatedBackdropBlurBrush/>
+                </Rectangle.Fill>
+            </Rectangle>
+            <!-- Light bottom shade (option B): a static vertical gradient —
+                 fully transparent to 0.45, grading to ~40% black at the
+                 bottom — so the rows read on light fanart while the
+                 backdrop stays visible. No flat shade, no full-screen
+                 coverage. -->
+            <Rectangle x:Name="BackdropShadeRect">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="#00000000"/>
+                        <GradientStop Offset="0.45" Color="#00000000"/>
+                        <GradientStop Offset="1" Color="#66000000"/>
+                    </LinearGradientBrush>
                 </Rectangle.Fill>
             </Rectangle>
         </Grid>
