@@ -223,6 +223,65 @@ namespace Nuvio.Views
             _viewModel.PlayHero();
         }
 
+        /// <summary>Pins the hero carousel to the Verity slide — the reference
+        /// slide for the sidebar tones — and reports whether it did. Called by
+        /// the shell when the sidebar expands: Mohammed's call is that the menu
+        /// always shows the Verity tones (start edge about 115-122, body about
+        /// 74-101, far edge about 23, std 36-44), whatever slide is current
+        /// when it opens.
+        ///
+        /// Why the slide, not the tint or the backdrop: the tones follow the
+        /// hero slide, and the driver is the hero LOGO, not the backdrop art.
+        /// Proved from Mohammed's 1-second video (Hocus Pocus -&gt; Verity while
+        /// the menu was open, focus on Library): the backdrop art is pixel-
+        /// identical across the flip (mean abs diff about 17 in the art zones,
+        /// the same witch image in both frames — the timer advance never calls
+        /// ShowBackdrop, so the backdrop stays), yet the menu's start edge
+        /// jumps 71 -&gt; 125 (mean abs diff 57). The only thing that changed
+        /// was the slide: the dark purple Hocus Pocus logo became the white
+        /// Verity script, and its bright halo leaks through the live blur at
+        /// the strip's start edge. So pinning the slide to Verity restores the
+        /// reference composite exactly in the common case (backdrop as it was,
+        /// Verity logo, live rows), with the same blur math — no tint (a
+        /// uniform tint can only shift the mean, never the edge band or the
+        /// std; build 251 flattened the strip proving it), no painted streak
+        /// (banned), and no frozen snapshot (the backdrop brush samples the
+        /// live tree and cannot be frozen; a static plate could not reproduce
+        /// the live rows below the fold that make up the lower half of the
+        /// reference profile).
+        ///
+        /// Deliberate visible change, disclosed: the hero title, logo,
+        /// description, genres and dots jump to Verity at the moment the menu
+        /// opens. That is the price of the tones — the tones ARE the Verity
+        /// slide — and Mohammed chose it ("always Verity tones"). The backdrop
+        /// is deliberately NOT touched: in the reference it was the
+        /// then-current slide's art (the witch), and Verity's own backdrop art
+        /// is unseen, so swapping it in would gamble the top of the strip
+        /// brighter than the reference (top 60-65). The hero auto-rotate is
+        /// already frozen while the strip is expanded, so the slide stays on
+        /// Verity until the strip collapses; rotation then resumes from Verity
+        /// on the next timer tick, and the slide is NOT restored to the
+        /// previous one (that would flip the hero a second time for no gain).
+        /// No Verity slide in the list (catalog changed) or no hero at all:
+        /// logs and leaves the slide alone — the strip then shows the current
+        /// slide's tones, frozen by the rotate freeze.</summary>
+        public bool PinHeroToReferenceSlide()
+        {
+            if (_viewModel == null || _viewModel.HeroItems.Count == 0) return false;
+            for (var i = 0; i < _viewModel.HeroItems.Count; i++)
+            {
+                var name = _viewModel.HeroItems[i].Name;
+                if (string.IsNullOrEmpty(name)) continue;
+                if (name.IndexOf("Verity", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                if (_viewModel.HeroIndex == i) return true;
+                _viewModel.SetHeroIndex(i);
+                Log.Write("Sidebar tones: pinned hero to the Verity slide (index " + i + " of " + _viewModel.HeroItems.Count + ") on sidebar expand");
+                return true;
+            }
+            Log.Write("Sidebar tones: no Verity slide in the hero list (" + _viewModel.HeroItems.Count + " items); hero left on the current slide");
+            return false;
+        }
+
         private void HeroDetailsButton_Click(object sender, RoutedEventArgs e)
         {
             _viewModel.OpenTitle(_viewModel.CurrentHero);
