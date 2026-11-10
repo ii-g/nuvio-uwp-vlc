@@ -10,6 +10,7 @@ using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Hosting;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Shapes;
 using Nuvio.Views;
 
 namespace Nuvio.Views.Shared
@@ -26,7 +27,7 @@ namespace Nuvio.Views.Shared
     /// retarget starts from the ring's CURRENT animated values (the previous
     /// animation is stopped and its live values read back), so a fast focus
     /// change at the 110 ms repeat rate glides from mid-flight instead of
-    /// jumping or restarting from the target. CornerRadius has no Composition
+    /// jumping or restarting from the target. RadiusX/RadiusY have no Composition
     /// animation type, so it morphs with the same curve through a bounded
     /// CompositionTarget.Rendering loop that detaches itself when done.
     ///
@@ -66,16 +67,19 @@ namespace Nuvio.Views.Shared
     /// against the shell root, the same rule the scroller uses (TransformToVisual
     /// reports RTL-origin rects, so no flow-direction math is needed here).
     /// </summary>
-    // NOTE: Border is sealed in UWP (CS0509), so the ring is a Grid hosting
-    // an inner Border that draws the ring. The animated Visual is the inner
-    // Border's (its rendering follows Visual.Offset/Size exactly like the
-    // Border-based version); the Grid is a 0x0 transparent host and draws
-    // nothing itself. ContentControl was rejected: its default template does
-    // not guarantee the ring's Background/BorderBrush render, and as a
-    // Control it would be tab-focusable by default.
+    // NOTE: Border is sealed in UWP (CS0509), and a plain Visual has no
+    // Shadow in UWP either (CS1061: Visual.Shadow is WinUI 3 only). The
+    // ring is therefore a Rectangle (Shape) hosted in this 0x0 Grid: the
+    // Rectangle draws the ring, and a SpriteVisual child of it carries the
+    // DropShadow, masked by the Rectangle's own alpha (Shape.GetAlphaMask)
+    // so the glow hugs the outline instead of washing the ring's
+    // transparent interior. The Grid draws nothing itself. ContentControl
+    // was rejected: its default template does not guarantee the ring's
+    // Fill/Stroke render, and as a Control it would be tab-focusable by
+    // default.
     public sealed class GlobalFocusOverlay : Grid
     {
-        private readonly Border _ringBorder;
+        private readonly Rectangle _ringRect;
         // --- Appearance -------------------------------------------------
         private static readonly Color RingColor = Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF);
         private const double RingThickness = 2.0;
@@ -96,6 +100,9 @@ namespace Nuvio.Views.Shared
         private Compositor _compositor;
         private Visual _visual;
         private CubicBezierEasingFunction _ease;
+        private DropShadow _shadow;
+        private SpriteVisual _shadowSprite;
+        private bool _maskRefreshQueued;
         private FrameworkElement _host;
         private bool _attached;
         private bool _visible;
@@ -114,16 +121,20 @@ namespace Nuvio.Views.Shared
 
         public GlobalFocusOverlay()
         {
-            _ringBorder = new Border
+            // A Rectangle (Shape), not a Border: only Shape/Image/TextBlock
+            // expose GetAlphaMask, and the glow's DropShadow needs the
+            // ring's own alpha as its mask (see EnsureShadow).
+            _ringRect = new Rectangle
             {
-                BorderBrush = new SolidColorBrush(RingColor),
-                BorderThickness = new Thickness(RingThickness),
-                Background = new SolidColorBrush(FillColor),
-                CornerRadius = new CornerRadius(CardRadius),
+                Fill = new SolidColorBrush(FillColor),
+                Stroke = new SolidColorBrush(RingColor),
+                StrokeThickness = RingThickness,
+                RadiusX = CardRadius,
+                RadiusY = CardRadius,
                 Opacity = 0,
                 IsHitTestVisible = false,
             };
-            Children.Add(_ringBorder);
+            Children.Add(_ringRect);
             HorizontalAlignment = HorizontalAlignment.Left;
             VerticalAlignment = VerticalAlignment.Top;
             Width = 0;
@@ -159,7 +170,7 @@ namespace Nuvio.Views.Shared
         {
             if (_attached) return;
             _attached = true;
-            _visual = ElementCompositionPreview.GetElementVisual(_ringBorder);
+            _visual = ElementCompositionPreview.GetElementVisual(_ringRect);
             _compositor = _visual.Compositor;
             _ease = _compositor.CreateCubicBezierEasingFunction(
                 new Vector2((float)BezierX1, (float)BezierY1),
@@ -186,6 +197,8 @@ namespace Nuvio.Views.Shared
             _attached = false;
             DetachFollowerSubscriptions();
             StopRadiusAnimation();
+            Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnMaskRendering;
+            _maskRefreshQueued = false;
             if (_host != null) _host.SizeChanged -= OnHostSizeChanged;
             FocusManager.GotFocus -= OnFocusManagerGotFocus;
             FocusManager.LostFocus -= OnFocusManagerLostFocus;
@@ -206,23 +219,79 @@ namespace Nuvio.Views.Shared
                 // Soft white halo around the ring (no offset: the glow hugs
                 // the ring on every side). If the device cannot build it, the
                 // ring still renders — the glow is decoration, not the cue.
+                //
+                // UWP has no Visual.Shadow (that is WinUI 3, CS1061): the
+                // shadow lives on a SpriteVisual (SpriteVisual.Shadow,
+                // since 14393). The sprite is the ring Rectangle's element
+                // child visual, so it inherits the ring Visual's animated
+                // Offset/Opacity — but NOT its Size, so the sprite's Size
+                // is animated with the same keyframes in Retarget.
+                // The sprite carries no Brush: it draws nothing, and the
+                // shadow's shape comes from DropShadow.Mask, fed by the
+                // ring Rectangle's own alpha (Shape.GetAlphaMask, since
+                // 14393). A filled-rectangle mask would wash the ring's
+                // transparent interior white — the Toolkit's attached-shadow
+                // docs note a plain DropShadow "shows through transparent
+                // element" — so the ring-shaped mask is what keeps the
+                // glow a halo around the outline instead of a haze over
+                // the focused card.
                 var shadow = _compositor.CreateDropShadow();
                 shadow.BlurRadius = 14;
                 shadow.Offset = new Vector3(0, 0, 0);
                 shadow.Color = Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF);
                 shadow.Opacity = 0.55f;
-                // UIElement.Shadow takes a XAML Shadow (ThemeShadow), not a
-                // Composition DropShadow — the glow belongs on the ring
-                // Border's Visual instead (Visual.Shadow takes a
-                // CompositionShadow, and the shadow follows the Visual's
-                // animated size, so it hugs the ring on every side).
-                // _visual is set in OnLoaded just before this runs.
-                if (_visual != null) _visual.Shadow = shadow;
+                _shadow = shadow;
+                _shadowSprite = _compositor.CreateSpriteVisual();
+                _shadowSprite.Offset = new Vector3(0, 0, 0);
+                _shadowSprite.Size = Vector2.Zero;
+                _shadowSprite.Shadow = shadow;
+                RefreshShadowMask();
+                // A hand-in visual draws on top of the element, but the
+                // sprite has no Brush, so it paints nothing — only its
+                // shadow (from the mask) renders.
+                ElementCompositionPreview.SetElementChildVisual(_ringRect, _shadowSprite);
             }
             catch (Exception)
             {
                 // No glow on this device; the ring still renders.
+                _shadow = null;
+                _shadowSprite = null;
             }
+        }
+
+        private void RefreshShadowMask()
+        {
+            if (_shadow == null || _ringRect == null) return;
+            try
+            {
+                // The mask is a snapshot of the last rendered shape, so
+                // Retarget re-fetches it on every move. The mask brush
+                // carries the shape's alignment/stretch (Learn), so a
+                // one-move-old mask is exact for the overwhelmingly common
+                // same-size moves and only distorts invisibly under the
+                // 14 epx blur on size changes. At first load the ring is
+                // 0x0 and the mask is empty; QueueMaskRefresh below fetches
+                // it once the ring has rendered at a real size.
+                _shadow.Mask = _ringRect.GetAlphaMask();
+            }
+            catch (Exception)
+            {
+                // Keep the previous mask (or none); the ring still renders.
+            }
+        }
+
+        private void QueueMaskRefresh()
+        {
+            if (_maskRefreshQueued) return;
+            _maskRefreshQueued = true;
+            Windows.UI.Xaml.Media.CompositionTarget.Rendering += OnMaskRendering;
+        }
+
+        private void OnMaskRendering(object sender, object e)
+        {
+            Windows.UI.Xaml.Media.CompositionTarget.Rendering -= OnMaskRendering;
+            _maskRefreshQueued = false;
+            RefreshShadowMask();
         }
 
         private void OnFocusManagerGotFocus(object sender, FocusManagerGotFocusEventArgs e)
@@ -349,14 +418,18 @@ namespace Nuvio.Views.Shared
             if (_visual.Size == Vector2.Zero)
             {
                 // First placement (or a layout pass reset the animated size
-                // to the ring Border's 0 layout size, e.g. on window resize):
+                // to the ring's 0 layout size, e.g. on window resize):
                 // snap into place and fade in only — growing from the
                 // origin would read as a jump.
                 _visual.Offset = targetOffset;
                 _visual.Size = targetSize;
-                _ringBorder.CornerRadius = new CornerRadius(radius);
+                if (_shadowSprite != null) _shadowSprite.Size = targetSize;
+                _ringRect.RadiusX = radius;
+                _ringRect.RadiusY = radius;
                 _targetRect = rect;
                 _targetRadius = radius;
+                RefreshShadowMask();
+                QueueMaskRefresh();
                 AnimateOpacity(1, ShowDurationMs);
                 return;
             }
@@ -373,6 +446,7 @@ namespace Nuvio.Views.Shared
             }
             _targetRect = rect;
             _targetRadius = radius;
+            RefreshShadowMask();
             // Stop the running animations first: the property keeps its live
             // animated value, which becomes the start keyframe below — so a
             // retarget at the 110 ms repeat rate continues from mid-flight
@@ -390,8 +464,21 @@ namespace Nuvio.Views.Shared
             sizeAnimation.InsertKeyFrame(1f, targetSize, _ease);
             sizeAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
             _visual.StartAnimation("Size", sizeAnimation);
+            // The shadow sprite is the ring's child visual: it inherits the
+            // ring Visual's Offset/Opacity, but its Size must be animated
+            // with the same keyframes, or the glow would sit at a stale
+            // size while the ring glides.
+            if (_shadowSprite != null)
+            {
+                _shadowSprite.StopAnimation("Size");
+                var shadowSizeAnimation = _compositor.CreateVector2KeyFrameAnimation();
+                shadowSizeAnimation.InsertKeyFrame(0f, _shadowSprite.Size);
+                shadowSizeAnimation.InsertKeyFrame(1f, targetSize, _ease);
+                shadowSizeAnimation.Duration = TimeSpan.FromMilliseconds(durationMs);
+                _shadowSprite.StartAnimation("Size", shadowSizeAnimation);
+            }
             AnimateOpacity(1, ShowDurationMs);
-            AnimateCornerRadius(_ringBorder.CornerRadius.TopLeft, radius, durationMs);
+            AnimateRadius(_ringRect.RadiusX, radius, durationMs);
         }
 
         private void AnimateOpacity(float to, double durationMs)
@@ -637,17 +724,18 @@ namespace Nuvio.Views.Shared
         }
 
         // ------------------------------------------------------------------
-        // CornerRadius morph: CornerRadius has no Composition animation type,
-        // so it interpolates on the same cubic-bezier curve through a bounded
+        // Radius morph: RadiusX/RadiusY have no Composition animation type,
+        // so they interpolate on the same cubic-bezier curve through a bounded
         // Rendering loop that detaches itself when the morph finishes (or when
         // a new retarget restarts it from the live radius).
         // ------------------------------------------------------------------
 
-        private void AnimateCornerRadius(double from, double to, double durationMs)
+        private void AnimateRadius(double from, double to, double durationMs)
         {
             if (Math.Abs(from - to) < 0.5)
             {
-                _ringBorder.CornerRadius = new CornerRadius(to);
+                _ringRect.RadiusX = to;
+                _ringRect.RadiusY = to;
                 return;
             }
             _radiusFrom = from;
@@ -667,12 +755,15 @@ namespace Nuvio.Views.Shared
             var t = elapsed / _radiusDurationMs;
             if (t >= 1)
             {
-                _ringBorder.CornerRadius = new CornerRadius(_radiusTo);
+                _ringRect.RadiusX = _radiusTo;
+                _ringRect.RadiusY = _radiusTo;
                 StopRadiusAnimation();
                 return;
             }
             var eased = EvaluateCubicBezier(Math.Max(0, t), BezierX1, BezierY1, BezierX2, BezierY2);
-            _ringBorder.CornerRadius = new CornerRadius(_radiusFrom + (_radiusTo - _radiusFrom) * eased);
+            var radius = _radiusFrom + (_radiusTo - _radiusFrom) * eased;
+            _ringRect.RadiusX = radius;
+            _ringRect.RadiusY = radius;
         }
 
         private void StopRadiusAnimation()
