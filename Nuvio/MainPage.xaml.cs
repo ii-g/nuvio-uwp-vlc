@@ -501,9 +501,9 @@ namespace Nuvio
 
         /// <summary>
         /// Moves focus to the sidebar's button for the current page (Home when
-        /// the page is unknown). Used by the hero's start-edge move: at the
-        /// first slide, right from Play opens the strip instead of wrapping
-        /// the carousel to the last slide. Focusing a sidebar button expands
+        /// the page is unknown). Used by the hero's start-edge move: right from
+        /// Play opens the strip from any slide instead of wrapping the
+        /// carousel to the last slide. Focusing a sidebar button expands
         /// the strip through ExpandSidebarOnFocus (gated on real user input,
         /// which a D-pad press always is).
         /// </summary>
