@@ -828,20 +828,24 @@ namespace Nuvio.Views
 
         // ---------- Backdrop ----------
 
-        // Dynamic gradient tint: the shade grades from fully transparent at
-        // the top to a dark peak at the bottom. Hero focus keeps the peak at
-        // 40% black (#66000000) so the fanart shows; any row focus deepens
-        // it to 80% (#CC000000) so the cards read. 200ms, same as the old
-        // dynamic blur. The XAML default is the hero peak, matching
-        // _shadeIsRow == false at startup.
+        // Dynamic backdrop layer: a uniform blur plus a gradient tint.
+        // The shade grades from fully transparent at the top to a dark
+        // peak at the bottom. Hero focus keeps the peak at 20% black
+        // (#33000000) and blur 8 so the fanart shows; any row focus
+        // deepens the peak to 50% (#80000000) and the blur to 20 so the
+        // cards read. 200ms. The XAML defaults are the hero values,
+        // matching _shadeIsRow == false at startup.
         private bool _shadeIsRow;
-        private static readonly Windows.UI.Color ShadePeakHero = Windows.UI.ColorHelper.FromArgb(0x66, 0, 0, 0);
-        private static readonly Windows.UI.Color ShadePeakRow = Windows.UI.ColorHelper.FromArgb(0xCC, 0, 0, 0);
+        private static readonly Windows.UI.Color ShadePeakHero = Windows.UI.ColorHelper.FromArgb(0x33, 0, 0, 0);
+        private static readonly Windows.UI.Color ShadePeakRow = Windows.UI.ColorHelper.FromArgb(0x80, 0, 0, 0);
+        private const float BackdropBlurHero = 8f;
+        private const float BackdropBlurRow = 20f;
 
         private void SetBackdropShadeRowState(bool isRow)
         {
             if (_shadeIsRow == isRow) return;
             _shadeIsRow = isRow;
+            BackdropBlur?.SetBlurAmount(isRow ? BackdropBlurRow : BackdropBlurHero);
             var stop = BackdropShadePeakStop;
             if (stop == null) return;
             var target = isRow ? ShadePeakRow : ShadePeakHero;
