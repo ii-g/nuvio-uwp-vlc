@@ -1,0 +1,23 @@
+name: Nightly build
+
+# Scheduled workflows only run from the default branch (main), so this file
+# must live on main. It dispatches the Build workflow on codex/native-ui;
+# a plain `schedule:` trigger in build.yml would build main instead.
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC = 06:00 Riyadh, daily
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    name: Dispatch native-ui build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Build on codex/native-ui
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run build.yml --ref codex/native-ui
