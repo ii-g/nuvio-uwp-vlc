@@ -1604,7 +1604,11 @@ namespace Nuvio.Views
     /// card (6 past the pad). Parameters "rowHome" and "rowHeader": the home rows'
     /// track padding and title inset — the start pad/inset is RowStartAnchorInset,
     /// so the first card and the row title start on the hero content's start edge;
-    /// "row" keeps the old 6 epx start pad for pages with no hero (Search).</summary>
+    /// "row" keeps the old 6 epx start pad for pages with no hero (Search).
+    /// Parameters "detailsContent", "detailsHero" and "detailsRowHeader" are the
+    /// details page's halved copies of "content", "hero" and "rowHeader" — the
+    /// details edge sits at half the home distance (78 epx RTL / 37 epx LTR)
+    /// while home, search and catalog keep the shared branches untouched.</summary>
     internal sealed class FlowDirectionToThicknessConverter : Windows.UI.Xaml.Data.IValueConverter
     {
         /// <summary>The home row's start anchor inset: the hero's start margin
@@ -1656,6 +1660,30 @@ namespace Nuvio.Views
                 // the hero content's start edge, on the same edge as the
                 // first card.
                 return rtl ? new Thickness(0, 0, 88, 0) : new Thickness(6, 0, 0, 0);
+            if (parameter as string == "detailsContent")
+                // Details page only: the "content" page padding halved —
+                // 34 epx start / 16 epx end (was 68 / 32) — so the
+                // details content sits half as far from the edge. The
+                // shared "content" branch is untouched: home, search and
+                // catalog keep their 68 / 32 pad.
+                return rtl ? new Thickness(16, 0, 34, 0) : new Thickness(34, 0, 16, 0);
+            if (parameter as string == "detailsHero")
+                // Details page only: the "hero" start margin halved
+                // horizontally — 44 epx RTL / 3 epx LTR (was 88 / 6) — so
+                // the hero content stays on the same edge as the details
+                // rows: 34 + 44 = 78 epx RTL / 34 + 3 = 37 epx LTR from
+                // the window edge, exactly half the old 156 / 74. The
+                // 20 epx bottom margin is kept: only the edge distance
+                // is halved, not the vertical rhythm.
+                return rtl ? new Thickness(0, 0, 44, 20) : new Thickness(3, 0, 0, 20);
+            if (parameter as string == "detailsRowHeader")
+                // Details page only: the "rowHeader" start inset halved —
+                // 44 epx RTL / 3 epx LTR (was 88 / 6) — so the episode /
+                // cast / similar rows and their titles sit on the same
+                // halved edge as the hero content (34 + 44 = 78 RTL /
+                // 34 + 3 = 37 LTR). The shared "rowHeader" branch is
+                // untouched: home and catalog titles keep their 88 / 6.
+                return rtl ? new Thickness(0, 0, 44, 0) : new Thickness(3, 0, 0, 0);
             if (parameter as string == "rowBleed")
                 // Two-sided bleed for the horizontal row track. The flow-END
                 // side is opened by the page's end inset (32 epx), so the
