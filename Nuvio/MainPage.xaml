@@ -187,7 +187,8 @@
                  the screen — build 180 showed a line and a gap on the outer edge.
                  Frosted glass: a custom Composition backdrop blur
                  (SidebarBackdropBlurBrush) — GaussianBlur 20 over the home backdrop
-                 and rows behind the strip, with a dark tint composited on top.
+                 and rows behind the strip, with a 25% black tint overlay
+                 (Rectangle) on top of the blur, below the menu content.
                  Chosen over AcrylicBrush by Mohammed's call: full control of the
                  blur amount and tint, and a documented Xbox-compatible path
                  (HostBackdrop acrylic would render only the fallback on Xbox).
@@ -203,7 +204,11 @@
                      at the same start offset as the button icons (8 epx panel + 8 epx
                      button padding); the NUVIO wordmark fades in with the labels on
                      expand, so the strip shows the icon alone when collapsed. -->
-                <Grid Margin="8,19,8,19">
+                <Grid>
+                    <!-- Dark tint over the frosted blur (25% black),
+                         below the menu content. -->
+                    <Rectangle Fill="#40000000"/>
+                    <Grid Margin="8,19,8,19">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
@@ -314,6 +319,7 @@
                         </Grid>
                     </Button>
                     </StackPanel>
+                </Grid>
                 </Grid>
             </Border>
 
