@@ -128,12 +128,12 @@ namespace Nuvio.Views.Shared
                 _gradientBrush.EndPoint = new Vector2(0f, 1f);
                 var opaque = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
                 var clear = Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00);
-                _gradientBrush.Stops.Add(_compositor.CreateColorGradientStop(0f, opaque));
+                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f, opaque));
                 _startStop = _compositor.CreateColorGradientStop(_fadeStart, opaque);
-                _gradientBrush.Stops.Add(_startStop);
+                _gradientBrush.ColorStops.Add(_startStop);
                 _endStop = _compositor.CreateColorGradientStop(_fadeEnd, clear);
-                _gradientBrush.Stops.Add(_endStop);
-                _gradientBrush.Stops.Add(_compositor.CreateColorGradientStop(1f, clear));
+                _gradientBrush.ColorStops.Add(_endStop);
+                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(1f, clear));
 
                 // Fade the sampled backdrop with the gradient, then lay
                 // it over the solid background so the image dissolves
@@ -143,24 +143,30 @@ namespace Nuvio.Views.Shared
                 {
                     Name = "Fade",
                     Source = new CompositionEffectSourceParameter("Backdrop"),
-                    AlphaMask = _gradientBrush
+                    AlphaMask = new CompositionEffectSourceParameter("Mask")
                 };
                 var solid = new ColorSourceEffect
                 {
                     Name = "Base",
                     Color = BackgroundColor
                 };
+                // CompositeEffect.Sources is read-only: add, don't assign.
+                // Sources[0] is the destination (bottom): the solid
+                // background. Sources[1] is drawn over it: the faded
+                // backdrop image.
                 var composite = new CompositeEffect
                 {
-                    Mode = CanvasComposite.SourceOver,
-                    Sources = new IGraphicsEffectSource[] { fade, solid }
+                    Mode = CanvasComposite.SourceOver
                 };
+                composite.Sources.Add(solid);
+                composite.Sources.Add(fade);
                 // The gradient stops are animated directly on the stop
                 // objects, not through the effect brush, so no
                 // animatable properties need declaring here.
                 var factory = _compositor.CreateEffectFactory(composite);
                 _effectBrush = factory.CreateBrush();
                 _effectBrush.SetSourceParameter("Backdrop", _backdropBrush);
+                _effectBrush.SetSourceParameter("Mask", _gradientBrush);
                 CompositionBrush = _effectBrush;
             }
             catch (Exception ex)
