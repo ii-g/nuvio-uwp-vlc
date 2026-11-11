@@ -43,7 +43,10 @@
                             </Border>
                             <!-- Translucent tint over the blur: the style's Background. -->
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
-                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}">
+                                <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
+                                <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
+                            </StackPanel>
                             <!-- Focus frame (Fluent 2 Design card frame, recolored to
                                  light whites on glass): frosted blur band + light
                                  animated white shine border. The only
@@ -135,7 +138,10 @@
                             </Border>
                             <!-- Translucent tint over the blur: the style's Background. -->
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
-                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}">
+                                <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
+                                <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
+                            </StackPanel>
                             <!-- Focus frame (Fluent 2 Design card frame, recolored to
                                  light whites on glass): frosted blur band + light
                                  animated white shine border. The only
@@ -271,8 +277,8 @@
                             <TextBlock x:Name="HeroDescription" Text="{Binding HeroDescription}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,13,0,0">
-                            <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
-                            <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
+                            <Button x:Name="HeroPlayButton" Content="{Binding HeroPlayLabel}" Tag="&#xE768;" Style="{StaticResource HeroPrimaryButtonStyle}" Click="HeroPlayButton_Click"/>
+                            <Button x:Name="HeroDetailsButton" x:Uid="HeroDetailsButton" Content="Details" Tag="&#xE946;" Style="{StaticResource HeroActionButtonStyle}" Click="HeroDetailsButton_Click"/>
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}, ConverterParameter=invert}" VerticalAlignment="Bottom" Margin="0,0,0,24">
