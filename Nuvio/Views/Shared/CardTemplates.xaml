@@ -212,7 +212,7 @@
                                     <shared:SidebarBackdropBlurBrush/>
                                 </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
                                 <Border.BorderBrush>
                                     <shared:FocusRingBrush/>
                                 </Border.BorderBrush>
@@ -292,7 +292,7 @@
                                     <shared:SidebarBackdropBlurBrush/>
                                 </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
                                 <Border.BorderBrush>
                                     <shared:FocusRingBrush/>
                                 </Border.BorderBrush>
