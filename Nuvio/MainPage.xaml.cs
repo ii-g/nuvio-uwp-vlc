@@ -43,6 +43,7 @@ namespace Nuvio
         private bool _dialogOpen;
         private bool _sidebarExpanded;
         private bool _sidebarHidden;
+        private bool _suppressSidebarExpand;
         private Storyboard _sidebarStoryboard;
         private bool _userInputSeen;
         private string _activeRoot;
@@ -113,7 +114,7 @@ namespace Nuvio
             LibraryButton.GotFocus += SidebarButton_GotFocus;
             SettingsButton.GotFocus += SidebarButton_GotFocus;
             ProfileButton.GotFocus += SidebarButton_GotFocus;
-            ContentFrame.GotFocus += (s, e) => CollapseSidebar();
+            ContentFrame.GotFocus += (s, e) => { ClearSidebarExpandSuppression(); CollapseSidebar(); };
             SidebarBorder.PointerEntered += (s, e) => ExpandSidebar();
             SidebarBorder.PointerExited += (s, e) => { if (!IsFocusInSidebar()) CollapseSidebar(); };
         }
@@ -465,6 +466,15 @@ namespace Nuvio
 
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
         {
+            // Back to Home: the framework's focus restore cannot find the card
+            // container (unrealized while the page was detached), so focus falls
+            // back to HomeButton — and its GotFocus would open the strip before
+            // Home's deferred restore moves focus back into the content. Suppress
+            // that one artifact expansion; Home clears it when the restore runs.
+            if (e.Content is HomePage && e.NavigationMode == NavigationMode.Back)
+            {
+                _suppressSidebarExpand = true;
+            }
             // The details page takes the full screen: hide the sidebar strip while
             // it is open, and restore it on any other page — back navigation
             // included, since Frame.GoBack raises Navigated too.
@@ -522,6 +532,9 @@ namespace Nuvio
         public void FocusSidebar()
         {
             if (_sidebarHidden) return;
+            // A deliberate move onto the strip: the back-navigation suppression
+            // (if still set) must not swallow a real opening of the menu.
+            _suppressSidebarExpand = false;
             var button = _activeRoot == "search" ? SearchButton
                 : _activeRoot == "library" ? LibraryButton
                 : _activeRoot == "settings" ? SettingsButton
@@ -598,7 +611,16 @@ namespace Nuvio
         private void ExpandSidebarOnFocus()
         {
             if (!_userInputSeen) return;
+            if (_suppressSidebarExpand) return;
             ExpandSidebar();
+        }
+
+        /// <summary>Clears the back-navigation expansion suppression (see
+        /// ContentFrame_Navigated). Called by Home when its focus restore runs,
+        /// and when focus enters the content by any other route.</summary>
+        internal void ClearSidebarExpandSuppression()
+        {
+            _suppressSidebarExpand = false;
         }
 
         /// <summary>
