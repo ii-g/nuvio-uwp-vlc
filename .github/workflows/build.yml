@@ -354,7 +354,7 @@ jobs:
               throw 'Smoke test failed: fatal error in the startup log (see matches above).'
             }
           }
-          "::warning::App process never appeared after launch and the log shows no fatal error — ambiguous, not failing the build."
+          "::warning::App process never appeared after launch and the log shows no fatal error - ambiguous, not failing the build."
           "LAUNCHED=false" >> $env:GITHUB_OUTPUT
 
       - name: Check it stays alive and logs no fatal error
