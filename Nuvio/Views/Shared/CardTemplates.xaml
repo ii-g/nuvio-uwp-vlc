@@ -286,6 +286,13 @@
          Grid as the home style, so it is back on the same terms. Watch
          the visual test for a repeat of the build 224 rectangle.) -->
     <Style x:Key="CatalogGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CardGridViewItemStyle}">
+        <!-- Narrower item gap than the home rows (7 epx, not 9): the catalog
+             viewport is 772 epx wide (RTL) and a cell is 88 epx + the gap, so
+             with 9 the panel counts 8x97=776 and fits only 7 columns, leaving
+             an empty strip at the end of every row (build 363 photo); with 7
+             the cell is 95 and 8x95=760 fits, so all 8 columns fill the width.
+             The first column stays on the home content edge (x=804 RTL). -->
+        <Setter Property="Margin" Value="0,0,7,0"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="GridViewItem">
