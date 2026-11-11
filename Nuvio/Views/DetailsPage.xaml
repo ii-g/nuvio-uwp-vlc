@@ -40,7 +40,10 @@
                                 </Border.Background>
                             </Border>
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
-                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}">
+                                <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
+                                <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
+                            </StackPanel>
                             <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
                                     <shared:SidebarBackdropBlurBrush/>
@@ -123,7 +126,10 @@
                                 </Border.Background>
                             </Border>
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
-                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}">
+                                <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
+                                <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
+                            </StackPanel>
                             <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
                                     <shared:SidebarBackdropBlurBrush/>
@@ -578,10 +584,10 @@
                                 <TextBlock x:Name="HeroDescription" Text="{Binding Description}" FontSize="9" Foreground="#B8FFFFFF" TextWrapping="Wrap" MaxLines="6" TextTrimming="CharacterEllipsis" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,13,0,0">
-                                <Button x:Name="PlayButton" Content="{Binding PlayLabel}" Style="{StaticResource HeroPrimaryButtonStyle}" Click="PlayButton_Click"/>
-                                <Button x:Name="LibraryButton" Content="{Binding LibraryLabel}" Style="{StaticResource HeroActionButtonStyle}" Click="LibraryButton_Click"/>
-                                <Button x:Name="WatchedButton" Content="{Binding WatchedLabel}" Style="{StaticResource HeroActionButtonStyle}" Visibility="{Binding IsMovie, Converter={StaticResource BooleanToVisibilityConverter}}" Click="WatchedButton_Click"/>
-                                <Button x:Name="TrailerButton" x:Uid="TrailerButton" Content="Trailer" Style="{StaticResource HeroActionButtonStyle}" Visibility="{Binding HasTrailer, Converter={StaticResource BooleanToVisibilityConverter}}" Click="TrailerButton_Click"/>
+                                <Button x:Name="PlayButton" Content="{Binding PlayLabel}" Tag="&#xE768;" Style="{StaticResource HeroPrimaryButtonStyle}" Click="PlayButton_Click"/>
+                                <Button x:Name="LibraryButton" Content="{Binding LibraryLabel}" Tag="&#xE8A4;" Style="{StaticResource HeroActionButtonStyle}" Click="LibraryButton_Click"/>
+                                <Button x:Name="WatchedButton" Content="{Binding WatchedLabel}" Tag="&#xE73E;" Style="{StaticResource HeroActionButtonStyle}" Visibility="{Binding IsMovie, Converter={StaticResource BooleanToVisibilityConverter}}" Click="WatchedButton_Click"/>
+                                <Button x:Name="TrailerButton" x:Uid="TrailerButton" Content="Trailer" Tag="&#xE714;" Style="{StaticResource HeroActionButtonStyle}" Visibility="{Binding HasTrailer, Converter={StaticResource BooleanToVisibilityConverter}}" Click="TrailerButton_Click"/>
                                 <ProgressRing IsActive="{Binding IsLoading}" Width="12" Height="12" Foreground="White" VerticalAlignment="Center" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                             </StackPanel>
                         </StackPanel>
