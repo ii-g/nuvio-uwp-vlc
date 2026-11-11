@@ -1,9 +1,6 @@
 using System;
 using System.Numerics;
-using Microsoft.Graphics.Canvas;
-using Microsoft.Graphics.Canvas.Effects;
 using Nuvio.Diagnostics;
-using Windows.Graphics.Effects;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Media;
@@ -13,20 +10,31 @@ namespace Nuvio.Views.Shared
     /// <summary>
     /// Backdrop fade (variant D): the backdrop image itself dissolves
     /// downward into the solid dark app background through a vertical
-    /// gradient alpha mask, with no blur and no dark tint overlay. The
-    /// rectangle this brush fills sits above BackdropA/BackdropB; a
-    /// CompositionBackdropBrush samples the images behind it, an
-    /// AlphaMaskEffect fades them with a linear gradient, and a
-    /// CompositeEffect lays the faded image over the solid shell
-    /// background (#0D0E13) so the image dissolves into it. The mask
-    /// applies only to the backdrop images — hero text, buttons,
-    /// posters and rows sit above this rectangle and are untouched.
+    /// gradient, with no blur and no dark tint overlay. The rectangle
+    /// this brush fills sits above BackdropA/BackdropB; a plain
+    /// CompositionLinearGradientBrush — a veil from transparent to the
+    /// solid shell background (#0D0E13) — is drawn over the images, so
+    /// the image dissolves into the background. The veil's alpha is
+    /// (1 - mask), where mask is the old effect's gradient mask
+    /// (opaque above the fade start, gone by the fade end), so the
+    /// composite is identical to the old one by construction:
+    /// image*(1-alpha) + solid*alpha = image*mask + solid*(1-mask).
+    /// The old implementation sampled the backdrop live every frame
+    /// with a CompositionBackdropBrush + AlphaMaskEffect +
+    /// CompositeEffect chain; that fullscreen live effect saturated
+    /// the compositor on Xbox Developer Mode, so the focus shine
+    /// slowed down and input lagged whenever the hero tick spiked it.
+    /// The veil is a trivial gradient fill with the same crossfade,
+    /// same gradient and same offsets — the same look, no live
+    /// sampling, no effect chain. The mask applies only to the
+    /// backdrop images — hero text, buttons, posters and rows sit
+    /// above this rectangle and are untouched.
     /// The page drives it with SetRowState from its focus handler:
     /// hero keeps the image visible longer (opaque to 45%, gone by
     /// 90%), any row focus fades it earlier (opaque to 25%, gone by
-    /// 70%), 200ms between states. If the effect cannot be built, the
-    /// brush renders nothing (the backdrop simply shows unfaded) and
-    /// logs, so it can never crash startup.
+    /// 70%), 200ms between states. If the brush cannot be built, it
+    /// renders nothing (the backdrop simply shows unfaded) and logs,
+    /// so it can never crash startup.
     /// </summary>
     internal sealed class BackdropFadeBrush : XamlCompositionBrushBase
     {
@@ -49,8 +57,6 @@ namespace Nuvio.Views.Shared
         private const float FadeEndRow = 0.70f;
 
         private Compositor _compositor;
-        private CompositionBackdropBrush _backdropBrush;
-        private CompositionEffectBrush _effectBrush;
         private CompositionLinearGradientBrush _gradientBrush;
         private CompositionColorGradientStop _startStop;
         private CompositionColorGradientStop _endStop;
@@ -118,56 +124,26 @@ namespace Nuvio.Views.Shared
             try
             {
                 _compositor = Window.Current.Compositor;
-                _backdropBrush = _compositor.CreateBackdropBrush();
 
-                // Gradient mask: fully opaque above the fade start,
-                // fading to fully transparent at the fade end. The
-                // mask's alpha channel is what AlphaMaskEffect reads.
+                // Gradient veil: transparent above the fade start,
+                // fading to the solid background at the fade end. The
+                // veil's alpha is (1 - mask), so compositing it over
+                // the backdrop images gives exactly the old effect's
+                // result — image*mask + solid*(1-mask) — with no live
+                // backdrop sampling and no effect chain. The gradient
+                // stops are animated directly on the stop objects, so
+                // no animatable properties need declaring.
                 _gradientBrush = _compositor.CreateLinearGradientBrush();
                 _gradientBrush.StartPoint = new Vector2(0f, 0f);
                 _gradientBrush.EndPoint = new Vector2(0f, 1f);
-                var opaque = Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF);
-                var clear = Windows.UI.Color.FromArgb(0x00, 0x00, 0x00, 0x00);
-                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f, opaque));
-                _startStop = _compositor.CreateColorGradientStop(_fadeStart, opaque);
+                var transparent = Windows.UI.Color.FromArgb(0x00, 0x0D, 0x0E, 0x13);
+                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(0f, transparent));
+                _startStop = _compositor.CreateColorGradientStop(_fadeStart, transparent);
                 _gradientBrush.ColorStops.Add(_startStop);
-                _endStop = _compositor.CreateColorGradientStop(_fadeEnd, clear);
+                _endStop = _compositor.CreateColorGradientStop(_fadeEnd, BackgroundColor);
                 _gradientBrush.ColorStops.Add(_endStop);
-                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(1f, clear));
-
-                // Fade the sampled backdrop with the gradient, then lay
-                // it over the solid background so the image dissolves
-                // into it instead of showing through to the images
-                // behind this rectangle.
-                var fade = new AlphaMaskEffect
-                {
-                    Name = "Fade",
-                    Source = new CompositionEffectSourceParameter("Backdrop"),
-                    AlphaMask = new CompositionEffectSourceParameter("Mask")
-                };
-                var solid = new ColorSourceEffect
-                {
-                    Name = "Base",
-                    Color = BackgroundColor
-                };
-                // CompositeEffect.Sources is read-only: add, don't assign.
-                // Sources[0] is the destination (bottom): the solid
-                // background. Sources[1] is drawn over it: the faded
-                // backdrop image.
-                var composite = new CompositeEffect
-                {
-                    Mode = CanvasComposite.SourceOver
-                };
-                composite.Sources.Add(solid);
-                composite.Sources.Add(fade);
-                // The gradient stops are animated directly on the stop
-                // objects, not through the effect brush, so no
-                // animatable properties need declaring here.
-                var factory = _compositor.CreateEffectFactory(composite);
-                _effectBrush = factory.CreateBrush();
-                _effectBrush.SetSourceParameter("Backdrop", _backdropBrush);
-                _effectBrush.SetSourceParameter("Mask", _gradientBrush);
-                CompositionBrush = _effectBrush;
+                _gradientBrush.ColorStops.Add(_compositor.CreateColorGradientStop(1f, BackgroundColor));
+                CompositionBrush = _gradientBrush;
             }
             catch (Exception ex)
             {
@@ -188,10 +164,6 @@ namespace Nuvio.Views.Shared
 
         private void DisposeBrushes()
         {
-            _effectBrush?.Dispose();
-            _effectBrush = null;
-            _backdropBrush?.Dispose();
-            _backdropBrush = null;
             _gradientBrush?.Dispose();
             _gradientBrush = null;
             _startStop = null;
