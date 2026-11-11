@@ -13,11 +13,10 @@
     Background="Transparent">
 
     <Page.Resources>
-        <!-- Focus frame (markodenic rotating light): a static #80FFFFFF ring
-             plus a bright white conic slice traveling around it, once per
-             3 s, driven by shared:RotatingFrameLight — one RotationAngle
-             animation on a pre-rendered conic image, clipped to the 3 epx
-             band. The 1.06 focus zoom is untouched. -->
+        <!-- Focus frame: a single plain solid white ring, 3 epx, Opacity 0
+             until Focused/PointerFocused (PointerOver on cards). No
+             gradient, no shine, no animation on the ring itself. The
+             1.06 focus zoom is untouched. -->
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#A62F6FED"/>
             <Setter Property="Foreground" Value="White"/>
@@ -44,7 +43,7 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -100,7 +99,7 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
