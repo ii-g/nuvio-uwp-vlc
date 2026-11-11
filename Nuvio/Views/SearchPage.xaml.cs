@@ -35,6 +35,10 @@ namespace Nuvio.Views
         private readonly FocusScrollHelper _scrollHelper = new FocusScrollHelper();
         private readonly DispatcherTimer _debounceTimer;
         private bool _focusFirstResult;
+        /// <summary>Last focused element for back-navigation restore: "box" for
+        /// the search box, "meta:" plus the meta id for a result card (same key
+        /// scheme as HomePage._lastFocusedKey).</summary>
+        private string _lastFocusedKey;
         private Storyboard _heroFadeStoryboard;
         private Storyboard _resultsFadeStoryboard;
         // Dynamic background (Apple TV style): the focused result's poster art,
@@ -94,7 +98,11 @@ namespace Nuvio.Views
             // Back-navigation preserves the cached query and results; a fresh
             // navigation re-runs the view (the web builds a new searchView per
             // route): a query param runs it, an empty one resets to recent searches.
-            if (e.NavigationMode == NavigationMode.Back) return;
+            if (e.NavigationMode == NavigationMode.Back)
+            {
+                RestoreLastFocus();
+                return;
+            }
             var query = e.Parameter as string;
             if (!string.IsNullOrEmpty(query))
             {
@@ -246,6 +254,89 @@ namespace Nuvio.Views
             TryFocusFirstResult();
         }
 
+        /// <summary>Restores focus after back-navigation (HomePage.RestoreLastFocus
+        /// pattern): the framework's own restore fails for the same reason — the
+        /// focused result container was unrealized while the page was detached —
+        /// so focus would fall back to HomeButton and open the strip. Deferred
+        /// one dispatcher tick, bails out if focus is already inside the page,
+        /// falls back to the search box. Never yanks focus to the box when the
+        /// user had focus on a result card.</summary>
+        private void RestoreLastFocus()
+        {
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                try
+                {
+                    var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                    if (focused != null && IsDescendantOf(focused, this)) return;
+                    if (!RestoreLastFocusNow())
+                    {
+                        SearchBox.Focus(FocusState.Programmatic);
+                    }
+                }
+                finally
+                {
+                    // The navigation-restore artifact window is over either way:
+                    // a real move onto the sidebar from here must expand it again.
+                    MainPage.Current?.ClearSidebarExpandSuppression();
+                }
+            });
+        }
+
+        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
+        /// key is gone (card no longer listed) so the caller falls back to the
+        /// search box.</summary>
+        private bool RestoreLastFocusNow()
+        {
+            if (string.IsNullOrEmpty(_lastFocusedKey)) return false;
+            if (_lastFocusedKey == "box")
+            {
+                return SearchBox.Focus(FocusState.Programmatic);
+            }
+            if (_lastFocusedKey.StartsWith("meta:", StringComparison.Ordinal))
+            {
+                var metaId = _lastFocusedKey.Substring(5);
+                var grid = FindResultGrid(this, metaId, out var index);
+                if (grid == null) return false;
+                var container = grid.ContainerFromIndex(index) as GridViewItem;
+                if (container == null)
+                {
+                    grid.ScrollIntoView(grid.Items[index]);
+                    grid.UpdateLayout();
+                    container = grid.ContainerFromIndex(index) as GridViewItem;
+                }
+                return container != null && container.Focus(FocusState.Programmatic);
+            }
+            return false;
+        }
+
+        /// <summary>Finds the results row holding the card for a meta id, and its
+        /// index in that row. Walks the visual tree like FindFirstGridView.</summary>
+        private static GridView FindResultGrid(DependencyObject root, string metaId, out int index)
+        {
+            index = -1;
+            var grid = root as GridView;
+            if (grid != null)
+            {
+                for (var i = 0; i < grid.Items.Count; i++)
+                {
+                    var card = grid.Items[i] as CatalogCardItem;
+                    if (card != null && card.Meta != null && card.Meta.Id == metaId)
+                    {
+                        index = i;
+                        return grid;
+                    }
+                }
+            }
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindResultGrid(VisualTreeHelper.GetChild(root, i), metaId, out index);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         private static GridView FindFirstGridView(DependencyObject root)
         {
             var count = VisualTreeHelper.GetChildrenCount(root);
@@ -288,6 +379,19 @@ namespace Nuvio.Views
             if (focused == null) return;
             _scrollHelper.AnchorFocusedRowElement(focused, Scroller);
             UpdateDynamicBackground(focused);
+            // Track the last focused element for back-navigation restore (same
+            // pattern as HomePage): the search box, or the focused result card.
+            // A recent chip leaves the key alone; the box is the fallback.
+            if (ReferenceEquals(focused, SearchBox))
+            {
+                _lastFocusedKey = "box";
+            }
+            else
+            {
+                var item = FocusScrollHelper.FindAncestorGridViewItem(focused);
+                var card = item != null ? item.Content as CatalogCardItem : null;
+                if (card != null && card.Meta != null) _lastFocusedKey = "meta:" + card.Meta.Id;
+            }
         }
 
         /// <summary>Updates the dynamic background from the focused element: a
