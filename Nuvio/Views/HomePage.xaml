@@ -166,22 +166,30 @@
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <!-- Backdrop: two cross-fading layers following the focused card.
-             A dynamic gradient tint (no blur at all): fully transparent
-             at the top, grading to a dark peak at the bottom — 40% on
-             hero focus, 80% on any row focus, 200ms between states. -->
+             A dynamic backdrop layer: a uniform blur (8 on hero focus,
+             20 on any row focus) plus a gradient tint, fully transparent
+             at the top, grading to a dark peak at the bottom — 20% on
+             hero focus, 50% on any row focus, 200ms between states. -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
+            <!-- Uniform backdrop blur, animated with focus: 8 on hero
+                 focus, 20 on any row focus, 200ms (BackdropBlurBrush). -->
+            <Rectangle x:Name="BackdropBlurRect">
+                <Rectangle.Fill>
+                    <shared:BackdropBlurBrush x:Name="BackdropBlur"/>
+                </Rectangle.Fill>
+            </Rectangle>
             <!-- Dynamic gradient tint: transparent at the top, grading
                  to a dark peak at the bottom. The peak stop
                  (BackdropShadePeakStop) is animated in code-behind
-                 between 40% black (hero focus) and 80% black (row
+                 between 20% black (hero focus) and 50% black (row
                  focus) over 200ms. -->
             <Rectangle x:Name="BackdropShadeRect">
                 <Rectangle.Fill>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                         <GradientStop Offset="0" Color="#00000000"/>
-                        <GradientStop x:Name="BackdropShadePeakStop" Offset="1" Color="#66000000"/>
+                        <GradientStop x:Name="BackdropShadePeakStop" Offset="1" Color="#33000000"/>
                     </LinearGradientBrush>
                 </Rectangle.Fill>
             </Rectangle>
