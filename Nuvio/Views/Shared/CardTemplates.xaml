@@ -20,10 +20,11 @@
     <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
     <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
 
-    <!-- Focus frame removed: the traveling-shine ring lagged the whole app
-         on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
-         is the only focus indicator until the new rotating-light frame
-         lands. -->
+    <!-- Focus frame (markodenic rotating light): a static #80FFFFFF ring
+         plus a bright white conic slice traveling around it, once per
+         3 s, driven by shared:RotatingFrameLight — one RotationAngle
+         animation on a pre-rendered conic image, clipped to the 3 epx
+         band. The 1.06 focus zoom is untouched. -->
 
     <!-- A poster card (components/cards.js posterCard): art, watched check, progress bar, title. -->
     <DataTemplate x:Key="PosterCardTemplate">
@@ -162,11 +163,13 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: 1.06 focus zoom only (the focus frame is removed).
-         Selection is off; click is via IsItemClickEnabled. The framework
-         also draws its own focus rectangle around the whole item (art +
-         title) unless UseSystemFocusVisuals is off, so the system one is
-         disabled and the zoom is the only focus indicator. -->
+    <!-- Card containers: rotating-light focus frame + 1.06 zoom. The frame
+         is a static white ring with a bright slice traveling around it
+         (see the header comment). Selection is off; click is via
+         IsItemClickEnabled. The framework also draws its own focus
+         rectangle around the whole item (art + title) unless
+         UseSystemFocusVisuals is off, so the system one is disabled and
+         the frame + zoom are the only focus indicators. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
         <Setter Property="Margin" Value="0,0,9,0"/>
         <Setter Property="Padding" Value="0"/>
@@ -180,11 +183,25 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                        <!-- The frame wraps the art only, 3 epx, CornerRadius 7 (the
+                             focus ring's radius, not the site's 20), with the title
+                             outside it. The host Grid is the art height, so the frame
+                             never swallows the title; the frame stretches inside it
+                             with Margin -1, so it sits 1 epx outside the art on all
+                             four sides. (An explicit Height on the frame itself did
+                             not do this: with VerticalAlignment Top the -1 margin
+                             only shifted the frame up 1 epx, so its bottom edge sat
+                             1 epx above the art's bottom edge and the poster leaked
+                             out below it.) -->
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
+                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -194,6 +211,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -201,6 +219,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -217,10 +236,11 @@
     </Style>
 
     <!-- Catalog grid containers: the same card + 1.06 focus zoom as
-         CardGridViewItemStyle. (The old ring was dropped here because in
-         the catalog's ItemsWrapGrid it rendered as a thin rectangle inside
-         the poster (build 224 photo) instead of wrapping the art as it
-         does in the home rows (ItemsStackPanel).) -->
+         CardGridViewItemStyle, with the same rotating-light focus frame.
+         (The old ring was dropped here because in the catalog's
+         ItemsWrapGrid it rendered as a thin rectangle inside the poster
+         (build 224 photo) instead of wrapping the art as it does in the
+         home rows (ItemsStackPanel).) -->
     <Style x:Key="CatalogGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CardGridViewItemStyle}">
         <!-- The item gap is 20 epx: with the full-bleed 954 epx viewport
              (see CatalogPage) 9 columns of 88 need 9x108-20=952, so the
@@ -239,11 +259,25 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                        <!-- The frame wraps the art only, 3 epx, CornerRadius 7 (the
+                             focus ring's radius, not the site's 20), with the title
+                             outside it. The host Grid is the art height, so the frame
+                             never swallows the title; the frame stretches inside it
+                             with Margin -1, so it sits 1 epx outside the art on all
+                             four sides. (An explicit Height on the frame itself did
+                             not do this: with VerticalAlignment Top the -1 margin
+                             only shifted the frame up 1 epx, so its bottom edge sat
+                             1 epx above the art's bottom edge and the poster leaked
+                             out below it.) -->
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="132">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
+                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -253,6 +287,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -260,6 +295,7 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
