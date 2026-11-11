@@ -13,14 +13,10 @@
     Background="Transparent">
 
     <Page.Resources>
-        <!-- Focus frame shine (white only: shiny + translucent): NOT a shared
-             resource — the gradient lives inline on each FocusRing Border, with
-             7 named stops (bright 100% white peaks / 50% white valleys, periodic
-             every 1.0 in offset) so the Focused/PointerFocused storyboards can
-             slide every stop +1.0 over 3 s, forever, looping seamlessly. The
-             bright band travels the frame while the element is focused. Single
-             ring: the old static gradient + #FAFAFA inner ring read as a double
-             frame, so the inner ring is gone. -->
+        <!-- Focus frame removed: the traveling-shine ring lagged the whole app
+             on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
+             is the only focus indicator until the new rotating-light frame
+             lands. -->
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#A62F6FED"/>
             <Setter Property="Foreground" Value="White"/>
@@ -44,16 +40,6 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -67,15 +53,11 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -108,16 +90,6 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -131,15 +103,11 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -171,16 +139,6 @@
                             </Border>
                             <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
                             <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -194,15 +152,11 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -269,10 +223,8 @@
                 </StackPanel>
             </Grid>
         </DataTemplate>
-        <!-- Episode containers: the same glass gradient focus frame + 1.06 zoom as
-             CardGridViewItemStyle, with the frame host pinned to the 99 epx art height
-             (the shared CardArtHeightConverter returns 132 for an episode item, which
-             would put the frame 33 epx too low). -->
+        <!-- Episode containers: the same 1.06 zoom as CardGridViewItemStyle
+             (the focus frame is removed). -->
         <Style x:Key="EpisodeGridViewItemStyle" TargetType="GridViewItem">
             <Setter Property="Margin" Value="0,0,9,0"/>
             <Setter Property="Padding" Value="0"/>
@@ -286,25 +238,11 @@
                                 <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                             </Grid.RenderTransform>
                             <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                            <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="99">
-                                <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                    <Border.BorderBrush>
-                                        <shared:SidebarBackdropBlurBrush/>
-                                    </Border.BorderBrush>
-                                </Border>
-                                <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                    <Border.BorderBrush>
-                                        <shared:FocusRingBrush/>
-                                    </Border.BorderBrush>
-                                </Border>
-                            </Grid>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed"/>
@@ -314,8 +252,6 @@
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
@@ -323,8 +259,6 @@
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -339,8 +273,8 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- Cast containers: the same frame + zoom, with the frame host pinned to the
-             64 epx round photo (centered, so the host is 64 wide too). -->
+        <!-- Cast containers: the same 1.06 zoom as CardGridViewItemStyle
+             (the focus frame is removed). -->
         <Style x:Key="CastGridViewItemStyle" TargetType="GridViewItem">
             <Setter Property="Margin" Value="0,0,9,0"/>
             <Setter Property="Padding" Value="0"/>
@@ -354,25 +288,11 @@
                                 <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                             </Grid.RenderTransform>
                             <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                            <Grid VerticalAlignment="Top" HorizontalAlignment="Center" IsHitTestVisible="False" Width="64" Height="64">
-                                <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="32" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                    <Border.BorderBrush>
-                                        <shared:SidebarBackdropBlurBrush/>
-                                    </Border.BorderBrush>
-                                </Border>
-                                <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="32" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                    <Border.BorderBrush>
-                                        <shared:FocusRingBrush/>
-                                    </Border.BorderBrush>
-                                </Border>
-                            </Grid>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed"/>
@@ -382,8 +302,6 @@
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
@@ -391,8 +309,6 @@
                                         <Storyboard>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                             <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
