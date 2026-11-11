@@ -212,4 +212,79 @@
   <data name="GenreAll" xml:space="preserve">
     <value>الكل</value>
   </data>
+  <data name="Resume" xml:space="preserve">
+    <value>استئناف</value>
+  </data>
+  <data name="AddToLibrary" xml:space="preserve">
+    <value>إضافة إلى المكتبة</value>
+  </data>
+  <data name="InLibrary" xml:space="preserve">
+    <value>في المكتبة</value>
+  </data>
+  <data name="MarkWatched" xml:space="preserve">
+    <value>تحديد كمُشاهَد</value>
+  </data>
+  <data name="Watched" xml:space="preserve">
+    <value>تمت مشاهدته</value>
+  </data>
+  <data name="TrailerButton.Content" xml:space="preserve">
+    <value>الإعلان</value>
+  </data>
+  <data name="EpisodesTitle.Text" xml:space="preserve">
+    <value>الحلقات</value>
+  </data>
+  <data name="CastTitle.Text" xml:space="preserve">
+    <value>طاقم التمثيل</value>
+  </data>
+  <data name="MoreLikeThisTitle.Text" xml:space="preserve">
+    <value>أعمال مشابهة</value>
+  </data>
+  <data name="RetryButton.Content" xml:space="preserve">
+    <value>إعادة المحاولة</value>
+  </data>
+  <data name="FailedToLoadTitle.Text" xml:space="preserve">
+    <value>تعذّر التحميل</value>
+  </data>
+  <data name="AddedToYourLibrary" xml:space="preserve">
+    <value>أُضيف إلى مكتبتك</value>
+  </data>
+  <data name="RemovedFromYourLibrary" xml:space="preserve">
+    <value>أُزيل من مكتبتك</value>
+  </data>
+  <data name="CantOpenTitle" xml:space="preserve">
+    <value>تعذّر فتح هذا العنوان من إضافاتك</value>
+  </data>
+  <data name="Specials" xml:space="preserve">
+    <value>حلقات خاصة</value>
+  </data>
+  <data name="SeasonLabel" xml:space="preserve">
+    <value>الموسم {0}</value>
+  </data>
+  <data name="Episode" xml:space="preserve">
+    <value>حلقة</value>
+  </data>
+  <data name="MarkAsWatched" xml:space="preserve">
+    <value>تحديد كمُشاهَد</value>
+  </data>
+  <data name="MarkAsUnwatched" xml:space="preserve">
+    <value>تحديد كغير مُشاهَد</value>
+  </data>
+  <data name="MarkPreviousAsWatched" xml:space="preserve">
+    <value>تحديد السابق كمُشاهَد</value>
+  </data>
+  <data name="MarkSeasonAsWatched" xml:space="preserve">
+    <value>تحديد {0} كمُشاهَد</value>
+  </data>
+  <data name="MarkSeasonAsUnwatched" xml:space="preserve">
+    <value>تحديد {0} كغير مُشاهَد</value>
+  </data>
+  <data name="Cast" xml:space="preserve">
+    <value>طاقم التمثيل</value>
+  </data>
+  <data name="Director" xml:space="preserve">
+    <value>المخرج</value>
+  </data>
+  <data name="Writer" xml:space="preserve">
+    <value>الكاتب</value>
+  </data>
 </root>
