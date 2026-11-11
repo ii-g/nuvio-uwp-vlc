@@ -114,7 +114,6 @@
       <DependentUpon>DetailsPage.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\Shared\BackdropFadeBrush.cs" />
-    <Compile Include="Views\Shared\FocusRingBrush.cs" />
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
     <Compile Include="Views\Shared\SidebarBackdropBlurBrush.cs" />
     <Compile Include="Views\Shared\TextGlow.cs" />
