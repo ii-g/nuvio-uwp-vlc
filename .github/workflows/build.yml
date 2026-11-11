@@ -221,7 +221,6 @@ jobs:
           # in the published release zip, where it helps manual PC installs.
           $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq $env:CERT_THUMBPRINT
           Export-Certificate -Cert $cert -FilePath release\NuvioUWP.cer
-          $dependencies | Copy-Item -Destination release\Dependencies
           Get-ChildItem release -Recurse -File | ForEach-Object { $_.FullName.Substring($PWD.Path.Length + 1) }
 
       - uses: actions/upload-artifact@v6
@@ -325,7 +324,7 @@ jobs:
 
       - name: Install and launch
         id: launch
-        shell: pwsh
+        shell: powershell
         run: |
           $msix = Get-ChildItem smoke -Filter *.msix | Select-Object -First 1
           $deps = Get-ChildItem smoke\Dependencies -Filter *.appx
