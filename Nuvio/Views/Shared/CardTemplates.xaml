@@ -61,6 +61,42 @@
         </Grid>
     </DataTemplate>
 
+    <!-- The catalog's poster card: the same art + watched check + progress +
+         title as PosterCardTemplate, but with NO plate behind the art. The
+         shared template's outer Border (Background #FF16171D) reads as a
+         visible outline around every poster on the catalog page (its edge
+         and the rounded-corner anti-aliasing fringe show against the page
+         background), so here the art host is a plain Grid and the art
+         paints edge-to-edge. Home rows keep PosterCardTemplate unchanged. -->
+    <DataTemplate x:Key="CatalogPosterCardTemplate">
+        <Grid Width="{Binding Meta.PosterShape, Converter={StaticResource ShapeWidthConverter}}" Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Height="{Binding Meta.PosterShape, Converter={StaticResource ShapeHeightConverter}}">
+                <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="8" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
+                <!-- Art as the Border background: Border.CornerRadius does not clip a child
+                     Image, so the poster's square corners poked out of the rounded frame.
+                     The background brush is clipped to the corners; the name text shows
+                     through only while the art is missing. -->
+                <!-- The art host is pinned LeftToRight: an ImageBrush inherits the page's
+                     RTL flow and mirrors the poster (build 162 showed every poster
+                     flipped); the title text below stays RTL. -->
+                <Border CornerRadius="6" FlowDirection="LeftToRight">
+                    <Border.Background>
+                        <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
+                    </Border.Background>
+                </Border>
+                <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="15" Height="15" CornerRadius="8" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                    <TextBlock Text="✓" Foreground="White" FontSize="8" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ProgressBar Value="{Binding Progress}" Maximum="1" Visibility="{Binding Progress, Converter={StaticResource DoubleToVisibilityConverter}}" VerticalAlignment="Bottom" Margin="5,0,5,5" Height="2" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
+            </Grid>
+            <TextBlock Grid.Row="1" Text="{Binding Meta.Name}" Foreground="#B8FFFFFF" FontSize="8" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+        </Grid>
+    </DataTemplate>
+
     <!-- The trailing "View All" card at the end of a row (components/cards.js viewAllCard):
          a full poster-sized empty card, transparent so the hero shows through (the web
          surface token is rgba(255,255,255,.06), exactly #0FFFFFFF), chevron + label centred.
