@@ -19,7 +19,7 @@ namespace Nuvio.Views.Shared
     /// budget is smaller than retail mode, that starved input dispatch
     /// and the scroll slide, so the whole app lagged (~1 s per move).
     /// This brush is the same gradient (diagonal, white peaks at 85%
-    /// alpha alternating with 15% valleys, period 1.0) built as a
+    /// alpha alternating with 10% valleys, period 1.0) built as a
     /// CompositionLinearGradientBrush, with each stop's Offset driven by
     /// a Forever ScalarKeyFrameAnimation on the compositor — the same
     /// mechanism BackdropFadeBrush already uses for its fade stops.
@@ -73,14 +73,14 @@ namespace Nuvio.Views.Shared
         private const double AnimationDurationMs = 3000;
 
         // Same 7-stop gradient as the old XAML ring: even stops are
-        // peaks (#D9FFFFFF), odd stops are valleys (#26FFFFFF).
+        // peaks (#D9FFFFFF), odd stops are valleys (#1AFFFFFF).
         private static readonly float[] StopOffsets = { -1f, -0.5f, 0f, 0.5f, 1f, 1.5f, 2f };
 
         private static readonly Windows.UI.Color Peak =
             Windows.UI.Color.FromArgb(0xD9, 0xFF, 0xFF, 0xFF);
 
         private static readonly Windows.UI.Color Valley =
-            Windows.UI.Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF);
+            Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
 
         // Global phase clock: one continuous sweep shared by every
         // ring. A ring that starts on focus gain seeks to the current
