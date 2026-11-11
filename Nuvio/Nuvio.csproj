@@ -99,6 +99,8 @@
     <!-- Milestone 2: search + catalog. -->
     <Compile Include="ViewModels\SearchViewModel.cs" />
     <Compile Include="ViewModels\CatalogViewModel.cs" />
+    <!-- Milestone 3: details page. -->
+    <Compile Include="ViewModels\DetailsViewModel.cs" />
     <Compile Include="Views\HomePage.xaml.cs">
       <DependentUpon>HomePage.xaml</DependentUpon>
     </Compile>
