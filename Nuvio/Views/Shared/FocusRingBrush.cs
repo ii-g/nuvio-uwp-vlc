@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nuvio.Diagnostics;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
@@ -42,8 +43,19 @@ namespace Nuvio.Views.Shared
     /// the template gains focus, the brush stops and re-starts all 7
     /// stop animations from the base offsets. That is a one-off
     /// compositor action, not per-frame work, so the lag fix stands.
+    ///
+    /// The owner type must stay public: the runtime XAML type system
+    /// resolves the attached property through this type, and an
+    /// internal owner breaks the assignment at page load
+    /// (XamlParseException, app crash on startup). Per-Border
+    /// subscription state lives in a ConditionalWeakTable, never in
+    /// an attached DependencyProperty: a private nested class cannot
+    /// be a DP property type, and registering one breaks the type
+    /// initializer the first time the property is touched. Any
+    /// subscription failure is swallowed and logged so page load can
+    /// never crash on the ring again.
     /// </summary>
-    internal sealed class FocusRingBrush : XamlCompositionBrushBase
+    public sealed class FocusRingBrush : XamlCompositionBrushBase
     {
         private const double AnimationDurationMs = 3000;
 
@@ -84,13 +96,13 @@ namespace Nuvio.Views.Shared
         }
 
         // Per-Border subscription state, unhooked on Unload so recycled
-        // GridView items never leak a GotFocus handler.
-        private static readonly DependencyProperty RestartSubscriptionProperty =
-            DependencyProperty.RegisterAttached(
-                "RestartSubscription",
-                typeof(FocusRestartSubscription),
-                typeof(FocusRingBrush),
-                new PropertyMetadata(null));
+        // GridView items never leak a GotFocus handler. Kept in a
+        // ConditionalWeakTable, not an attached DependencyProperty:
+        // the subscription type is private, and a private type cannot
+        // be a DP property type (registering one breaks the type
+        // initializer on first touch of this class).
+        private static readonly ConditionalWeakTable<Border, FocusRestartSubscription> RestartSubscriptions =
+            new ConditionalWeakTable<Border, FocusRestartSubscription>();
 
         private static void OnRestartOnFocusChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -111,7 +123,17 @@ namespace Nuvio.Views.Shared
 
         private static void RingBorder_Loaded(object sender, RoutedEventArgs e)
         {
-            AttachRestart((Border)sender);
+            // Never let the shine subscription crash page load: a
+            // failure here must stay a logged no-op, not an exception
+            // escaping into XAML parsing.
+            try
+            {
+                AttachRestart((Border)sender);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("FocusRingBrush attach failed: " + ex.Message);
+            }
         }
 
         private static void RingBorder_Unloaded(object sender, RoutedEventArgs e)
@@ -125,7 +147,7 @@ namespace Nuvio.Views.Shared
             var owner = FindFocusableOwner(border);
             if (owner == null) return;
             var subscription = new FocusRestartSubscription(border, owner);
-            border.SetValue(RestartSubscriptionProperty, subscription);
+            RestartSubscriptions.Add(border, subscription);
             owner.GotFocus += subscription.OnOwnerGotFocus;
             // Focus may already be here (restored before load): restart
             // now so the first sweep starts from the base corner.
@@ -137,10 +159,9 @@ namespace Nuvio.Views.Shared
 
         private static void DetachRestart(Border border)
         {
-            var subscription = border.GetValue(RestartSubscriptionProperty) as FocusRestartSubscription;
-            if (subscription == null) return;
+            if (!RestartSubscriptions.TryGetValue(border, out var subscription)) return;
             subscription.Detach();
-            border.SetValue(RestartSubscriptionProperty, null);
+            RestartSubscriptions.Remove(border);
         }
 
         private static Control FindFocusableOwner(Border border)
