@@ -529,7 +529,7 @@
         </Grid>
 
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled">
-            <StackPanel x:Name="ContentStack">
+            <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
                 <!-- Loading with no preview artwork yet: a centered spinner. -->
                 <Grid Visibility="{Binding ShowLoadingSpinner, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="540">
                     <ProgressRing IsActive="True" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -593,7 +593,7 @@
                             <TextBlock x:Uid="EpisodesTitle" Text="Episodes" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
                         <StackPanel x:Name="SeasonChipsPanel" Orientation="Horizontal" Spacing="6" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" />
-                        <GridView x:Name="EpisodesGridView" ItemsSource="{Binding Episodes}" ItemTemplate="{StaticResource EpisodeCardTemplate}" ItemContainerStyle="{StaticResource EpisodeGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="EpisodesGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHome}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowBleed}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView x:Name="EpisodesGridView" ItemsSource="{Binding Episodes}" ItemTemplate="{StaticResource EpisodeCardTemplate}" ItemContainerStyle="{StaticResource EpisodeGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="EpisodesGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
@@ -621,7 +621,7 @@
                         <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
                             <TextBlock x:Uid="CastTitle" Text="Cast" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
-                        <GridView x:Name="CastGridView" ItemsSource="{Binding CastItems}" ItemTemplate="{StaticResource CastCardTemplate}" ItemContainerStyle="{StaticResource CastGridViewItemStyle}" SelectionMode="None" IsItemClickEnabled="False" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHome}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowBleed}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView x:Name="CastGridView" ItemsSource="{Binding CastItems}" ItemTemplate="{StaticResource CastCardTemplate}" ItemContainerStyle="{StaticResource CastGridViewItemStyle}" SelectionMode="None" IsItemClickEnabled="False" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
@@ -640,7 +640,7 @@
                                 <TextBlock Text="TMDB" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                         </StackPanel>
-                        <GridView x:Name="SimilarGridView" ItemsSource="{Binding SimilarItems}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SimilarGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHome}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowBleed}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView x:Name="SimilarGridView" ItemsSource="{Binding SimilarItems}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SimilarGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
