@@ -20,14 +20,10 @@
     <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
     <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
 
-    <!-- Focus frame shine (white only: shiny + translucent): NOT a shared
-         resource — the gradient lives inline on each FocusRing Border, with
-         7 named stops (bright 100% white peaks / 50% white valleys, periodic
-         every 1.0 in offset) so the Focused/PointerFocused storyboards can
-         slide every stop +1.0 over 3 s, forever, looping seamlessly. The
-         bright band travels the frame while the element is focused. Single
-         ring: the old static gradient + #FAFAFA inner ring read as a double
-         frame, so the inner ring is gone. -->
+    <!-- Focus frame removed: the traveling-shine ring lagged the whole app
+         on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
+         is the only focus indicator until the new rotating-light frame
+         lands. -->
 
     <!-- A poster card (components/cards.js posterCard): art, watched check, progress bar, title. -->
     <DataTemplate x:Key="PosterCardTemplate">
@@ -68,11 +64,11 @@
          and the rounded-corner anti-aliasing fringe show against the page
          background), so here the art host is a plain Grid and the art
          paints edge-to-edge. Home rows keep PosterCardTemplate unchanged. -->
-    <!-- Catalog cards are a fixed 70x105 (2:3): smaller than the home 88x132
-         so 10 columns fit the 772 epx viewport (10x77-7=763) and about 39
-         cards are visible at once instead of 24. The size is fixed here, not
-         driven by the shared shape converters, so home rows keep their
-         PosterSize-driven sizes and the catalog ignores Meta.PosterShape. -->
+    <!-- Catalog cards are a fixed 88x132 (2:3): the home size, so 9 columns
+         fit the full-bleed 954 epx viewport (9x108-20=952). The size is
+         fixed here, not driven by the shared shape converters, so home rows
+         keep their PosterSize-driven sizes and the catalog ignores
+         Meta.PosterShape. -->
     <DataTemplate x:Key="CatalogPosterCardTemplate">
         <Grid Width="88" Background="Transparent">
             <Grid.RowDefinitions>
@@ -166,20 +162,11 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: glass focus frame + zoom. The frame is a single
-         3 epx white shine border (7 named gradient stops, bright 100% white
-         peaks / 50% white valleys) over a frosted blur band
-         (SidebarBackdropBlurBrush, GaussianBlur 20), on the focused card
-         only; the shine travels the frame while focused (3 s loop). It
-         replaces the old white ring (1.25 hover / 1.75 focus) and the F
-         sheen (FocusSheen, removed): one frame, no sheen, no glow. The
-         old static gradient + #FAFAFA inner ring read as a double frame,
-         so the inner ring is gone. Selection is off; click is via
-         IsItemClickEnabled. The framework also draws its own focus
-         rectangle around the whole item (art + title) unless
-         UseSystemFocusVisuals is off; with the template's art-only frame
-         that made two overlapping frames, so the system one is disabled
-         and the template frame is the only one. -->
+    <!-- Card containers: 1.06 focus zoom only (the focus frame is removed).
+         Selection is off; click is via IsItemClickEnabled. The framework
+         also draws its own focus rectangle around the whole item (art +
+         title) unless UseSystemFocusVisuals is off, so the system one is
+         disabled and the zoom is the only focus indicator. -->
     <Style x:Key="CardGridViewItemStyle" TargetType="GridViewItem">
         <Setter Property="Margin" Value="0,0,9,0"/>
         <Setter Property="Padding" Value="0"/>
@@ -193,38 +180,11 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <!-- The frame wraps the art only, 3 epx, CornerRadius 7 (the
-                             focus ring's radius, not the site's 20), with the title
-                             outside it. The host Grid is the art height, so the frame
-                             never swallows the title; the frame stretches inside it
-                             with Margin -1, so it sits 1 epx outside the art on all
-                             four sides. (An explicit Height on the frame itself did
-                             not do this: with VerticalAlignment Top the -1 margin
-                             only shifted the frame up 1 epx, so its bottom edge sat
-                             1 epx above the art's bottom edge and the poster leaked
-                             out below it.) Two layers, all Opacity 0 until focus:
-                             FocusGlassBand (frosted blur band) and FocusRing
-                             (white shine border: shared:FocusRingBrush slides its 7 stops
-                             +1.0 over 3 s on the compositor while focused). -->
-                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -234,8 +194,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -243,8 +201,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -261,13 +217,10 @@
     </Style>
 
     <!-- Catalog grid containers: the same card + 1.06 focus zoom as
-         CardGridViewItemStyle, with the same glass gradient focus frame.
-         (The old ring was dropped here because in the catalog's
-         ItemsWrapGrid it rendered as a thin rectangle inside the poster
-         (build 224 photo) instead of wrapping the art as it does in the
-         home rows (ItemsStackPanel); the frame now uses the same host
-         Grid as the home style, so it is back on the same terms. Watch
-         the visual test for a repeat of the build 224 rectangle.) -->
+         CardGridViewItemStyle. (The old ring was dropped here because in
+         the catalog's ItemsWrapGrid it rendered as a thin rectangle inside
+         the poster (build 224 photo) instead of wrapping the art as it
+         does in the home rows (ItemsStackPanel).) -->
     <Style x:Key="CatalogGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CardGridViewItemStyle}">
         <!-- The item gap is 20 epx: with the full-bleed 954 epx viewport
              (see CatalogPage) 9 columns of 88 need 9x108-20=952, so the
@@ -286,25 +239,11 @@
                             <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
                         </Grid.RenderTransform>
                         <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
-                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="132">
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                        </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal"/>
                                 <VisualState x:Name="PointerOver">
                                     <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -314,8 +253,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -323,8 +260,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
