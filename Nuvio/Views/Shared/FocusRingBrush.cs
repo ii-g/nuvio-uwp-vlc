@@ -48,10 +48,13 @@ namespace Nuvio.Views.Shared
     /// shine still works rather than silently disappearing.
     ///
     /// The shine is one continuous sweep and is never restarted from
-    /// the base offsets: a ring that starts on focus gain seeks to the
-    /// current global phase (a static stopwatch, elapsed % 3000 ms) via
-    /// a negative DelayTime, so the sweep keeps its phase when focus
-    /// moves from one element to the next.
+    /// the base offsets: a ring that starts on focus gain shifts its
+    /// keyframes to the current global phase (a static stopwatch,
+    /// elapsed % 3000 ms), so the sweep keeps its phase when focus
+    /// moves from one element to the next. A negative DelayTime was
+    /// tried first, but the docs do not confirm it seeks, and a
+    /// silent clamp to zero would reset the sweep on every start —
+    /// so the shift is done explicitly in the keyframes instead.
     ///
     /// Uniform perimeter speed: the gradient is diagonal across a
     /// rectangle, so with plain linear offset travel the bright spot
@@ -489,36 +492,98 @@ namespace Nuvio.Views.Shared
             var animation = _compositor.CreateScalarKeyFrameAnimation();
             animation.Duration = TimeSpan.FromMilliseconds(AnimationDurationMs);
             animation.IterationBehavior = AnimationIterationBehavior.Forever;
-            // Seek to the global phase: the sweep is one continuous
-            // motion shared by every ring, so a ring starting on focus
-            // gain resumes mid-sweep instead of jumping back to the
-            // base offsets. A negative DelayTime starts the animation
-            // as if it had already been running for that long.
-            double phaseMs = _phaseClock.ElapsedMilliseconds % AnimationDurationMs;
+            // Explicit keyframe shift for phase continuity: the sweep
+            // is one continuous motion shared by every ring, so a ring
+            // starting on focus gain resumes mid-sweep instead of
+            // jumping back to the base offsets. The value function over
+            // one loop is piecewise linear with a kink at
+            // _horizontalFraction (from -> from+0.5 over the first
+            // segment, from+0.5 -> from+1 over the second), and the
+            // gradient pattern repeats every 1.0, so a loop restart is
+            // a seamless -1.0 jump. Shifting the keyframes to start at
+            // the current global phase p keeps the same slopes and the
+            // same loop — only the starting point moves. The easing on
+            // a keyframe governs the segment that follows it, and the
+            // interpolation must be linear by construction, not by
+            // relying on the default.
+            float fraction = _horizontalFraction;
+            float p = (float)((_phaseClock.ElapsedMilliseconds % AnimationDurationMs) / AnimationDurationMs);
+            if (p < 0f) p = 0f;
+            if (p > 1f) p = 1f;
+            // Value progress at the current phase: the offset's
+            // position within one loop, 0..1.
+            float progress;
+            if (p <= fraction)
+            {
+                progress = 0.5f * (p / fraction);
+            }
+            else
+            {
+                progress = 0.5f + 0.5f * ((p - fraction) / (1f - fraction));
+            }
+            var linear = _compositor.CreateLinearEasingFunction();
             try
             {
-                animation.DelayTime = TimeSpan.FromMilliseconds(-phaseMs);
+                // Trace the same increasing value function from the
+                // current phase: (0, from+progress), then the kink and
+                // the loop boundary in whichever order they fall, then
+                // (1, from+1+progress). The loop restart jumps -1.0,
+                // which is invisible because the gradient repeats
+                // every 1.0.
+                var frames = new System.Collections.Generic.List<System.Tuple<float, float>>();
+                frames.Add(System.Tuple.Create(0f, from + progress));
+                if (p <= fraction)
+                {
+                    frames.Add(System.Tuple.Create(fraction - p, from + 0.5f));
+                    frames.Add(System.Tuple.Create(1f - p, from + 1f));
+                }
+                else
+                {
+                    frames.Add(System.Tuple.Create(1f - p, from + 1f));
+                    frames.Add(System.Tuple.Create(1f + fraction - p, from + 1.5f));
+                }
+                frames.Add(System.Tuple.Create(1f, from + 1f + progress));
+                // Merge keyframes that coincide (p at 0, at the
+                // fraction, or at the loop boundary): they carry the
+                // same value, so keeping one is exact.
+                var merged = new System.Collections.Generic.List<System.Tuple<float, float>>();
+                foreach (var frame in frames)
+                {
+                    if (merged.Count > 0 && frame.Item1 - merged[merged.Count - 1].Item1 < 0.001f) continue;
+                    merged.Add(frame);
+                }
+                for (int i = 0; i < merged.Count; i++)
+                {
+                    if (i == merged.Count - 1)
+                    {
+                        animation.InsertKeyFrame(merged[i].Item1, merged[i].Item2);
+                    }
+                    else
+                    {
+                        animation.InsertKeyFrame(merged[i].Item1, merged[i].Item2, linear);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                // Negative delay unsupported: start from the base
-                // offsets instead of losing the shine entirely.
-                Log.Write("FocusRingBrush phase seek failed: " + ex.Message);
+                // Never lose the shine on a phase-shift failure: fall
+                // back to starting from the base offsets.
+                Log.Write("FocusRingBrush phase shift failed: " + ex.Message);
+                try
+                {
+                    animation = _compositor.CreateScalarKeyFrameAnimation();
+                    animation.Duration = TimeSpan.FromMilliseconds(AnimationDurationMs);
+                    animation.IterationBehavior = AnimationIterationBehavior.Forever;
+                    animation.InsertKeyFrame(0f, from, linear);
+                    animation.InsertKeyFrame(fraction, from + 0.5f, linear);
+                    animation.InsertKeyFrame(1f, from + 1f);
+                }
+                catch (Exception inner)
+                {
+                    Log.Write("FocusRingBrush base start failed: " + inner.Message);
+                    return;
+                }
             }
-            // Three keyframes: the offset covers one horizontal edge
-            // in the first half-offset and one vertical edge in the
-            // second, so the first segment takes W/(W+H) of the loop
-            // and the second H/(W+H) — the spot's perimeter speed is
-            // the same on both. Explicit linear easing on both
-            // segments: the easing on a keyframe governs the segment
-            // that follows it, and the interpolation must be linear
-            // by construction, not by relying on the default.
-            // The pattern repeats every 1.0, so the loop restart is
-            // seamless.
-            var linear = _compositor.CreateLinearEasingFunction();
-            animation.InsertKeyFrame(0f, from, linear);
-            animation.InsertKeyFrame(_horizontalFraction, from + 0.5f, linear);
-            animation.InsertKeyFrame(1f, from + 1f);
             stop.StartAnimation("Offset", animation);
         }
 
