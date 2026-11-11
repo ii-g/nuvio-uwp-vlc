@@ -229,6 +229,12 @@ namespace Nuvio
             _controller = new ControllerBridge((action, repeat) =>
             {
                 _userInputSeen = true;
+                // A real controller press clears the navigation suppression:
+                // a deliberate D-pad move onto the strip must still expand
+                // it. A navigation that follows (B -> GoBack) re-arms the
+                // guard in ContentFrame_Navigated before any artifact focus
+                // can land on a sidebar button.
+                ClearSidebarExpandSuppression();
                 _router.Handle(action, repeat);
             });
 
@@ -368,6 +374,10 @@ namespace Nuvio
             // Any key reaching here is real user input: it arms focus-driven sidebar
             // expansion (the launch activation focus must not open the strip).
             _userInputSeen = true;
+            // Same reason as the controller callback: a deliberate key move onto
+            // the strip must expand it. A navigation that follows re-arms the
+            // guard in ContentFrame_Navigated before any artifact focus lands.
+            ClearSidebarExpandSuppression();
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
             // natively, and while a dialog is open, where ContentDialog handles keys natively.
@@ -466,19 +476,19 @@ namespace Nuvio
 
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
         {
-            // Back to Home: the framework's focus restore cannot find the card
-            // container (unrealized while the page was detached), so focus falls
-            // back to HomeButton — and its GotFocus would open the strip before
-            // Home's deferred restore moves focus back into the content. Suppress
-            // that one artifact expansion; Home clears it when the restore runs.
-            if (e.Content is HomePage && e.NavigationMode == NavigationMode.Back)
-            {
-                _suppressSidebarExpand = true;
-            }
-            // The details page takes the full screen: hide the sidebar strip while
-            // it is open, and restore it on any other page — back navigation
-            // included, since Frame.GoBack raises Navigated too.
-            if (e.Content is DetailsPage)
+            // Every navigation re-arms the suppression: any navigation can drop
+            // focus onto a sidebar button as a fallback (the framework's restore
+            // cannot find a detached page's focused container), and its GotFocus
+            // would open the strip before the destination's own focus restore
+            // moves focus back into the content. The guard is cleared only on
+            // genuine user intent — a key, a controller press, focus entering
+            // the content, or FocusSidebar — or by the destination's restore.
+            _suppressSidebarExpand = true;
+            // The details and catalog pages take the full screen: hide the
+            // sidebar strip while one is open, and restore it on any other
+            // page — back navigation included, since Frame.GoBack raises
+            // Navigated too.
+            if (e.Content is DetailsPage || e.Content is CatalogPage)
             {
                 HideSidebar();
             }
@@ -611,13 +621,18 @@ namespace Nuvio
         private void ExpandSidebarOnFocus()
         {
             if (!_userInputSeen) return;
-            if (_suppressSidebarExpand) return;
+            if (_suppressSidebarExpand)
+            {
+                Log.Write("Sidebar expand suppressed after navigation (focus fallback)");
+                return;
+            }
             ExpandSidebar();
         }
 
-        /// <summary>Clears the back-navigation expansion suppression (see
-        /// ContentFrame_Navigated). Called by Home when its focus restore runs,
-        /// and when focus enters the content by any other route.</summary>
+        /// <summary>Clears the navigation expansion suppression (see
+        /// ContentFrame_Navigated). Called by a page when its focus restore runs,
+        /// when focus enters the content by any other route, and on genuine user
+        /// input (a key or a controller press).</summary>
         internal void ClearSidebarExpandSuppression()
         {
             _suppressSidebarExpand = false;
