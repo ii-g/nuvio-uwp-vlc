@@ -276,9 +276,9 @@ jobs:
             gh release create $tag NuvioUWPVLC-x64.msix NuvioUWPVLC-Dependencies.zip --title "Nuvio UWP VLC $tag" --notes-file release-notes.md
           }
 
-      - name: Publish rolling pre-release
+      - name: Publish rolling draft release
         # Every successful stage build (not a tag) updates one rolling
-        # pre-release so there is always a direct download link. The .msix
+        # draft release so there is always a direct download link. The .msix
         # and the Dependencies ship as separate assets.
         if: github.ref_type != 'tag' && github.event_name != 'pull_request' && matrix.configuration == 'Release'
         shell: pwsh
@@ -287,7 +287,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           $notes = @(
-            "Latest native-ui build (pre-release).",
+            "Latest native-ui build (draft, visible only to the repo owner).",
             '',
             "Install: download NuvioUWPVLC-x64.msix and NuvioUWPVLC-Dependencies.zip, extract the zip, then install the .msix with its dependencies. NuvioUWP.cer (inside the Dependencies zip) is only needed for manual installs on a PC.",
             '',
@@ -299,9 +299,9 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload native-latest NuvioUWPVLC-x64.msix NuvioUWPVLC-Dependencies.zip --clobber
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
-            gh release edit native-latest --notes-file rolling-notes.md --prerelease
+            gh release edit native-latest --notes-file rolling-notes.md --draft
           } else {
-            gh release create native-latest NuvioUWPVLC-x64.msix NuvioUWPVLC-Dependencies.zip --title 'Nuvio Native (latest build)' --notes-file rolling-notes.md --prerelease
+            gh release create native-latest NuvioUWPVLC-x64.msix NuvioUWPVLC-Dependencies.zip --title 'Nuvio Native (latest build)' --notes-file rolling-notes.md --draft
           }
 
   smoke:
