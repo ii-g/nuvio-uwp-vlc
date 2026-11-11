@@ -828,39 +828,20 @@ namespace Nuvio.Views
 
         // ---------- Backdrop ----------
 
-        // Dynamic backdrop layer: a uniform blur plus a gradient tint.
-        // The shade grades from fully transparent at the top to a dark
-        // peak at the bottom. Hero focus keeps the peak at 20% black
-        // (#33000000) and blur 8 so the fanart shows; any row focus
-        // deepens the peak to 50% (#80000000) and the blur to 20 so the
-        // cards read. 200ms. The XAML defaults are the hero values,
-        // matching _shadeIsRow == false at startup.
-        private bool _shadeIsRow;
-        private static readonly Windows.UI.Color ShadePeakHero = Windows.UI.ColorHelper.FromArgb(0x33, 0, 0, 0);
-        private static readonly Windows.UI.Color ShadePeakRow = Windows.UI.ColorHelper.FromArgb(0x80, 0, 0, 0);
-        private const float BackdropBlurHero = 8f;
-        private const float BackdropBlurRow = 20f;
+        // Dynamic backdrop fade (variant D): the image dissolves
+        // downward into the solid dark background through a gradient
+        // alpha mask. Hero focus keeps the image visible longer
+        // (opaque to 45%, gone by 90%); any row focus fades it
+        // earlier (opaque to 25%, gone by 70%). 200ms. The XAML
+        // defaults are the hero values, matching _fadeIsRow == false
+        // at startup.
+        private bool _fadeIsRow;
 
-        private void SetBackdropShadeRowState(bool isRow)
+        private void SetBackdropFadeRowState(bool isRow)
         {
-            if (_shadeIsRow == isRow) return;
-            _shadeIsRow = isRow;
-            BackdropBlur?.SetBlurAmount(isRow ? BackdropBlurRow : BackdropBlurHero);
-            var stop = BackdropShadePeakStop;
-            if (stop == null) return;
-            var target = isRow ? ShadePeakRow : ShadePeakHero;
-            if (stop.Color == target) return;
-            var animation = new ColorAnimation
-            {
-                To = target,
-                Duration = TimeSpan.FromMilliseconds(200),
-                EnableDependentAnimation = true
-            };
-            var storyboard = new Storyboard();
-            Storyboard.SetTarget(animation, stop);
-            Storyboard.SetTargetProperty(animation, "Color");
-            storyboard.Children.Add(animation);
-            storyboard.Begin();
+            if (_fadeIsRow == isRow) return;
+            _fadeIsRow = isRow;
+            BackdropFade?.SetRowState(isRow);
         }
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
@@ -876,7 +857,7 @@ namespace Nuvio.Views
                 {
                     _lastFocusedKey = "meta:" + card.Meta.Id;
                     ShowBackdrop(card.Meta.Background);
-                    SetBackdropShadeRowState(true);
+                    SetBackdropFadeRowState(true);
                     return;
                 }
                 var entry = item.Content as ProgressEntry;
@@ -884,7 +865,7 @@ namespace Nuvio.Views
                 {
                     _lastFocusedKey = "cw:" + entry.ContentId;
                     ShowBackdrop(entry.Background);
-                    SetBackdropShadeRowState(true);
+                    SetBackdropFadeRowState(true);
                     return;
                 }
             }
@@ -896,7 +877,7 @@ namespace Nuvio.Views
                 // "enlarged" look. ShowBackdrop ignores empty, so the previous
                 // backdrop simply stays.
                 if (hero != null) ShowBackdrop(hero.Background);
-                SetBackdropShadeRowState(false);
+                SetBackdropFadeRowState(false);
             }
         }
 
