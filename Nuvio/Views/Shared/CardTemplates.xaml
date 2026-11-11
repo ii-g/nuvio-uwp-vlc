@@ -199,8 +199,8 @@
                              1 epx above the art's bottom edge and the poster leaked
                              out below it.) Two layers, all Opacity 0 until focus:
                              FocusGlassBand (frosted blur band) and FocusRing
-                             (animated white shine border: 7 named stops sliding
-                             +1.0 over 3 s while focused). -->
+                             (white shine border: shared:FocusRingBrush slides its 7 stops
+                             +1.0 over 3 s on the compositor while focused). -->
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
                             <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
@@ -209,15 +209,7 @@
                             </Border>
                             <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop x:Name="FocusShineStop0" Offset="-1" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop1" Offset="-0.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop2" Offset="0" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop3" Offset="0.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop4" Offset="1" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop5" Offset="1.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop6" Offset="2" Color="#D9FFFFFF"/>
-                                    </LinearGradientBrush>
+                                    <shared:FocusRingBrush/>
                                 </Border.BorderBrush>
                             </Border>
                         </Grid>
@@ -239,13 +231,6 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -255,13 +240,6 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -309,15 +287,7 @@
                             </Border>
                             <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop x:Name="FocusShineStop0" Offset="-1" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop1" Offset="-0.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop2" Offset="0" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop3" Offset="0.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop4" Offset="1" Color="#D9FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop5" Offset="1.5" Color="#26FFFFFF"/>
-                                        <GradientStop x:Name="FocusShineStop6" Offset="2" Color="#D9FFFFFF"/>
-                                    </LinearGradientBrush>
+                                    <shared:FocusRingBrush/>
                                 </Border.BorderBrush>
                             </Border>
                         </Grid>
@@ -339,13 +309,6 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -355,13 +318,6 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever" EnableDependentAnimation="True"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
