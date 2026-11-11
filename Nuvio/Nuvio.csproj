@@ -106,6 +106,7 @@
     <Compile Include="Views\CatalogPage.xaml.cs">
       <DependentUpon>CatalogPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\Shared\BackdropBlurBrush.cs" />
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
     <Compile Include="Views\Shared\SidebarBackdropBlurBrush.cs" />
     <Compile Include="Views\Shared\TextGlow.cs" />
