@@ -42,19 +42,31 @@ namespace Nuvio.Views.Shared
             if (amount == _blurAmount && _effectBrush != null) return;
             _blurAmount = amount;
             if (_effectBrush == null || _compositor == null) return;
-            if (animate)
+            try
             {
-                var animation = _compositor.CreateScalarKeyFrameAnimation();
-                animation.Duration = TimeSpan.FromMilliseconds(AnimationDurationMs);
-                // Final keyframe only: the animation starts from the live
-                // value, so a new animation retargets smoothly.
-                animation.InsertKeyFrame(1.0f, amount,
-                    _compositor.CreateCubicBezierEasingFunction(EaseOutControl1, EaseOutControl2));
-                _effectBrush.StartAnimation("Blur.BlurAmount", animation);
+                if (animate)
+                {
+                    var animation = _compositor.CreateScalarKeyFrameAnimation();
+                    animation.Duration = TimeSpan.FromMilliseconds(AnimationDurationMs);
+                    // Final keyframe only: the animation starts from the live
+                    // value, so a new animation retargets smoothly.
+                    animation.InsertKeyFrame(1.0f, amount,
+                        _compositor.CreateCubicBezierEasingFunction(EaseOutControl1, EaseOutControl2));
+                    _effectBrush.StartAnimation("Blur.BlurAmount", animation);
+                }
+                else
+                {
+                    _effectBrush.Properties.InsertScalar("Blur.BlurAmount", amount);
+                }
             }
-            else
+            catch (Exception ex)
             {
-                _effectBrush.Properties.InsertScalar("Blur.BlurAmount", amount);
+                // Never crash on the blur animation: fall back to setting
+                // the value directly, and if even that fails keep the last
+                // good amount and log.
+                Log.Write("BackdropBlurBrush animation failed: " + ex.Message);
+                try { _effectBrush.Properties.InsertScalar("Blur.BlurAmount", amount); }
+                catch (Exception inner) { Log.Write("BackdropBlurBrush set failed: " + inner.Message); }
             }
         }
 
@@ -79,9 +91,12 @@ namespace Nuvio.Views.Shared
                     BorderMode = EffectBorderMode.Hard,
                     Optimization = EffectOptimization.Speed
                 };
-                var factory = _compositor.CreateEffectFactory(blur);
+                var factory = _compositor.CreateEffectFactory(blur, new[] { "Blur.BlurAmount" });
                 _effectBrush = factory.CreateBrush();
                 _effectBrush.SetSourceParameter("Backdrop", _backdropBrush);
+                // Seed the animatable property so the first animation
+                // retargets from the live value.
+                _effectBrush.Properties.InsertScalar("Blur.BlurAmount", _blurAmount);
                 CompositionBrush = _effectBrush;
             }
             catch (Exception ex)
