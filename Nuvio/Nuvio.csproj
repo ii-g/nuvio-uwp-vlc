@@ -91,6 +91,8 @@
     <Compile Include="Services\LibraryService.cs" />
     <Compile Include="Services\ProgressService.cs" />
     <Compile Include="Services\NavigationService.cs" />
+    <!-- Milestone 3: details page. -->
+    <Compile Include="Services\TmdbService.cs" />
     <Compile Include="ViewModels\ViewModelBase.cs" />
     <Compile Include="ViewModels\PlaceholderViewModel.cs" />
     <Compile Include="ViewModels\HomeViewModel.cs" />
