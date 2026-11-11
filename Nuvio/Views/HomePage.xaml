@@ -166,31 +166,21 @@
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <!-- Backdrop: two cross-fading layers following the focused card.
-             A dynamic backdrop layer: a uniform blur (8 on hero focus,
-             20 on any row focus) plus a gradient tint, fully transparent
-             at the top, grading to a dark peak at the bottom — 20% on
-             hero focus, 50% on any row focus, 200ms between states. -->
+             Variant D: the image itself dissolves downward into the solid
+             dark app background through a gradient alpha mask — opaque to
+             45% of the height, gone by 90% on hero focus; opaque to 25%,
+             gone by 70% on any row focus, 200ms between states
+             (BackdropFadeBrush). No blur, no dark tint overlay. -->
         <Grid x:Name="BackdropHost" IsHitTestVisible="False">
             <Image x:Name="BackdropA" Stretch="UniformToFill" Opacity="0"/>
             <Image x:Name="BackdropB" Stretch="UniformToFill" Opacity="0"/>
-            <!-- Uniform backdrop blur, animated with focus: 8 on hero
-                 focus, 20 on any row focus, 200ms (BackdropBlurBrush). -->
-            <Rectangle x:Name="BackdropBlurRect">
+            <!-- Gradient fade over the backdrop images: the sampled image
+                 fades out downward into the solid background. The mask
+                 applies only to the images below; hero text, buttons,
+                 posters and rows sit above this rectangle. -->
+            <Rectangle x:Name="BackdropFadeRect">
                 <Rectangle.Fill>
-                    <shared:BackdropBlurBrush x:Name="BackdropBlur"/>
-                </Rectangle.Fill>
-            </Rectangle>
-            <!-- Dynamic gradient tint: transparent at the top, grading
-                 to a dark peak at the bottom. The peak stop
-                 (BackdropShadePeakStop) is animated in code-behind
-                 between 20% black (hero focus) and 50% black (row
-                 focus) over 200ms. -->
-            <Rectangle x:Name="BackdropShadeRect">
-                <Rectangle.Fill>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="#00000000"/>
-                        <GradientStop x:Name="BackdropShadePeakStop" Offset="1" Color="#33000000"/>
-                    </LinearGradientBrush>
+                    <shared:BackdropFadeBrush x:Name="BackdropFade"/>
                 </Rectangle.Fill>
             </Rectangle>
         </Grid>
