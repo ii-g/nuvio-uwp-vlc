@@ -3,6 +3,7 @@ using System.Numerics;
 using Nuvio.Diagnostics;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 
 namespace Nuvio.Views.Shared
@@ -27,6 +28,20 @@ namespace Nuvio.Views.Shared
     /// storyboards still animate Opacity/Scale (both compositor).
     /// On failure the brush falls back to a static solid ring instead
     /// of crashing the page.
+    ///
+    /// Restart on focus: the old storyboard ran its stop animations
+    /// only in the Focused/PointerFocused states, so the sweep
+    /// restarted from the same base offsets every time an element
+    /// gained focus — the bright spot always started at the same
+    /// corner and swept. The compositor animations instead start in
+    /// OnConnected and run Forever, so without a restart the shine sat
+    /// at a random clock phase when focus arrived and the sweep felt
+    /// slow and different (same 3 s speed, different phase). Setting
+    /// the RestartOnFocus attached property on a FocusRing Border
+    /// replays the old restart: when the focusable control that owns
+    /// the template gains focus, the brush stops and re-starts all 7
+    /// stop animations from the base offsets. That is a one-off
+    /// compositor action, not per-frame work, so the lag fix stands.
     /// </summary>
     internal sealed class FocusRingBrush : XamlCompositionBrushBase
     {
@@ -45,6 +60,164 @@ namespace Nuvio.Views.Shared
         private Compositor _compositor;
         private CompositionLinearGradientBrush _gradientBrush;
         private CompositionColorGradientStop[] _stops;
+
+        /// <summary>
+        /// Attached property for a FocusRing Border: when true, the
+        /// shine sweep restarts from the base offsets whenever the
+        /// focusable control that owns the template gains focus.
+        /// </summary>
+        public static readonly DependencyProperty RestartOnFocusProperty =
+            DependencyProperty.RegisterAttached(
+                "RestartOnFocus",
+                typeof(bool),
+                typeof(FocusRingBrush),
+                new PropertyMetadata(false, OnRestartOnFocusChanged));
+
+        public static bool GetRestartOnFocus(DependencyObject obj)
+        {
+            return (bool)obj.GetValue(RestartOnFocusProperty);
+        }
+
+        public static void SetRestartOnFocus(DependencyObject obj, bool value)
+        {
+            obj.SetValue(RestartOnFocusProperty, value);
+        }
+
+        // Per-Border subscription state, unhooked on Unload so recycled
+        // GridView items never leak a GotFocus handler.
+        private static readonly DependencyProperty RestartSubscriptionProperty =
+            DependencyProperty.RegisterAttached(
+                "RestartSubscription",
+                typeof(FocusRestartSubscription),
+                typeof(FocusRingBrush),
+                new PropertyMetadata(null));
+
+        private static void OnRestartOnFocusChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            var border = d as Border;
+            if (border == null) return;
+            if ((bool)e.NewValue)
+            {
+                border.Loaded += RingBorder_Loaded;
+                border.Unloaded += RingBorder_Unloaded;
+            }
+            else
+            {
+                border.Loaded -= RingBorder_Loaded;
+                border.Unloaded -= RingBorder_Unloaded;
+                DetachRestart(border);
+            }
+        }
+
+        private static void RingBorder_Loaded(object sender, RoutedEventArgs e)
+        {
+            AttachRestart((Border)sender);
+        }
+
+        private static void RingBorder_Unloaded(object sender, RoutedEventArgs e)
+        {
+            DetachRestart((Border)sender);
+        }
+
+        private static void AttachRestart(Border border)
+        {
+            DetachRestart(border);
+            var owner = FindFocusableOwner(border);
+            if (owner == null) return;
+            var subscription = new FocusRestartSubscription(border, owner);
+            border.SetValue(RestartSubscriptionProperty, subscription);
+            owner.GotFocus += subscription.OnOwnerGotFocus;
+            // Focus may already be here (restored before load): restart
+            // now so the first sweep starts from the base corner.
+            if (owner.FocusState != FocusState.Unfocused)
+            {
+                subscription.RestartRing();
+            }
+        }
+
+        private static void DetachRestart(Border border)
+        {
+            var subscription = border.GetValue(RestartSubscriptionProperty) as FocusRestartSubscription;
+            if (subscription == null) return;
+            subscription.Detach();
+            border.SetValue(RestartSubscriptionProperty, null);
+        }
+
+        private static Control FindFocusableOwner(Border border)
+        {
+            // Template part: the templated control is the focusable
+            // owner (GridViewItem for cards/episodes, Button for hero/
+            // details/sidebar). Fall back to the first Control ancestor
+            // for DataTemplate-hosted rings.
+            if (border.TemplatedParent is Control templated)
+            {
+                return templated;
+            }
+            DependencyObject current = VisualTreeHelper.GetParent(border);
+            while (current != null)
+            {
+                if (current is Control control)
+                {
+                    return control;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return null;
+        }
+
+        private sealed class FocusRestartSubscription
+        {
+            private readonly Border _ring;
+            private readonly Control _owner;
+
+            public FocusRestartSubscription(Border ring, Control owner)
+            {
+                _ring = ring;
+                _owner = owner;
+            }
+
+            public void Detach()
+            {
+                _owner.GotFocus -= OnOwnerGotFocus;
+            }
+
+            public void OnOwnerGotFocus(object sender, RoutedEventArgs e)
+            {
+                RestartRing();
+            }
+
+            public void RestartRing()
+            {
+                if (_ring.BorderBrush is FocusRingBrush brush)
+                {
+                    brush.Restart();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Restarts the shine sweep from the base offsets: stops and
+        /// re-starts all 7 stop animations, so the bright spot starts
+        /// at the same corner and sweeps, exactly like the old
+        /// Focused-state storyboard did. One-off compositor work;
+        /// no UI-thread cost per frame.
+        /// </summary>
+        public void Restart()
+        {
+            if (_stops == null || _compositor == null) return;
+            try
+            {
+                for (int i = 0; i < _stops.Length; i++)
+                {
+                    _stops[i].StopAnimation("Offset");
+                    StartShineAnimation(_stops[i], StopOffsets[i]);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("FocusRingBrush restart failed: " + ex.Message);
+            }
+        }
 
         protected override void OnConnected()
         {
