@@ -13,14 +13,10 @@
     Background="Transparent">
 
     <Page.Resources>
-        <!-- Focus frame shine (white only: shiny + translucent): NOT a shared
-             resource — the gradient lives inline on each FocusRing Border, with
-             7 named stops (bright 100% white peaks / 50% white valleys, periodic
-             every 1.0 in offset) so the Focused/PointerFocused storyboards can
-             slide every stop +1.0 over 3 s, forever, looping seamlessly. The
-             bright band travels the frame while the element is focused. Single
-             ring: the old static gradient + #FAFAFA inner ring read as a double
-             frame, so the inner ring is gone. -->
+        <!-- Focus frame removed: the traveling-shine ring lagged the whole app
+             on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
+             is the only focus indicator until the new rotating-light frame
+             lands. -->
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#A62F6FED"/>
             <Setter Property="Foreground" Value="White"/>
@@ -47,22 +43,6 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <!-- Focus frame (Fluent 2 Design card frame, recolored to
-                                 light whites on glass): frosted blur band + light
-                                 animated white shine border. The only
-                                 focus indicator: the old white pill (TintBorder to
-                                 White, text to Black) is gone. All Opacity 0 until
-                                 Focused/PointerFocused. -->
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -76,15 +56,11 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -120,22 +96,6 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
-                            <!-- Focus frame (Fluent 2 Design card frame, recolored to
-                                 light whites on glass): frosted blur band + light
-                                 animated white shine border. The only
-                                 focus indicator: the old white pill (TintBorder to
-                                 White, text to Black) is gone. All Opacity 0 until
-                                 Focused/PointerFocused. -->
-                            <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
-                                <Border.BorderBrush>
-                                    <shared:SidebarBackdropBlurBrush/>
-                                </Border.BorderBrush>
-                            </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.UniformSpeed="True">
-                                <Border.BorderBrush>
-                                    <shared:FocusRingBrush/>
-                                </Border.BorderBrush>
-                            </Border>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -149,15 +109,11 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
