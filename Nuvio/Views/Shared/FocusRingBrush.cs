@@ -145,14 +145,14 @@ namespace Nuvio.Views.Shared
 
         private static Control FindFocusableOwner(Border border)
         {
-            // Template part: the templated control is the focusable
-            // owner (GridViewItem for cards/episodes, Button for hero/
-            // details/sidebar). Fall back to the first Control ancestor
-            // for DataTemplate-hosted rings.
-            if (border.TemplatedParent is Control templated)
-            {
-                return templated;
-            }
+            // Walk the visual tree to the first Control ancestor.
+            // For a template part this is the templated control
+            // itself (GridViewItem for cards/episodes, Button for
+            // hero/details/sidebar); for DataTemplate-hosted rings
+            // it is the nearest focusable container. Note: the
+            // owner cannot be read from a template-parent property
+            // here (that property exists only in WPF, not UWP) —
+            // the visual-tree walk is the only way to resolve it.
             DependencyObject current = VisualTreeHelper.GetParent(border);
             while (current != null)
             {
