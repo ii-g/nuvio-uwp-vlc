@@ -306,7 +306,10 @@ namespace Nuvio.Views
             // while focus is on the hero, with the strip collapsed.
             if (MainPage.Current != null && MainPage.Current.IsSidebarExpanded) return;
             _viewModel.AdvanceHero();
-            UpdateDots();
+            // No UpdateDots() here: AdvanceHero always changes
+            // HeroIndex (it returns early below 2 items), and the
+            // PropertyChanged handler already calls UpdateDots() for
+            // it — one call per tick, not two.
         }
 
         private void UpdateDots()
