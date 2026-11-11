@@ -425,7 +425,7 @@
         </Grid>
 
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Hidden" VerticalScrollMode="Auto" HorizontalScrollMode="Disabled">
-            <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
+            <StackPanel x:Name="ContentStack" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsContent}">
                 <!-- Loading with no preview artwork yet: a centered spinner. -->
                 <Grid Visibility="{Binding ShowLoadingSpinner, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="540">
                     <ProgressRing IsActive="True" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -435,7 +435,7 @@
                 <StackPanel Visibility="{Binding ShowContent, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <!-- Hero -->
                     <Grid x:Name="HeroSection" MinHeight="272">
-                        <StackPanel VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=hero}" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="520">
+                        <StackPanel VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsHero}" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="520">
                             <Image x:Name="HeroLogo" Source="{Binding LogoUrl, Converter={StaticResource PosterImageConverter}, ConverterParameter=logo}" Stretch="Uniform" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" MaxWidth="240" MaxHeight="80" Visibility="{Binding LogoUrl, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                             <Grid Visibility="{Binding LogoUrl, Converter={StaticResource InverseStringToVisibilityConverter}}">
                                 <TextBlock x:Name="HeroTitle" Text="{Binding Title}" FontSize="27" FontWeight="ExtraBold" LineHeight="28" TextWrapping="Wrap" TextAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToTextAlignmentConverter}}" shared:TextGlow.IsEnabled="True"/>
@@ -485,11 +485,11 @@
 
                     <!-- Episodes -->
                     <StackPanel Visibility="{Binding HasEpisodes, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,8,0,13">
-                        <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+                        <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}">
                             <TextBlock x:Uid="EpisodesTitle" Text="Episodes" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
-                        <StackPanel x:Name="SeasonChipsPanel" Orientation="Horizontal" Spacing="6" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" />
-                        <GridView x:Name="EpisodesGridView" ItemsSource="{Binding Episodes}" ItemTemplate="{StaticResource EpisodeCardTemplate}" ItemContainerStyle="{StaticResource EpisodeGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="EpisodesGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <StackPanel x:Name="SeasonChipsPanel" Orientation="Horizontal" Spacing="6" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}" />
+                        <GridView x:Name="EpisodesGridView" ItemsSource="{Binding Episodes}" ItemTemplate="{StaticResource EpisodeCardTemplate}" ItemContainerStyle="{StaticResource EpisodeGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="EpisodesGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
@@ -499,7 +499,7 @@
                     </StackPanel>
 
                     <!-- Credits -->
-                    <StackPanel Visibility="{Binding HasCredits, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+                    <StackPanel Visibility="{Binding HasCredits, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}">
                         <ItemsControl ItemsSource="{Binding Credits}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -514,10 +514,10 @@
 
                     <!-- Cast (TMDB) -->
                     <StackPanel Visibility="{Binding HasCast, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,8,0,13">
-                        <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+                        <Grid Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}">
                             <TextBlock x:Uid="CastTitle" Text="Cast" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                         </Grid>
-                        <GridView x:Name="CastGridView" ItemsSource="{Binding CastItems}" ItemTemplate="{StaticResource CastCardTemplate}" ItemContainerStyle="{StaticResource CastGridViewItemStyle}" SelectionMode="None" IsItemClickEnabled="False" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView x:Name="CastGridView" ItemsSource="{Binding CastItems}" ItemTemplate="{StaticResource CastCardTemplate}" ItemContainerStyle="{StaticResource CastGridViewItemStyle}" SelectionMode="None" IsItemClickEnabled="False" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
@@ -528,7 +528,7 @@
 
                     <!-- More Like This (TMDB) -->
                     <StackPanel Visibility="{Binding HasSimilar, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,8,0,13">
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}">
                             <Grid>
                                 <TextBlock x:Uid="MoreLikeThisTitle" Text="More Like This" FontSize="12" FontWeight="Bold" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
@@ -536,7 +536,7 @@
                                 <TextBlock Text="TMDB" FontSize="8" Foreground="#80FFFFFF" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                         </StackPanel>
-                        <GridView x:Name="SimilarGridView" ItemsSource="{Binding SimilarItems}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SimilarGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
+                        <GridView x:Name="SimilarGridView" ItemsSource="{Binding SimilarItems}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CardGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="SimilarGridView_ItemClick" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollMode="Enabled" ScrollViewer.VerticalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsStackPanel Orientation="Horizontal"/>
