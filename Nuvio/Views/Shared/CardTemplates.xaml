@@ -20,17 +20,14 @@
     <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
     <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
 
-    <!-- Shared focus frame gradient (Fluent 2 Design card frame, recolored):
-         light whites on glass: white to pale icy blue, 70% alpha so the
-         frosted blur band under it shows through. The 0.5 stop is the
-         contrast stop: it is what reads on a white poster. -->
-    <LinearGradientBrush x:Key="FocusFrameGradientBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Offset="0" Color="#B3FFFFFF"/>
-        <GradientStop Offset="0.25" Color="#B3E8F2FF"/>
-        <GradientStop Offset="0.5" Color="#B3B4D8FF"/>
-        <GradientStop Offset="0.75" Color="#B3E8F2FF"/>
-        <GradientStop Offset="1" Color="#B3FFFFFF"/>
-    </LinearGradientBrush>
+    <!-- Focus frame shine (white only: shiny + translucent): NOT a shared
+         resource — the gradient lives inline on each FocusRing Border, with
+         7 named stops (bright 100% white peaks / 50% white valleys, periodic
+         every 1.0 in offset) so the Focused/PointerFocused storyboards can
+         slide every stop +1.0 over 3 s, forever, looping seamlessly. The
+         bright band travels the frame while the element is focused. Single
+         ring: the old static gradient + #FAFAFA inner ring read as a double
+         frame, so the inner ring is gone. -->
 
     <!-- A poster card (components/cards.js posterCard): art, watched check, progress bar, title. -->
     <DataTemplate x:Key="PosterCardTemplate">
@@ -128,15 +125,17 @@
         </Grid>
     </DataTemplate>
 
-    <!-- Card containers: glass gradient focus frame + zoom. The frame is the
-         Fluent 2 Design card frame, recolored to light whites on glass:
-         a 3 epx diagonal gradient border (FocusFrameGradientBrush) over a
-         frosted blur band (SidebarBackdropBlurBrush, GaussianBlur 20) with a
-         2 epx #FAFAFA ring inside it, on the focused card only. It replaces
-         the old white ring (1.25 hover / 1.75 focus) and the F sheen
-         (FocusSheen, removed): one frame, no sheen, no glow. Selection is
-         off; click is via IsItemClickEnabled. The framework also draws its
-         own focus rectangle around the whole item (art + title) unless
+    <!-- Card containers: glass focus frame + zoom. The frame is a single
+         3 epx white shine border (7 named gradient stops, bright 100% white
+         peaks / 50% white valleys) over a frosted blur band
+         (SidebarBackdropBlurBrush, GaussianBlur 20), on the focused card
+         only; the shine travels the frame while focused (3 s loop). It
+         replaces the old white ring (1.25 hover / 1.75 focus) and the F
+         sheen (FocusSheen, removed): one frame, no sheen, no glow. The
+         old static gradient + #FAFAFA inner ring read as a double frame,
+         so the inner ring is gone. Selection is off; click is via
+         IsItemClickEnabled. The framework also draws its own focus
+         rectangle around the whole item (art + title) unless
          UseSystemFocusVisuals is off; with the template's art-only frame
          that made two overlapping frames, so the system one is disabled
          and the template frame is the only one. -->
@@ -162,18 +161,29 @@
                              not do this: with VerticalAlignment Top the -1 margin
                              only shifted the frame up 1 epx, so its bottom edge sat
                              1 epx above the art's bottom edge and the poster leaked
-                             out below it.) Three layers, all Opacity 0 until focus:
-                             FocusGlassBand (frosted blur band), FocusRing (light
-                             gradient border) and FocusInnerRing (2 epx #FAFAFA
-                             ring inside the gradient). -->
+                             out below it.) Two layers, all Opacity 0 until focus:
+                             FocusGlassBand (frosted blur band) and FocusRing
+                             (animated white shine border: 7 named stops sliding
+                             +1.0 over 3 s while focused). -->
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="{Binding Content, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource CardArtHeightConverter}}">
                             <Border x:Name="FocusGlassBand" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
                                     <shared:SidebarBackdropBlurBrush/>
                                 </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
-                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="4" Margin="2" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop x:Name="FocusShineStop0" Offset="-1" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop1" Offset="-0.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop2" Offset="0" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop3" Offset="0.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop4" Offset="1" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop5" Offset="1.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop6" Offset="2" Color="#FFFFFFFF"/>
+                                    </LinearGradientBrush>
+                                </Border.BorderBrush>
+                            </Border>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
@@ -182,7 +192,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -194,7 +203,13 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -204,7 +219,13 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
@@ -243,8 +264,19 @@
                                     <shared:SidebarBackdropBlurBrush/>
                                 </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" BorderBrush="{StaticResource FocusFrameGradientBrush}" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False"/>
-                            <Border x:Name="FocusInnerRing" BorderThickness="2" BorderBrush="#FAFAFA" CornerRadius="4" Margin="2" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False">
+                                <Border.BorderBrush>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop x:Name="FocusShineStop0" Offset="-1" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop1" Offset="-0.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop2" Offset="0" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop3" Offset="0.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop4" Offset="1" Color="#FFFFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop5" Offset="1.5" Color="#80FFFFFF"/>
+                                        <GradientStop x:Name="FocusShineStop6" Offset="2" Color="#FFFFFFFF"/>
+                                    </LinearGradientBrush>
+                                </Border.BorderBrush>
+                            </Border>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
@@ -253,7 +285,6 @@
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Pressed"/>
@@ -265,7 +296,13 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                                 <VisualState x:Name="Unfocused"/>
@@ -275,7 +312,13 @@
                                         <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusGlassBand" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
-                                        <DoubleAnimation Storyboard.TargetName="FocusInnerRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop0" Storyboard.TargetProperty="Offset" From="-1" To="0" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop1" Storyboard.TargetProperty="Offset" From="-0.5" To="0.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop2" Storyboard.TargetProperty="Offset" From="0" To="1" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop3" Storyboard.TargetProperty="Offset" From="0.5" To="1.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop4" Storyboard.TargetProperty="Offset" From="1" To="2" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop5" Storyboard.TargetProperty="Offset" From="1.5" To="2.5" Duration="0:0:3" RepeatBehavior="Forever"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusShineStop6" Storyboard.TargetProperty="Offset" From="2" To="3" Duration="0:0:3" RepeatBehavior="Forever"/>
                                     </Storyboard>
                                 </VisualState>
                             </VisualStateGroup>
