@@ -83,7 +83,7 @@
                                     <shared:SidebarBackdropBlurBrush/>
                                 </Border.BorderBrush>
                             </Border>
-                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" shared:FocusRingBrush.RestartOnFocus="True">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False">
                                 <Border.BorderBrush>
                                     <shared:FocusRingBrush/>
                                 </Border.BorderBrush>
