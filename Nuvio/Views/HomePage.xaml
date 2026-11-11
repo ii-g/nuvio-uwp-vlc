@@ -13,10 +13,11 @@
     Background="Transparent">
 
     <Page.Resources>
-        <!-- Focus frame removed: the traveling-shine ring lagged the whole app
-             on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
-             is the only focus indicator until the new rotating-light frame
-             lands. -->
+        <!-- Focus frame (markodenic rotating light): a static #80FFFFFF ring
+             plus a bright white conic slice traveling around it, once per
+             3 s, driven by shared:RotatingFrameLight — one RotationAngle
+             animation on a pre-rendered conic image, clipped to the 3 epx
+             band. The 1.06 focus zoom is untouched. -->
         <Style x:Key="HeroPrimaryButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#A62F6FED"/>
             <Setter Property="Foreground" Value="White"/>
@@ -43,6 +44,7 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -56,11 +58,13 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -96,6 +100,7 @@
                                 <FontIcon Glyph="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" FontSize="10" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Visibility="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
                                 <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" VerticalAlignment="Center" shared:TextGlow.IsEnabled="True"/>
                             </StackPanel>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -109,11 +114,13 @@
                                 <VisualStateGroup x:Name="FocusStates">
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
