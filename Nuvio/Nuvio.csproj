@@ -115,7 +115,6 @@
     </Compile>
     <Compile Include="Views\Shared\BackdropFadeBrush.cs" />
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
-    <Compile Include="Views\Shared\RotatingFrameLight.cs" />
     <Compile Include="Views\Shared\SidebarBackdropBlurBrush.cs" />
     <Compile Include="Views\Shared\TextGlow.cs" />
     <Compile Include="Views\PlaceholderPage.xaml.cs">
