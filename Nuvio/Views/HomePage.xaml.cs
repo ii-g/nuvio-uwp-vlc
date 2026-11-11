@@ -94,7 +94,15 @@ namespace Nuvio.Views
             Log.Write("Home page flow direction: " + (FlowDirection == FlowDirection.RightToLeft ? "RTL" : "LTR"));
             _heroTimer.Start();
             // The page is cached, so this runs once; addons/progress events drive later refreshes.
-            if (_loadedOnce) return;
+            if (_loadedOnce)
+            {
+                // Back from Details (or a catalog): the framework cannot restore
+                // focus to the card — its GridView container was unrealized while
+                // the page was detached — so focus falls back to HomeButton and
+                // the strip opens. Put focus back on the card the user came from.
+                if (e.NavigationMode == Windows.UI.Xaml.Navigation.NavigationMode.Back) RestoreLastFocus();
+                return;
+            }
             _loadedOnce = true;
             await _viewModel.LoadAsync().ConfigureAwait(true);
             if (!_focusedOnce && (_viewModel.HasHero || _viewModel.IsEmpty))
@@ -176,6 +184,107 @@ namespace Nuvio.Views
                 }
                 if (moved) _focusedOnce = true;
             });
+        }
+
+        /// <summary>Restores focus to the card (or hero button) the user came from
+        /// after a back-navigation. The framework's own restore fails here: the
+        /// focused GridViewItem container was unrealized while the page was
+        /// detached, so focus falls back to the shell's first focusable element
+        /// (HomeButton) and the strip opens. Deferred one dispatcher tick like
+        /// FocusFirst, and bails out if focus is already inside the page, so a
+        /// late tick never yanks focus away.</summary>
+        private void RestoreLastFocus()
+        {
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                try
+                {
+                    var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                    if (focused != null && IsDescendantOf(focused, this)) return;
+                    if (!RestoreLastFocusNow() && !FocusFirstCardOfFirstRow())
+                    {
+                        if (_viewModel.HasHero) HeroPlayButton.Focus(FocusState.Programmatic);
+                    }
+                }
+                finally
+                {
+                    // The navigation-restore artifact window is over either way:
+                    // a real move onto the sidebar from here must expand it again.
+                    MainPage.Current?.ClearSidebarExpandSuppression();
+                }
+            });
+        }
+
+        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
+        /// key is gone (card no longer listed) so the caller falls back.</summary>
+        private bool RestoreLastFocusNow()
+        {
+            if (string.IsNullOrEmpty(_lastFocusedKey)) return false;
+            if (_lastFocusedKey == "hero")
+            {
+                return _viewModel.HasHero && HeroPlayButton.Focus(FocusState.Programmatic);
+            }
+            if (_lastFocusedKey.StartsWith("cw:", StringComparison.Ordinal))
+            {
+                var contentId = _lastFocusedKey.Substring(3);
+                for (var i = 0; i < ContinueGridView.Items.Count; i++)
+                {
+                    var entry = ContinueGridView.Items[i] as ProgressEntry;
+                    if (entry == null || entry.ContentId != contentId) continue;
+                    var container = ContinueGridView.ContainerFromIndex(i) as GridViewItem;
+                    if (container == null)
+                    {
+                        ContinueGridView.ScrollIntoView(ContinueGridView.Items[i]);
+                        ContinueGridView.UpdateLayout();
+                        container = ContinueGridView.ContainerFromIndex(i) as GridViewItem;
+                    }
+                    return container != null && container.Focus(FocusState.Programmatic);
+                }
+                return false;
+            }
+            if (_lastFocusedKey.StartsWith("meta:", StringComparison.Ordinal))
+            {
+                var metaId = _lastFocusedKey.Substring(5);
+                var grid = FindCardGrid(ContentStack, metaId, out var index);
+                if (grid == null) return false;
+                var container = grid.ContainerFromIndex(index) as GridViewItem;
+                if (container == null)
+                {
+                    grid.ScrollIntoView(grid.Items[index]);
+                    grid.UpdateLayout();
+                    container = grid.ContainerFromIndex(index) as GridViewItem;
+                }
+                return container != null && container.Focus(FocusState.Programmatic);
+            }
+            return false;
+        }
+
+        /// <summary>Finds the row grid holding the card for a meta id, and its index
+        /// in that grid. Walks the same ContentStack tree FindFirstRowGrid uses.</summary>
+        private static GridView FindCardGrid(DependencyObject root, string metaId, out int index)
+        {
+            index = -1;
+            if (root == null) return null;
+            var grid = root as GridView;
+            if (grid != null)
+            {
+                for (var i = 0; i < grid.Items.Count; i++)
+                {
+                    var card = grid.Items[i] as CatalogCardItem;
+                    if (card != null && card.Meta != null && card.Meta.Id == metaId)
+                    {
+                        index = i;
+                        return grid;
+                    }
+                }
+            }
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindCardGrid(VisualTreeHelper.GetChild(root, i), metaId, out index);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         // ---------- Hero ----------
