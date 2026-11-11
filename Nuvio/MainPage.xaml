@@ -20,10 +20,11 @@
         <views:FlowDirectionToThicknessConverter x:Key="FlowDirectionToThicknessConverter"/>
         <views:FlowDirectionToHorizontalAlignmentConverter x:Key="FlowDirectionToHorizontalAlignmentConverter"/>
         <views:FlowDirectionToTextAlignmentConverter x:Key="FlowDirectionToTextAlignmentConverter"/>
-        <!-- Focus frame removed: the traveling-shine ring lagged the whole app
-             on Xbox (build 409), so the frame is gone and the 1.06 focus zoom
-             is the only focus indicator until the new rotating-light frame
-             lands. -->
+        <!-- Focus frame (markodenic rotating light): a static #80FFFFFF ring
+             plus a bright white conic slice traveling around it, once per
+             3 s, driven by shared:RotatingFrameLight — one RotationAngle
+             animation on a pre-rendered conic image, clipped to the 3 epx
+             band. The 1.06 focus zoom is untouched. -->
         <Style x:Key="SidebarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#80FFFFFF"/>
@@ -68,17 +69,18 @@
                                  blue accent bar is gone on purpose: on the frosted strip
                                  it read as a stray blue tick on the button's edge. -->
                             <Border x:Name="ActiveUnderline" Width="18" Height="2" CornerRadius="1" Background="#33FFFFFF" HorizontalAlignment="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToHorizontalAlignmentConverter}}" VerticalAlignment="Bottom" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=activeUnderline}" Visibility="Collapsed"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="#80FFFFFF" shared:RotatingFrameLight.IsEnabled="True"/>
                             <VisualStateManager.VisualStateGroups>
                                 <!-- Button states, matched to the web sidebar (web/css/app.css):
                                      default = transparent bg, muted text/icon (the style's
                                      Foreground setter); hover = surface-2 bg + white text
                                      (web .sidebar-item:hover); pressed = surface-3 bg + white
-                                     text; focused = white text, no fill. The web's
+                                     text; focused = rotating-light frame + white text, no fill. The web's
                                      focused white inversion (.sidebar-item.focused: background
                                      #fff, color #000) is deliberately NOT ported: on the frosted
                                      strip it read as a bright pill with a white ring that clashed
                                      with the dark theme, in every state — focused, pressed and
-                                     merely selected — so the states stay in the dark theme; hover and pressed differ only in surface depth, and focus adds white text only. The active (selected-page)
+                                     merely selected — so the states stay in the dark theme; hover and pressed differ only in surface depth, and focus adds the rotating-light frame. The active (selected-page)
                                      look is owned by SetSidebarActive: surface-2 bg + white
                                      text + the underline below (a thin light transparent line
                                      under the icon, replacing the blue accent bar). Collapsed,
@@ -110,11 +112,13 @@
                                     <VisualState x:Name="Focused">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground"><DiscreteObjectKeyFrame KeyTime="0" Value="White"/></ObjectAnimationUsingKeyFrames>
+                                            <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Unfocused"/>
                                     <VisualState x:Name="PointerFocused">
                                         <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
