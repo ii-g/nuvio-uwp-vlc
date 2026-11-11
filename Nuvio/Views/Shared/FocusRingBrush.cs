@@ -5,7 +5,6 @@ using Nuvio.Diagnostics;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 
 namespace Nuvio.Views.Shared
@@ -31,30 +30,21 @@ namespace Nuvio.Views.Shared
     /// On failure the brush falls back to a static solid ring instead
     /// of crashing the page.
     ///
-    /// The shine runs only on the focused ring. It used to start in
-    /// OnConnected and run Forever on every realized ring — hundreds of
-    /// perpetual animations (Home ~350-700, Catalog ~250-630) of which
-    /// exactly one was ever visible, since every ring is Opacity 0
-    /// until focused and Composition does not pause animations on
-    /// transparent visuals. That baseline saturated the compositor on
-    /// Xbox Developer Mode, so the shine itself slowed down and input
-    /// response lagged, then recovered when the transient load cleared.
-    /// Now the UniformSpeed hookup subscribes the ring to its focusable
-    /// ancestor's GotFocus/LostFocus: the shine starts on focus gain
-    /// and stops on focus loss, so the perpetual load is 7 animations
-    /// (the single focused ring) instead of hundreds. Unfocused rings
-    /// are invisible anyway, so nothing on screen changes. A ring with
-    /// no focusable ancestor falls back to animating always, so the
-    /// shine still works rather than silently disappearing.
-    ///
-    /// The shine is one continuous sweep and is never restarted from
-    /// the base offsets: a ring that starts on focus gain shifts its
-    /// keyframes to the current global phase (a static stopwatch,
-    /// elapsed % 3000 ms), so the sweep keeps its phase when focus
-    /// moves from one element to the next. A negative DelayTime was
-    /// tried first, but the docs do not confirm it seeks, and a
-    /// silent clamp to zero would reset the sweep on every start —
-    /// so the shift is done explicitly in the keyframes instead.
+    /// The shine is one continuous global motion and never restarts.
+    /// Every ring starts its 7 stop animations once, in OnConnected,
+    /// at the current global phase (a static stopwatch, elapsed %
+    /// 3000 ms), and they run Forever. Focus changes never create,
+    /// stop, or retime an animation: the ring's visibility is driven
+    /// by the XAML VisualState Opacity storyboard alone. An earlier
+    /// design started the shine on focus gain and stopped it on focus
+    /// loss; every start re-created the animations and sought the
+    /// global phase, and a broken seek reset the sweep to the base
+    /// offsets on every focus move — during fast navigation the shine
+    /// kept restarting and barely advanced, reading as a sudden
+    /// slowdown. Starting once per connection at the global phase
+    /// removes that whole failure mode. The only re-time is a size
+    /// change (Loaded/SizeChanged), which rebuilds the animations
+    /// from the current global phase with the same math.
     ///
     /// Uniform perimeter speed: the gradient is diagonal across a
     /// rectangle, so with plain linear offset travel the bright spot
@@ -86,8 +76,9 @@ namespace Nuvio.Views.Shared
             Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
 
         // Global phase clock: one continuous sweep shared by every
-        // ring. A ring that starts on focus gain seeks to the current
-        // global phase instead of restarting from the base offsets.
+        // ring. Every ring starts its animations at the current global
+        // phase (elapsed % 3000 ms), so all rings sweep in step and no
+        // ring ever restarts from the base offsets.
         private static readonly Stopwatch _phaseClock = Stopwatch.StartNew();
 
         private Compositor _compositor;
@@ -99,40 +90,14 @@ namespace Nuvio.Views.Shared
         // timing exactly until a live size is known.
         private float _horizontalFraction = 0.5f;
 
-        // True while the shine should be running (this ring's owner has
-        // focus, or no focusable owner was found). Set by StartShine /
-        // StopShine; OnConnected honours it so the shine starts even if
-        // focus was gained before the brush connected.
-        private bool _shineRequested;
-
-        // Attached: the focusable ancestor (GridViewItem/Button) whose
-        // focus drives this ring's shine. Stored on the Border so
-        // Unloaded can unsubscribe from it.
-        private static readonly DependencyProperty FocusOwnerProperty =
-            DependencyProperty.RegisterAttached(
-                "FocusOwner",
-                typeof(Control),
-                typeof(FocusRingBrush),
-                new PropertyMetadata(null));
-
-        private static Control GetFocusOwner(DependencyObject obj)
-        {
-            return (Control)obj.GetValue(FocusOwnerProperty);
-        }
-
-        private static void SetFocusOwner(DependencyObject obj, Control value)
-        {
-            obj.SetValue(FocusOwnerProperty, value);
-        }
-
         /// <summary>
         /// Attached property for a FocusRing Border: when true, the
         /// shine travels at constant speed along the ring's perimeter,
-        /// timed from the Border's live size (see the class comment),
-        /// and runs only while the ring's focusable ancestor has focus.
-        /// Hooks Loaded and SizeChanged for the size, and the ancestor's
-        /// GotFocus/LostFocus for the shine — never a restart on focus,
-        /// the sweep resumes at the global phase.
+        /// timed from the Border's live size (see the class comment).
+        /// Hooks Loaded and SizeChanged for the size only. Focus never
+        /// touches the animations: the shine starts once in OnConnected
+        /// and runs forever, and the ring's visibility is driven by
+        /// the XAML VisualState Opacity storyboard.
         /// </summary>
         public static readonly DependencyProperty UniformSpeedProperty =
             DependencyProperty.RegisterAttached(
@@ -161,20 +126,17 @@ namespace Nuvio.Views.Shared
                 {
                     border.Loaded += RingBorder_Loaded;
                     border.SizeChanged += RingBorder_SizeChanged;
-                    border.Unloaded += RingBorder_Unloaded;
                     // Set after load (e.g. in code): Loaded already
-                    // fired, so hook up now instead of waiting.
+                    // fired, so sync the size now instead of waiting.
                     if (border.IsLoaded)
                     {
-                        SyncRing(border);
+                        SyncRingSize(border);
                     }
                 }
                 else
                 {
                     border.Loaded -= RingBorder_Loaded;
                     border.SizeChanged -= RingBorder_SizeChanged;
-                    border.Unloaded -= RingBorder_Unloaded;
-                    UnhookFocus(border);
                 }
             }
             catch (Exception ex)
@@ -186,29 +148,12 @@ namespace Nuvio.Views.Shared
 
         private static void RingBorder_Loaded(object sender, RoutedEventArgs e)
         {
-            SyncRing((Border)sender);
+            SyncRingSize((Border)sender);
         }
 
         private static void RingBorder_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             SyncRingSize((Border)sender);
-        }
-
-        private static void RingBorder_Unloaded(object sender, RoutedEventArgs e)
-        {
-            // Unsubscribe focus only. Loaded/SizeChanged/Unloaded stay
-            // attached: a recycled container reloads the same Border,
-            // and Loaded must re-run the focus hookup then. The
-            // handlers are static methods, so keeping them attached
-            // holds no object alive.
-            UnhookFocus((Border)sender);
-        }
-
-        // Size sync plus focus hookup on load.
-        private static void SyncRing(Border border)
-        {
-            SyncRingSize(border);
-            HookFocus(border);
         }
 
         private static void SyncRingSize(Border border)
@@ -227,195 +172,14 @@ namespace Nuvio.Views.Shared
         }
 
         /// <summary>
-        /// Subscribes this ring's shine to its focusable ancestor's
-        /// focus. Only the focused ring animates (see the class
-        /// comment). If no focusable ancestor is found the shine runs
-        /// always — today's behaviour — rather than silently
-        /// disappearing.
-        /// </summary>
-        private static void HookFocus(Border border)
-        {
-            try
-            {
-                var owner = FindFocusableAncestor(border);
-                SetFocusOwner(border, owner);
-                if (owner == null)
-                {
-                    StartShine(border);
-                    return;
-                }
-                owner.GotFocus -= FocusOwner_GotFocus;
-                owner.GotFocus += FocusOwner_GotFocus;
-                owner.LostFocus -= FocusOwner_LostFocus;
-                owner.LostFocus += FocusOwner_LostFocus;
-                // Focus restore on Back (and initial focus): if the
-                // owner is already focused, start now at the global
-                // phase instead of waiting for the next focus move.
-                if (FocusManager.GetFocusedElement() == owner)
-                {
-                    StartShine(border);
-                }
-                else
-                {
-                    StopShine(border);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush focus hookup failed: " + ex.Message);
-            }
-        }
-
-        private static void UnhookFocus(Border border)
-        {
-            try
-            {
-                var owner = GetFocusOwner(border);
-                if (owner == null) return;
-                owner.GotFocus -= FocusOwner_GotFocus;
-                owner.LostFocus -= FocusOwner_LostFocus;
-                SetFocusOwner(border, null);
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush focus unhook failed: " + ex.Message);
-            }
-        }
-
-        private static void FocusOwner_GotFocus(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var border = FindRingBorder(sender as DependencyObject);
-                if (border != null) StartShine(border);
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush focus gain failed: " + ex.Message);
-            }
-        }
-
-        private static void FocusOwner_LostFocus(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var border = FindRingBorder(sender as DependencyObject);
-                if (border != null) StopShine(border);
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush focus loss failed: " + ex.Message);
-            }
-        }
-
-        // First GridViewItem or Button above the ring Border: the
-        // templated control that owns the focus. Null when the ring has
-        // no focusable ancestor (then the shine runs always).
-        private static Control FindFocusableAncestor(DependencyObject start)
-        {
-            DependencyObject current = VisualTreeHelper.GetParent(start);
-            while (current != null)
-            {
-                if (current is GridViewItem || current is Button)
-                {
-                    return (Control)current;
-                }
-                current = VisualTreeHelper.GetParent(current);
-            }
-            return null;
-        }
-
-        // The single FocusRing Border inside an owner's template (the
-        // Border whose BorderBrush is a FocusRingBrush). Focus changes
-        // are user-driven and infrequent, so a small tree walk is fine.
-        private static Border FindRingBorder(DependencyObject root)
-        {
-            if (root == null) return null;
-            int count = VisualTreeHelper.GetChildrenCount(root);
-            for (int i = 0; i < count; i++)
-            {
-                var child = VisualTreeHelper.GetChild(root, i);
-                if (child is Border border && border.BorderBrush is FocusRingBrush)
-                {
-                    return border;
-                }
-                var found = FindRingBorder(child);
-                if (found != null) return found;
-            }
-            return null;
-        }
-
-        private static void StartShine(Border border)
-        {
-            try
-            {
-                if (border.BorderBrush is FocusRingBrush brush)
-                {
-                    brush.StartShine();
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush shine start failed: " + ex.Message);
-            }
-        }
-
-        private static void StopShine(Border border)
-        {
-            try
-            {
-                if (border.BorderBrush is FocusRingBrush brush)
-                {
-                    brush.StopShine();
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush shine stop failed: " + ex.Message);
-            }
-        }
-
-        /// <summary>
-        /// Start (or re-seek) the shine at the global phase. Idempotent:
-        /// RetimeAnimations stops first, so calling it twice is safe.
-        /// </summary>
-        private void StartShine()
-        {
-            _shineRequested = true;
-            RetimeAnimations();
-        }
-
-        /// <summary>
-        /// Stop the shine and park the stops at their base offsets. The
-        /// ring is Opacity 0 while unfocused, so nothing visible changes.
-        /// </summary>
-        private void StopShine()
-        {
-            _shineRequested = false;
-            if (_stops == null) return;
-            try
-            {
-                for (int i = 0; i < _stops.Length; i++)
-                {
-                    _stops[i].StopAnimation("Offset");
-                    _stops[i].Offset = StopOffsets[i];
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("FocusRingBrush shine stop failed: " + ex.Message);
-            }
-        }
-
-        /// <summary>
         /// Reconfigures the shine timing from the ring's live size.
         /// Fraction = W/(W+H): the share of each loop spent on the
         /// first half-offset (one horizontal edge), so the spot covers
         /// the horizontal and vertical edges at the same speed. Only
-        /// reconfigures when the fraction actually changed, and only
-        /// restarts the stop animations when the brush is already
-        /// connected — otherwise OnConnected picks up the stored
-        /// fraction. Called on Loaded/SizeChanged, never on focus.
+        /// reconfigures when the fraction actually changed. Called on
+        /// Loaded/SizeChanged, never on focus: a size change rebuilds
+        /// the animations from the current global phase, a focus
+        /// change never touches them.
         /// </summary>
         public void ApplySize(double width, double height)
         {
@@ -467,15 +231,13 @@ namespace Nuvio.Views.Shared
                     _stops[i] = stop;
                 }
                 CompositionBrush = _gradientBrush;
-                // Do NOT start the stop animations here: the shine runs
-                // only on the focused ring (see HookFocus), so the stops
-                // stay at their base offsets until focus gain starts
-                // them at the global phase. If focus was gained before
-                // the brush connected, honour the pending request now.
-                if (_shineRequested)
-                {
-                    RetimeAnimations();
-                }
+                // Start the shine once, here, at the current global
+                // phase: the sweep runs Forever from this moment and
+                // is never stopped, restarted, or retimed by focus.
+                // The ring is Opacity 0 until focused, so an unfocused
+                // ring animates invisibly — the cost of one continuous
+                // global motion with no restart machinery.
+                RetimeAnimations();
             }
             catch (Exception ex)
             {
@@ -494,9 +256,9 @@ namespace Nuvio.Views.Shared
             animation.IterationBehavior = AnimationIterationBehavior.Forever;
             // Explicit keyframe shift for phase continuity: the sweep
             // is one continuous motion shared by every ring, so a ring
-            // starting on focus gain resumes mid-sweep instead of
-            // jumping back to the base offsets. The value function over
-            // one loop is piecewise linear with a kink at
+            // that (re)connects or re-times resumes mid-sweep instead
+            // of jumping back to the base offsets. The value function
+            // over one loop is piecewise linear with a kink at
             // _horizontalFraction (from -> from+0.5 over the first
             // segment, from+0.5 -> from+1 over the second), and the
             // gradient pattern repeats every 1.0, so a loop restart is
@@ -590,7 +352,6 @@ namespace Nuvio.Views.Shared
         protected override void OnDisconnected()
         {
             base.OnDisconnected();
-            _shineRequested = false;
             CompositionBrush = null;
             DisposeBrushes();
         }
