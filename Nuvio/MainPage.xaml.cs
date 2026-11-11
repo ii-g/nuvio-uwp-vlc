@@ -42,6 +42,7 @@ namespace Nuvio
         private bool _videoViewStarting;
         private bool _dialogOpen;
         private bool _sidebarExpanded;
+        private bool _sidebarHidden;
         private Storyboard _sidebarStoryboard;
         private bool _userInputSeen;
         private string _activeRoot;
@@ -464,6 +465,17 @@ namespace Nuvio
 
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
         {
+            // The details page takes the full screen: hide the sidebar strip while
+            // it is open, and restore it on any other page — back navigation
+            // included, since Frame.GoBack raises Navigated too.
+            if (e.Content is DetailsPage)
+            {
+                HideSidebar();
+            }
+            else if (_sidebarHidden)
+            {
+                ShowSidebar();
+            }
             string root = null;
             if (e.Content is HomePage)
             {
@@ -509,6 +521,7 @@ namespace Nuvio
         /// </summary>
         public void FocusSidebar()
         {
+            if (_sidebarHidden) return;
             var button = _activeRoot == "search" ? SearchButton
                 : _activeRoot == "library" ? LibraryButton
                 : _activeRoot == "settings" ? SettingsButton
@@ -699,6 +712,7 @@ namespace Nuvio
 
         private void ExpandSidebar()
         {
+            if (_sidebarHidden) return;
             if (_sidebarExpanded) return;
             _sidebarExpanded = true;
             // Always Verity tones while the strip is open (Mohammed's call):
@@ -720,6 +734,43 @@ namespace Nuvio
             if (!_sidebarExpanded) return;
             _sidebarExpanded = false;
             AnimateSidebar(48, false);
+        }
+
+        /// <summary>
+        /// Hides the sidebar strip while the details page is open. The strip is an
+        /// overlay over the content frame (the frame spans both shell columns), so
+        /// Visibility.Collapsed cannot move or resize the content — the home rows
+        /// and hero keep their alignment when the strip comes back. Collapsed
+        /// elements leave the focus order too, so no hidden button can ever take
+        /// focus. If the strip was expanded, it snaps to the collapsed end state
+        /// first (48 epx, labels hidden), so the restore lands in the normal state.
+        /// </summary>
+        private void HideSidebar()
+        {
+            if (_sidebarHidden) return;
+            _sidebarHidden = true;
+            if (_sidebarStoryboard != null)
+            {
+                _sidebarStoryboard.Stop();
+                _sidebarStoryboard = null;
+            }
+            _sidebarExpanded = false;
+            SidebarBorder.Width = 48;
+            foreach (var label in new UIElement[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel, SidebarLogoWordmark })
+            {
+                label.Opacity = 0;
+            }
+            SidebarLogoIcon.Opacity = 1;
+            SidebarLogoWordmark.Visibility = Visibility.Collapsed;
+            SidebarLogoIcon.Visibility = Visibility.Visible;
+            SidebarBorder.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowSidebar()
+        {
+            if (!_sidebarHidden) return;
+            _sidebarHidden = false;
+            SidebarBorder.Visibility = Visibility.Visible;
         }
 
         private void AnimateSidebar(double targetWidth, bool labelsVisible)
