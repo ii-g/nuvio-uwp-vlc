@@ -1660,6 +1660,17 @@ namespace Nuvio.Views
                 // the hero content's start edge, on the same edge as the
                 // first card.
                 return rtl ? new Thickness(0, 0, 88, 0) : new Thickness(6, 0, 0, 0);
+            if (parameter as string == "catalogRowHeader")
+                // The catalog page's start inset: the grid is full-bleed
+                // (the sidebar is hidden on CatalogPage, so the whole
+                // 960 epx window width is available) and the first column
+                // starts 6 epx from the screen edge — just enough for the
+                // 1.06 focus zoom plus the 1 epx ring overhang — so the
+                // title, the chips and the first column share one edge and
+                // no container border remains on either side. The shared
+                // "rowHeader" branch is untouched: home titles keep
+                // their 88 / 6.
+                return rtl ? new Thickness(0, 0, 6, 0) : new Thickness(6, 0, 0, 0);
             if (parameter as string == "detailsContent")
                 // Details page only: the "content" page padding halved —
                 // 34 epx start / 16 epx end (was 68 / 32) — so the
