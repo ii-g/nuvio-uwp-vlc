@@ -135,11 +135,12 @@ namespace Nuvio.Services
 
         public void OpenTitle(Meta meta)
         {
-            _frame.Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
+            if (meta == null) return;
+            _frame.Navigate(typeof(DetailsPage), new DetailsNavigation
             {
-                Title = meta != null && !string.IsNullOrEmpty(meta.Name) ? meta.Name : "Details",
-                Message = "Details lands in Milestone 3.",
-                Milestone = "Milestone 3",
+                Type = meta.Type ?? "movie",
+                Id = meta.Id,
+                PreviewMeta = meta,
             });
             AppEvents.RaiseRouteChanged("details");
         }
