@@ -493,7 +493,7 @@ namespace Nuvio.Views.Shared
                 using (var bitmap = CanvasBitmap.CreateFromBytes(device, pixels, ConicSize, ConicSize,
                     DirectXPixelFormat.B8G8R8A8UIntNormalized, 96f))
                 {
-                    var surface = compositor.CreateDrawingSurface(
+                    var surface = CanvasComposition.CreateDrawingSurface(compositor,
                         new Size(ConicSize, ConicSize),
                         DirectXPixelFormat.B8G8R8A8UIntNormalized,
                         DirectXAlphaMode.Premultiplied);
