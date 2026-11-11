@@ -20,7 +20,15 @@
         <views:ChipSelectedForegroundConverter x:Key="ChipSelectedForegroundConverter"/>
     </Page.Resources>
 
-    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=content}">
+    <!-- Full-bleed: no page padding on the catalog (the sidebar is hidden
+         here, so the whole 960 epx window width is available). The old
+         "content" pad (68 start / 32 end) plus the rowHeader inset left
+         a 156 epx dark band on the start side and a 41 epx band on the
+         end side — the container border Mohammed asked to remove. The
+         title, chips and grid each carry the 6 epx catalogRowHeader
+         start inset instead, so the first column starts 6 epx from the
+         screen edge and the grid runs to the end edge. -->
+    <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled" Padding="0">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -31,11 +39,11 @@
         <!-- Title (web .page-title: 2.6rem = 21 epx). Top margin tightened
              from the web's 3rem = 24 epx to 14 epx so the grid below gets
              more height and a 4th row peeks in.
-             Start edge: the rowHeader inset (88 epx RTL / 6 epx LTR inside the
-             content edge), the same edge as the home hero text, row titles and
-             first cards (x=804 RTL / x=74 LTR) — not the content padding edge
-             (x=892 RTL), which left the title 88 epx adrift of the rows. -->
-        <Grid Grid.Row="0" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+             Start edge: the catalogRowHeader inset (6 epx from the screen
+             edge), the same edge as the chips and the first column — not
+             the old home hero edge (x=804 RTL), which left a 156 epx
+             container border on the start side. -->
+        <Grid Grid.Row="0" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=catalogRowHeader}">
             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,14,0,0">
                 <TextBlock Text="{Binding Title}" FontSize="21" FontWeight="Bold"/>
                 <TextBlock Text="{Binding Subtitle}" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
@@ -44,10 +52,10 @@
 
         <!-- Genre filter chips: a horizontally scrolling strip (web catalog),
              start-aligned with the title. The plain horizontal StackPanel
-             overflowed the 860 epx content width with no scroller, so the
+             overflowed the 954 epx grid width with no scroller, so the
              first ("كل") chip was cut at the start edge. The scrollbar stays
              hidden; a focused chip scrolls into view on focus change. -->
-        <ScrollViewer Grid.Row="1" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="1" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=catalogRowHeader}" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
         <ItemsControl ItemsSource="{Binding Genres}" Margin="0,8,0,0">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -65,20 +73,22 @@
         </ItemsControl>
         </ScrollViewer>
 
-        <!-- Poster grid. Start edge: the rowHeader inset, so the first column's
-             art rests on the same edge as the title and the chips (x=804 RTL /
-             x=74 LTR). The grid runs to the bottom screen edge (Margin bottom
-             0, top tightened to 10): there is no container edge below the last
-             row and the viewport is ~461 epx tall, so about 3.9 rows of the
-             70x105 cards are visible. MaximumRowsOrColumns=10: the viewport is
-             772 epx wide (RTL) / 854 (LTR), and 10 columns need 10x77-7=763.
-             Without the cap the LTR viewport would fit 11 columns (11x77-7=
-             840) while RTL fits 10, so the cap keeps both directions at 10
-             columns with no cut-off last column. -->
-        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource CatalogPosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" Margin="0,10,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
+        <!-- Poster grid. Full-bleed: the page has no side padding and the
+             sidebar is hidden, so the viewport is 954 epx wide (960 minus
+             the 6 epx catalogRowHeader start inset) in both directions.
+             Start edge: the catalogRowHeader inset, so the first column's
+             art rests on the same edge as the title and the chips (6 epx
+             from the screen edge). The grid runs to the bottom screen edge
+             (Margin bottom 0, top tightened to 10): there is no container
+             edge below the last row and no container border on either side.
+             Cards are back to 88x132 and MaximumRowsOrColumns=9: a cell is
+             88 + the 20 epx gap = 108, and 9 columns need 9x108-20=952,
+             which fills the 954 viewport with 2 epx to spare. The old
+             10-column 70x105 grid (10x77-7=763 in a 772 viewport) is gone. -->
+        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource CatalogPosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=catalogRowHeader}" Margin="0,10,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="10"/>
+                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="9"/>
                 </ItemsPanelTemplate>
             </GridView.ItemsPanel>
         </GridView>
