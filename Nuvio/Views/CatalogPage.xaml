@@ -28,14 +28,25 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title (web .page-title: 2.6rem = 21 epx, top padding 3rem = 24 epx). -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,24,0,0">
-            <TextBlock Text="{Binding Title}" FontSize="21" FontWeight="Bold"/>
-            <TextBlock Text="{Binding Subtitle}" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
-        </StackPanel>
+        <!-- Title (web .page-title: 2.6rem = 21 epx, top padding 3rem = 24 epx).
+             Start edge: the rowHeader inset (88 epx RTL / 6 epx LTR inside the
+             content edge), the same edge as the home hero text, row titles and
+             first cards (x=804 RTL / x=74 LTR) — not the content padding edge
+             (x=892 RTL), which left the title 88 epx adrift of the rows. -->
+        <Grid Grid.Row="0" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0">
+                <TextBlock Text="{Binding Title}" FontSize="21" FontWeight="Bold"/>
+                <TextBlock Text="{Binding Subtitle}" FontSize="9" Foreground="#80FFFFFF" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
 
-        <!-- Genre filter chips -->
-        <ItemsControl Grid.Row="1" ItemsSource="{Binding Genres}" Margin="0,12,0,0">
+        <!-- Genre filter chips: a horizontally scrolling strip (web catalog),
+             start-aligned with the title. The plain horizontal StackPanel
+             overflowed the 860 epx content width with no scroller, so the
+             first ("كل") chip was cut at the start edge. The scrollbar stays
+             hidden; a focused chip scrolls into view on focus change. -->
+        <ScrollViewer Grid.Row="1" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Genres}" Margin="0,12,0,0">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                     <StackPanel Orientation="Horizontal"/>
@@ -50,12 +61,23 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+        </ScrollViewer>
 
-        <!-- Poster grid -->
-        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="6,9,6,12" Margin="0,7,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
+        <!-- Poster grid. Start edge: the rowHeader inset, so the first column's
+             art rests on the same edge as the title and the chips (x=804 RTL /
+             x=74 LTR). The old Padding="6,9,6,12" left the first column's art
+             12 epx inside the content edge (viewport 880 vs title 892 RTL), so
+             the three start edges never lined up. The old vertical padding
+             moves to the Margin (top 7+9=16, bottom 12) so row spacing is
+             unchanged. MaximumRowsOrColumns=8: the viewport is 772 epx wide
+             (RTL) / 854 (LTR), and 8 columns need 8*97-9=767 — a whole number
+             of columns with no cut-off last column. Without the cap the panel
+             measures items at 88 epx and lays out 9 columns, whose 9*97-9=864
+             row overflows the 842 epx viewport and cuts a column at the edge. -->
+        <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource PosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=rowHeader}" Margin="0,16,0,12" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
-                    <ItemsWrapGrid Orientation="Horizontal"/>
+                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="8"/>
                 </ItemsPanelTemplate>
             </GridView.ItemsPanel>
         </GridView>
