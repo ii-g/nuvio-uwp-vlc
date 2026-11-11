@@ -2,15 +2,16 @@ using System;
 using System.Numerics;
 using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
+using Microsoft.Graphics.Canvas.UI.Composition;
 using Nuvio.Diagnostics;
-using Windows.Graphics.Imaging;
-using Windows.Storage.Streams;
+using Windows.Foundation;
+using Windows.Graphics.DirectX;
+using Windows.UI;
 using Windows.UI.Composition;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Hosting;
 using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Media.Imaging;
 
 namespace Nuvio.Views.Shared
 {
@@ -29,7 +30,8 @@ namespace Nuvio.Views.Shared
     ///
     /// UWP mapping: the conic layer is a static image, rendered once (a
     /// 256x256 white wedge, 72 degrees wide with a cosine falloff, peak
-    /// alpha 255) and cached as a shared LoadedImageSurface — never
+    /// alpha 255) and cached as a shared CompositionDrawingSurface, built
+    /// synchronously on the UI thread at first attach — never
     /// re-evaluated per frame. One SpriteVisual per ring paints that image
     /// (CompositionSurfaceBrush, Fill) and rotates it with a SINGLE cheap
     /// ScalarKeyFrameAnimation on RotationAngle (0 to 2pi over 3 s, Forever,
@@ -58,7 +60,9 @@ namespace Nuvio.Views.Shared
     /// content but only inside the ring clip, and placement is glued to
     /// the Border with expression animations (Offset/Size/TransformMatrix).
     /// If the parent is not ready at attach, LayoutUpdated retries until
-    /// the insert lands.
+    /// the insert lands. LayoutUpdated and SizeChanged also re-attempt
+    /// Attach itself if it was ever missed, so a ring has no single
+    /// trigger that can leave it lightless for the session.
     /// </summary>
     public static class RotatingFrameLight
     {
@@ -90,8 +94,6 @@ namespace Nuvio.Views.Shared
             public bool IsInserted;
             public bool ClipReady;
             public int ClipAttempts;
-            public bool SurfaceSubscribed;
-            public Action SurfaceHandler;
             public double LastWidth = -1;
             public double LastHeight = -1;
             public double LastRadius = -1;
@@ -116,11 +118,12 @@ namespace Nuvio.Views.Shared
         private static LightState GetState(DependencyObject obj) => (LightState)obj.GetValue(StateProperty);
         private static void SetState(DependencyObject obj, LightState value) => obj.SetValue(StateProperty, value);
 
-        // The conic image, rendered once and shared by every ring.
+        // The conic image, built once synchronously on the UI thread and
+        // shared by every ring. _conicSurfaceAttempted records that a build
+        // was tried, so a broken device logs once instead of on every attach.
         private static readonly object SurfaceLock = new object();
-        private static LoadedImageSurface _conicSurface;
-        private static bool _conicSurfaceLoading;
-        private static event Action ConicSurfaceReady;
+        private static CompositionDrawingSurface _conicSurface;
+        private static bool _conicSurfaceAttempted;
 
         private static void OnIsEnabledChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -131,6 +134,7 @@ namespace Nuvio.Views.Shared
                 border.Unloaded += OnUnloaded;
                 border.SizeChanged += OnSizeChanged;
                 border.LayoutUpdated += OnLayoutUpdated;
+                Log.Write("RotatingFrameLight enabled");
                 if (border.IsLoaded) Attach(border);
             }
             else
@@ -158,6 +162,13 @@ namespace Nuvio.Views.Shared
             if (sender is Border border)
             {
                 var state = GetState(border);
+                if (state == null)
+                {
+                    // Attach may have been missed: retry here — Attach is
+                    // guarded, so repeated attempts are harmless.
+                    Attach(border);
+                    state = GetState(border);
+                }
                 if (state != null) SyncPlacement(border, state);
             }
         }
@@ -166,7 +177,14 @@ namespace Nuvio.Views.Shared
         {
             if (!(sender is Border border)) return;
             var state = GetState(border);
-            if (state == null) return;
+            if (state == null)
+            {
+                // Attach may have been missed: retry here — Attach is
+                // guarded, so repeated attempts are harmless.
+                Attach(border);
+                state = GetState(border);
+                if (state == null) return;
+            }
             if (!state.IsInserted)
             {
                 EnsureInserted(border, state);
@@ -184,6 +202,7 @@ namespace Nuvio.Views.Shared
                 var compositor = hostVisual.Compositor;
                 var state = new LightState { HostVisual = hostVisual };
                 SetState(border, state);
+                Log.Write("RotatingFrameLight attached");
 
                 var lightHost = compositor.CreateContainerVisual();
                 var light = compositor.CreateSpriteVisual();
@@ -226,7 +245,17 @@ namespace Nuvio.Views.Shared
                 // 1.06 focus scale (it lives inside the scaled subtree).
                 SyncPlacement(border, state);
                 EnsureInserted(border, state);
-                EnsureSurface(border, state);
+
+                // The conic surface is built synchronously, once, on the UI
+                // thread and shared by every ring. If the build fails, the
+                // static ring stays and the failure is logged; the light
+                // simply never appears for any ring.
+                var surface = GetOrBuildConicSurface(compositor);
+                if (surface != null)
+                {
+                    state.LightBrush.Surface = surface;
+                    Log.Write("RotatingFrameLight surface applied");
+                }
             }
             catch (Exception ex)
             {
@@ -410,138 +439,80 @@ namespace Nuvio.Views.Shared
             }
         }
 
-        private static void EnsureSurface(Border border, LightState state)
+        // The conic wedge pixels, kept exactly as verified: a 256x256 white
+        // image, bright for a 72 degree slice centered on the top with a
+        // cosine falloff, transparent everywhere else. Pixels are BGRA
+        // premultiplied (white with alpha a is B=G=R=A=a).
+        private static byte[] RenderConicPixels()
         {
-            LoadedImageSurface surface;
-            lock (SurfaceLock)
+            var pixels = new byte[ConicSize * ConicSize * 4];
+            double half = SliceHalfAngleRad;
+            for (int y = 0; y < ConicSize; y++)
             {
-                surface = _conicSurface;
-            }
-            if (surface != null)
-            {
-                ApplySurface(state, surface);
-                return;
-            }
-            EnsureConicSurface();
-            // Not rendered yet: apply it when the render finishes.
-            if (!state.SurfaceSubscribed)
-            {
-                state.SurfaceSubscribed = true;
-                state.SurfaceHandler = () => OnConicSurfaceReady(border, state);
-                ConicSurfaceReady += state.SurfaceHandler;
-            }
-        }
-
-        private static void OnConicSurfaceReady(Border border, LightState state)
-        {
-            try
-            {
-                if (state.SurfaceHandler != null)
+                for (int x = 0; x < ConicSize; x++)
                 {
-                    ConicSurfaceReady -= state.SurfaceHandler;
-                    state.SurfaceHandler = null;
-                }
-                LoadedImageSurface surface;
-                lock (SurfaceLock)
-                {
-                    surface = _conicSurface;
-                }
-                if (surface == null) return;
-                if (GetState(border) != state) return;
-                ApplySurface(state, surface);
-            }
-            catch (Exception ex)
-            {
-                Log.Write("RotatingFrameLight surface apply failed: " + ex.Message);
-            }
-        }
-
-        private static void ApplySurface(LightState state, LoadedImageSurface surface)
-        {
-            try
-            {
-                if (state.LightBrush != null)
-                {
-                    state.LightBrush.Surface = surface;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("RotatingFrameLight surface set failed: " + ex.Message);
-            }
-        }
-
-        private static void EnsureConicSurface()
-        {
-            lock (SurfaceLock)
-            {
-                if (_conicSurface != null || _conicSurfaceLoading) return;
-                _conicSurfaceLoading = true;
-            }
-            RenderConicSurfaceAsync();
-        }
-
-        // Renders the conic wedge once: a 256x256 white image, bright for a
-        // 72 degree slice centered on the top with a cosine falloff, and
-        // transparent everywhere else. Pixels are BGRA premultiplied (white
-        // with alpha a is B=G=R=A=a), encoded to PNG in memory and loaded
-        // as a shared LoadedImageSurface.
-        private static async void RenderConicSurfaceAsync()
-        {
-            try
-            {
-                var pixels = new byte[ConicSize * ConicSize * 4];
-                double half = SliceHalfAngleRad;
-                for (int y = 0; y < ConicSize; y++)
-                {
-                    for (int x = 0; x < ConicSize; x++)
+                    float dx = x - (ConicSize - 1) / 2f;
+                    float dy = y - (ConicSize - 1) / 2f;
+                    // 0 at the top, clockwise positive (CSS conic 0deg).
+                    double angle = Math.Atan2(dx, -dy);
+                    double ad = Math.Abs(angle);
+                    byte a = 0;
+                    if (ad < half)
                     {
-                        float dx = x - (ConicSize - 1) / 2f;
-                        float dy = y - (ConicSize - 1) / 2f;
-                        // 0 at the top, clockwise positive (CSS conic 0deg).
-                        double angle = Math.Atan2(dx, -dy);
-                        double ad = Math.Abs(angle);
-                        byte a = 0;
-                        if (ad < half)
-                        {
-                            double alpha = 0.5 * (1.0 + Math.Cos(ad * Math.PI / half));
-                            a = (byte)(alpha * 255.0);
-                        }
-                        int i = (y * ConicSize + x) * 4;
-                        pixels[i] = a;
-                        pixels[i + 1] = a;
-                        pixels[i + 2] = a;
-                        pixels[i + 3] = a;
+                        double alpha = 0.5 * (1.0 + Math.Cos(ad * Math.PI / half));
+                        a = (byte)(alpha * 255.0);
                     }
+                    int i = (y * ConicSize + x) * 4;
+                    pixels[i] = a;
+                    pixels[i + 1] = a;
+                    pixels[i + 2] = a;
+                    pixels[i + 3] = a;
                 }
-                var stream = new InMemoryRandomAccessStream();
-                var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
-                encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
-                    (uint)ConicSize, (uint)ConicSize, 96.0, 96.0, pixels);
-                await encoder.FlushAsync();
-                stream.Seek(0);
-                var surface = LoadedImageSurface.StartLoadFromStream(stream);
-                surface.LoadCompleted += (s, e) => stream.Dispose();
-                lock (SurfaceLock)
+            }
+            return pixels;
+        }
+
+        // Builds the shared conic surface SYNCHRONOUSLY on the UI thread at
+        // first attach: pixels -> CanvasBitmap -> CompositionDrawingSurface
+        // (CanvasComposition drawing session). No async pipeline, no event,
+        // no unverified load — the caller knows immediately whether the
+        // surface exists. Returns null (and logs once) on failure; the
+        // static ring stays and the light simply never appears.
+        private static CompositionDrawingSurface GetOrBuildConicSurface(Compositor compositor)
+        {
+            lock (SurfaceLock)
+            {
+                if (_conicSurface != null) return _conicSurface;
+                if (_conicSurfaceAttempted) return null;
+                _conicSurfaceAttempted = true;
+            }
+            try
+            {
+                var device = CanvasDevice.GetSharedDevice();
+                var pixels = RenderConicPixels();
+                using (var bitmap = CanvasBitmap.CreateFromBytes(device, pixels, ConicSize, ConicSize,
+                    DirectXPixelFormat.B8G8R8A8UIntNormalized, 96f))
                 {
-                    _conicSurface = surface;
-                }
-                try
-                {
-                    ConicSurfaceReady?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Log.Write("RotatingFrameLight surface ready failed: " + ex.Message);
+                    var surface = compositor.CreateDrawingSurface(
+                        new Size(ConicSize, ConicSize),
+                        DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                        DirectXAlphaMode.Premultiplied);
+                    using (var session = CanvasComposition.CreateDrawingSession(surface))
+                    {
+                        session.Clear(Colors.Transparent);
+                        session.DrawImage(bitmap);
+                    }
+                    lock (SurfaceLock)
+                    {
+                        _conicSurface = surface;
+                    }
+                    return surface;
                 }
             }
             catch (Exception ex)
             {
-                Log.Write("RotatingFrameLight conic surface failed: " + ex.Message);
-                lock (SurfaceLock)
-                {
-                    _conicSurfaceLoading = false;
-                }
+                Log.Write("RotatingFrameLight surface build failed: " + ex.Message);
+                return null;
             }
         }
 
@@ -550,18 +521,6 @@ namespace Nuvio.Views.Shared
             var state = GetState(border);
             if (state == null) return;
             SetState(border, null);
-            try
-            {
-                if (state.SurfaceHandler != null)
-                {
-                    ConicSurfaceReady -= state.SurfaceHandler;
-                    state.SurfaceHandler = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Write("RotatingFrameLight detach unsubscribe failed: " + ex.Message);
-            }
             try
             {
                 if (state.Light != null)
