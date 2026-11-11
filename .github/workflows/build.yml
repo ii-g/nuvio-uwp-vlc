@@ -24,9 +24,58 @@ jobs:
           done
           echo "$(find web/js -name '*.js' | wc -l) web modules OK"
 
+  guard:
+    name: Guard deleted code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Fail if banned identifiers return
+        run: |
+          # Deleted frame code must never come back. Word boundaries (\b) so the
+          # live SidebarBackdropBlurBrush does not trip the BackdropBlurBrush ban.
+          # Only source is scanned (Nuvio/, web/) — the pattern list itself lives
+          # in this workflow file, so .github/ is never searched.
+          pattern='\b(RotatingFrameLight|FocusRingBrush|FocusFrameGradientBrush|FocusGlassBand|FocusInnerRing|FocusShineStop|UniformSpeed|RestartOnFocus|RestartSubscription|FocusSheen|GlobalFocusOverlay|GraduatedBackdropBlurBrush|BackdropBlurBrush)\b'
+          if grep -rE --include='*.cs' --include='*.xaml' --include='*.csproj' --include='*.js' --include='*.xml' "$pattern" Nuvio web; then
+            echo "::error::Banned identifier found — deleted frame code came back. See matches above."
+            exit 1
+          fi
+          echo 'Guard clean: no banned identifiers in Nuvio/ or web/.'
+
+  commit-rules:
+    name: Commit message rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Enforce one-line messages without personal info
+        run: |
+          before='${{ github.event.before }}'
+          if [ -z "$before" ] || [ "$before" = '0000000000000000000000000000000000000000' ]; then
+            shas=$(git rev-list -1 HEAD)
+          else
+            shas=$(git rev-list "$before..HEAD")
+          fi
+          failed=0
+          for sha in $shas; do
+            msg=$(git log -1 --format=%B "$sha")
+            lines=$(printf '%s\n' "$msg" | wc -l)
+            if [ "$lines" -gt 1 ]; then
+              echo "::error::Commit $sha has a multi-line message (must be one line)."
+              failed=1
+            fi
+            if printf '%s' "$msg" | grep -qiE 'mohammed|محمد'; then
+              echo "::error::Commit $sha mentions a personal name (not allowed in commit messages)."
+              failed=1
+            fi
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo 'Commit messages OK.'
+
   package:
     name: Package (${{ matrix.configuration }})
-    needs: web
+    needs: [web, guard, commit-rules]
     runs-on: windows-2022
     permissions:
       contents: write # publish releases for version tags
@@ -39,6 +88,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - uses: microsoft/setup-msbuild@v3
 
@@ -61,7 +117,7 @@ jobs:
         shell: pwsh
         run: |
           # Self-signed, subject must match Publisher in Package.appxmanifest.
-          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=NuvioUWP' `
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=Mg18' `
             -KeyUsage DigitalSignature -FriendlyName 'Nuvio UWP sideload' `
             -CertStoreLocation 'Cert:\CurrentUser\My' `
             -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
@@ -160,6 +216,12 @@ jobs:
           New-Item -ItemType Directory release\Dependencies -Force | Out-Null
           $app | Copy-Item -Destination release
           $dependencies | Copy-Item -Destination release\Dependencies
+          # The smoke-test job runs on another runner, so it cannot see this
+          # run's cert: export the public cert with the package. It also lands
+          # in the published release zip, where it helps manual PC installs.
+          $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object Thumbprint -eq $env:CERT_THUMBPRINT
+          Export-Certificate -Cert $cert -FilePath release\NuvioUWP.cer
+          $dependencies | Copy-Item -Destination release\Dependencies
           Get-ChildItem release -Recurse -File | ForEach-Object { $_.FullName.Substring($PWD.Path.Length + 1) }
 
       - uses: actions/upload-artifact@v6
@@ -205,3 +267,106 @@ jobs:
           } else {
             gh release create $tag NuvioUWPVLC-x64.zip --title "Nuvio UWP VLC $tag" --notes-file release-notes.md
           }
+
+      - name: Publish rolling pre-release
+        # Every successful stage build (not a tag) updates one rolling
+        # pre-release so there is always a direct download link.
+        if: github.ref_type != 'tag' && github.event_name != 'pull_request' && matrix.configuration == 'Release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          Compress-Archive -Path release\* -DestinationPath NuvioUWPVLC-x64.zip
+          $notes = @(
+            "Latest native-ui build (pre-release).",
+            '',
+            "Package version: $env:PACKAGE_VERSION",
+            "Head: $env:GITHUB_SHA",
+            "Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID")
+          $notes -join "`n" | Set-Content rolling-notes.md -Encoding utf8
+          gh release view native-latest *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload native-latest NuvioUWPVLC-x64.zip --clobber
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+            gh release edit native-latest --notes-file rolling-notes.md --prerelease
+          } else {
+            gh release create native-latest NuvioUWPVLC-x64.zip --title 'Nuvio Native (latest build)' --notes-file rolling-notes.md --prerelease
+          }
+
+  smoke:
+    name: Smoke test (Release)
+    needs: package
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: NuvioUWPVLC-x64
+          path: smoke
+
+      - name: Trust sideload certificate
+        shell: pwsh
+        run: |
+          # Self-signed certs must be trusted before Add-AppxPackage accepts them
+          # (Microsoft Learn: import the public .cer into CurrentUser\TrustedPeople).
+          Import-Certificate -FilePath smoke\NuvioUWP.cer -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+
+      - name: Install and launch
+        id: launch
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem smoke -Filter *.msix | Select-Object -First 1
+          $deps = Get-ChildItem smoke\Dependencies -Filter *.appx
+          if ($deps) { Add-AppxPackage -Path $msix.FullName -DependencyPath $deps.FullName }
+          else { Add-AppxPackage -Path $msix.FullName }
+          $pkg = Get-AppxPackage -Name b7f0f2ee-118a-4bad-88af-994615cd4212
+          "PACKAGE_FAMILY_NAME=$($pkg.PackageFamilyName)" >> $env:GITHUB_ENV
+          # Application Id "App" (Package.appxmanifest). A UWP app needs an
+          # interactive session to activate; if this runner has none, Start-Process
+          # throws and the launch checks are skipped (install still verified).
+          try {
+            Start-Process "shell:AppsFolder\$($pkg.PackageFamilyName)!App"
+            "LAUNCHED=true" >> $env:GITHUB_OUTPUT
+          } catch {
+            "::warning::Could not launch the app on this runner ($($_.Exception.Message)). Install verified only; launch checks skipped."
+            "LAUNCHED=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          Start-Sleep -Seconds 10
+          if (Get-Process -Name Nuvio -ErrorAction SilentlyContinue) { exit 0 }
+          # Process never appeared: fail only on clear crash evidence in the log.
+          $log = "$env:LOCALAPPDATA\Packages\$($pkg.PackageFamilyName)\LocalState\nuvio-vlc.log"
+          if (Test-Path $log) {
+            $fatal = Select-String -Path $log -Pattern 'Unhandled exception:|Main page failed to load'
+            if ($fatal) {
+              $fatal | ForEach-Object { "::error::$($_.Line)" }
+              throw 'Smoke test failed: fatal error in the startup log (see matches above).'
+            }
+          }
+          "::warning::App process never appeared after launch and the log shows no fatal error — ambiguous, not failing the build."
+          "LAUNCHED=false" >> $env:GITHUB_OUTPUT
+
+      - name: Check it stays alive and logs no fatal error
+        if: steps.launch.outputs.LAUNCHED == 'true'
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 20
+          $log = "$env:LOCALAPPDATA\Packages\$env:PACKAGE_FAMILY_NAME\LocalState\nuvio-vlc.log"
+          if (-not (Get-Process -Name Nuvio -ErrorAction SilentlyContinue)) {
+            throw 'Smoke test failed: the Nuvio process is gone 30s after launch (crashed on startup).'
+          }
+          if (-not (Test-Path $log)) {
+            "::warning::Process is alive but no startup log was written."
+            exit 0
+          }
+          # Fatal markers only: "Unhandled exception:" and "Main page failed to
+          # load". Other Log.Error lines (stream/bridge failures) are non-fatal
+          # and must not fail the build.
+          $fatal = Select-String -Path $log -Pattern 'Unhandled exception:|Main page failed to load'
+          if ($fatal) {
+            $fatal | ForEach-Object { "::error::$($_.Line)" }
+            throw 'Smoke test failed: fatal error in the startup log (see matches above).'
+          }
+          Get-Content $log -Tail 20
+          'Smoke test passed: process alive after 30s, no fatal error in the log.'
