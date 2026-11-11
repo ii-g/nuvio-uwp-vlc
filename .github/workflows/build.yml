@@ -319,7 +319,8 @@ jobs:
         shell: pwsh
         run: |
           # Self-signed certs must be trusted before Add-AppxPackage accepts them
-          # (Microsoft Learn: import the public .cer into CurrentUser\TrustedPeople).
+          # (Microsoft Learn: import the public .cer into CurrentUser\Root — Trusted Root, required by AppX signature validation — as well as CurrentUser\TrustedPeople).
+          Import-Certificate -FilePath smoke\NuvioUWP.cer -CertStoreLocation Cert:\CurrentUser\Root
           Import-Certificate -FilePath smoke\NuvioUWP.cer -CertStoreLocation Cert:\CurrentUser\TrustedPeople
 
       - name: Install and launch
