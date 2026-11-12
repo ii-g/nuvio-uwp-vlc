@@ -54,6 +54,17 @@ namespace Nuvio.Views
             _viewModel = new SettingsViewModel(shell.Stremio, shell.Debrid, shell.Settings, shell.Navigation);
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
+            // TEMPORARY diagnostic probe (Settings alignment, part 2): the
+            // OnNavigatedTo probe fires before the first layout pass
+            // (pageW=0, firstBtnX=0) — this Loaded probe reads the geometry
+            // after layout, when ActualWidth is valid. Remove both probes
+            // after the mechanism is found.
+            Loaded += (s, e) =>
+            {
+                var first = _firstFocusTarget;
+                var p = first != null ? first.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point(0, 0)) : new Windows.Foundation.Point(-1, -1);
+                Log.Write("Settings layout (loaded): pageW=" + ActualWidth + ", stackW=" + ContentStack.ActualWidth + ", pad=" + ContentStack.Padding.Left + "," + ContentStack.Padding.Top + "," + ContentStack.Padding.Right + "," + ContentStack.Padding.Bottom + ", firstBtnX=" + p.X + ", firstBtnW=" + (first != null ? first.ActualWidth : -1));
+            };
             _viewModel.AddonsChanged += OnViewModelAddonsChanged;
             _viewModel.DebridChanged += OnViewModelDebridChanged;
         }
