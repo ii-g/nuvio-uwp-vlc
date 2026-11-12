@@ -70,9 +70,11 @@ namespace Nuvio.Views
         private void ApplyFlowDirection(bool rtl)
         {
             FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            // Web .streams-layout padding-inline: 5rem (40) start / 4rem (32) end,
-            // 3.5rem (28) top. Thickness is physical, so the sides flip here.
-            LayoutGrid.Padding = rtl ? new Thickness(32, 28, 40, 0) : new Thickness(40, 28, 32, 0);
+            // Page padding comes from the shared ContentPagePadding (68 start
+            // / 32 end / 28 top) — do not hardcode it here. The old web
+            // .streams-layout 5rem/40 start value does not apply in the native
+            // shell (its sidebar is 48 + 20 bleed, not the web's width).
+            LayoutGrid.Padding = FlowDirectionToThicknessConverter.ContentPagePadding(rtl);
         }
 
         protected override async void OnNavigatedTo(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
