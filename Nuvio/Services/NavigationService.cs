@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Nuvio.Core;
 using Nuvio.Diagnostics;
+using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Views;
 using Windows.UI.Xaml.Controls;
@@ -75,6 +76,16 @@ namespace Nuvio.Services
         private readonly Frame _frame;
         private readonly AppSettings _settings;
 
+        /// <summary>
+        /// Phase 1 Focus Manager coordinator, linked by MainPage after
+        /// construction. Null until linked. When set and
+        /// FocusCoordinator.UseFocusCoordinator is true, the guard arm
+        /// sites below go through the coordinator (which also arms the
+        /// shell bit, the enforcement point); with the flag off they arm
+        /// the shell directly, exactly as before.
+        /// </summary>
+        internal FocusCoordinator Coordinator { get; set; }
+
         public NavigationService(Frame frame, AppSettings settings)
         {
             _frame = frame;
@@ -95,7 +106,11 @@ namespace Nuvio.Services
         /// </summary>
         private bool Navigate(Type pageType, object parameter)
         {
-            MainPage.Current?.ArmSidebarExpandSuppression();
+            // Phase 1: arm through the coordinator when it owns the guard.
+            // The shell method stays the low-level bit setter and never
+            // delegates back, so this cannot recurse.
+            if (Coordinator != null && FocusCoordinator.UseFocusCoordinator) Coordinator.ArmNavigationGuard();
+            else MainPage.Current?.ArmSidebarExpandSuppression();
             if (!typeof(FocusablePage).IsAssignableFrom(pageType))
             {
                 Log.Write("Navigation refused: " + pageType.Name + " is not a FocusablePage");
@@ -296,7 +311,9 @@ namespace Nuvio.Services
         {
             // Arm the guard before GoBack, like HandleBack: the old page
             // detaches synchronously and focus can fall back to the strip.
-            MainPage.Current?.ArmSidebarExpandSuppression();
+            // Phase 1: arm through the coordinator when it owns the guard.
+            if (Coordinator != null && FocusCoordinator.UseFocusCoordinator) Coordinator.ArmNavigationGuard();
+            else MainPage.Current?.ArmSidebarExpandSuppression();
             if (_frame.CanGoBack) _frame.GoBack();
             else NavigateHome();
         }
