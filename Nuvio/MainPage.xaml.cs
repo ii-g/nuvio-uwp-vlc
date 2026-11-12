@@ -107,10 +107,11 @@ namespace Nuvio
         /// would change the frosted menu under the user's hands.</summary>
         public bool IsSidebarExpanded => _sidebarState == SidebarState.Expanded;
 
-        /// <summary>Records a page's last-focused key for Back restore under its navigation-entry key, and when rowKey is supplied the last-focused key for that row (forwards to the router's central registry).</summary>
+        /// <summary>Records a page's last-focused key for Back restore under its navigation-entry key, and when rowKey is supplied the last-focused key for that row. Single funnel: always forwards to the router's central registry, and when the flag is on also writes the coordinator's registry (same key format) so migrated pages restore through the coordinator.</summary>
         internal void RecordArrivalFocusKey(string entryKey, string key, string rowKey = null)
         {
             if (_router != null) _router.RecordArrivalFocusKey(entryKey, key, rowKey);
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator) _coordinator.RecordFocus(entryKey, key, rowKey);
         }
 
         public MainPage()
@@ -266,14 +267,14 @@ namespace Nuvio
             PlayerService = new PlayerService(_player, Settings);
             Debrid = new DebridService(Settings);
             _router = new NativeInputRouter(this, ContentFrame, Navigation);
-            // Phase 1: construct the coordinator next to the router (router
-            // first — its MoveFocus / HandleBack are the coordinator's
-            // delegates) and link both directions right away, so no input
-            // can arrive before the wiring is complete. Constructing the
-            // coordinator changes no behaviour on its own (no subscriptions,
-            // no timers, no focus moves); the UseFocusCoordinator flag
-            // selects whether it owns anything.
-            _coordinator = new FocusCoordinator(this, ContentFrame, Navigation, _router.MoveFocus, _router.HandleBack);
+            // Phase 2: construct the coordinator next to the router (router
+            // first — the coordinator owns row/edge moves itself now and
+            // takes the router's HandleBack for Back dispatch) and link both
+            // directions right away, so no input can arrive before the wiring
+            // is complete. Constructing the coordinator changes no behaviour
+            // on its own (no subscriptions, no timers, no focus moves); the
+            // UseFocusCoordinator flag selects whether it owns anything.
+            _coordinator = new FocusCoordinator(this, ContentFrame, Navigation, _router.HandleBack);
             _router.Coordinator = _coordinator;
             Navigation.Coordinator = _coordinator;
             _controller = new ControllerBridge(HandleControllerInput);
