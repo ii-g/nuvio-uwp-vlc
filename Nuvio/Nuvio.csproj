@@ -101,6 +101,12 @@
     <Compile Include="ViewModels\CatalogViewModel.cs" />
     <!-- Milestone 3: details page. -->
     <Compile Include="ViewModels\DetailsViewModel.cs" />
+    <!-- Milestone 4: streams + player. -->
+    <Compile Include="Core\StreamAnalysis.cs" />
+    <Compile Include="Core\SubtitleParser.cs" />
+    <Compile Include="Models\SubtitleItem.cs" />
+    <Compile Include="Services\SubtitleService.cs" />
+    <Compile Include="Services\PlayerService.cs" />
     <Compile Include="Views\HomePage.xaml.cs">
       <DependentUpon>HomePage.xaml</DependentUpon>
     </Compile>
