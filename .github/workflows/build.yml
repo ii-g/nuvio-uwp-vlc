@@ -319,10 +319,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 2        
         run: |
-      # Import-Certificate hangs on the Root store in non-interactive sessions
-      # (it waits on a security prompt), so use certutil instead.
-      certutil -user -addstore -f Root smoke\NuvioUWP.cer
-      certutil -user -addstore -f TrustedPeople smoke\NuvioUWP.cer
+          # Import-Certificate hangs on the Root store in non-interactive sessions
+          # (it waits on a security prompt), so use certutil instead.
+          certutil -user -addstore -f Root smoke\NuvioUWP.cer
+          certutil -user -addstore -f TrustedPeople smoke\NuvioUWP.cer
 
       - name: Install and launch
         id: launch
