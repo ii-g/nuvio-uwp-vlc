@@ -70,7 +70,12 @@ namespace Nuvio.Views
             base.OnNavigatedTo(e);
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             _navigationParam = e.Parameter as StreamsNavigation;
-            if (_navigationParam == null) return;
+            if (_navigationParam == null)
+            {
+                Log.Write("Streams page opened without navigation parameter");
+                return;
+            }
+            Log.Write("Streams page opened for " + _navigationParam.Type + "/" + _navigationParam.Id);
             await _viewModel.Init(_navigationParam.Type, _navigationParam.Id, _navigationParam.VideoId, _navigationParam.Meta, _navigationParam.Video, _navigationParam.Restart).ConfigureAwait(true);
             ShowBackdrop(_viewModel.BackdropUrl);
             LoadStreamsFireAndForget();
