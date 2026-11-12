@@ -323,6 +323,12 @@ namespace Nuvio.ViewModels
                     RaisePropertyChanged(nameof(ShowLoadingSpinner));
                     RaisePropertyChanged(nameof(ShowContent));
                 }).ConfigureAwait(false);
+                // The error state is in place above; signal the page the
+                // same way the success path does, so its ContentReady fires
+                // and the arrival settle completes instead of burning all
+                // 10 watchdog attempts with the guard armed.
+                var completed = LoadCompleted;
+                if (completed != null) completed(this, EventArgs.Empty);
             }
         }
 
