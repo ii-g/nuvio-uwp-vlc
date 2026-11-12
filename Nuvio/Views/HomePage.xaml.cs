@@ -1148,7 +1148,7 @@ namespace Nuvio.Views
 
         private void ManageAddonsButton_Click(object sender, RoutedEventArgs e)
         {
-            MainPage.Current.Navigation.NavigatePlaceholder("Settings", "Settings lands in Milestone 6.", "Milestone 6", "settings");
+            MainPage.Current.Navigation.NavigateSettings("addons");
         }
 
         // ---------- Controller input (IPageInputHandler) ----------
