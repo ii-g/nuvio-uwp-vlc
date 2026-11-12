@@ -325,8 +325,13 @@ namespace Nuvio.Views
 
         private void PlayButton_Click(object sender, RoutedEventArgs e)
         {
-            var meta = _viewModel.Meta;
-            if (meta == null) return;
+            var meta = _viewModel.Meta ?? _viewModel.PreviewMeta;
+            if (meta == null)
+            {
+                Log.Write("Play pressed on details, no meta yet - ignoring");
+                return;
+            }
+            Log.Write("Play pressed on details, opening streams for " + meta.Type + "/" + meta.Id);
             MainPage.Current.Navigation.PlayVideo(meta, _viewModel.PlayTargetVideo, restart: !_viewModel.PlayIsResume);
         }
 
@@ -364,8 +369,13 @@ namespace Nuvio.Views
         private void EpisodesGridView_ItemClick(object sender, ItemClickEventArgs e)
         {
             var episode = e.ClickedItem as EpisodeCardItem;
-            var meta = _viewModel.Meta;
-            if (episode == null || episode.Video == null || meta == null) return;
+            var meta = _viewModel.Meta ?? _viewModel.PreviewMeta;
+            if (episode == null || episode.Video == null || meta == null)
+            {
+                Log.Write("Episode clicked but meta or video missing - ignoring");
+                return;
+            }
+            Log.Write("Episode clicked, opening streams for " + meta.Type + "/" + meta.Id);
             MainPage.Current.Navigation.PlayVideo(meta, episode.Video);
         }
 
