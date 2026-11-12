@@ -280,16 +280,16 @@ namespace Nuvio.Views
             if (_viewModel.SubtitleBackground == "box")
             {
                 // Web .player-subs[data-background="box"]: dark box + padding.
-                SubtitleTextBlock.Background = new SolidColorBrush(Color.FromArgb(0xB8, 0, 0, 0));
-                SubtitleTextBlock.Padding = new Thickness(6, 1, 6, 1);
+                SubtitleBackgroundBorder.Background = new SolidColorBrush(Color.FromArgb(0xB8, 0, 0, 0));
+                SubtitleBackgroundBorder.Padding = new Thickness(6, 1, 6, 1);
                 Shared.TextGlow.SetIsEnabled(SubtitleTextBlock, false);
             }
             else
             {
                 // "none" (outline) and "shadow" both read through the dark
                 // halo behind the glyphs; the app's TextGlow is that halo.
-                SubtitleTextBlock.Background = new SolidColorBrush(Colors.Transparent);
-                SubtitleTextBlock.Padding = new Thickness(0);
+                SubtitleBackgroundBorder.Background = new SolidColorBrush(Colors.Transparent);
+                SubtitleBackgroundBorder.Padding = new Thickness(0);
                 Shared.TextGlow.SetIsEnabled(SubtitleTextBlock, true);
             }
             UpdateSubtitlePosition();
@@ -305,7 +305,7 @@ namespace Nuvio.Views
             var bottom = Math.Max(height * _viewModel.SubtitleOffsetPercent / 100.0,
                 _viewModel.ControlsVisible ? 104 : 0);
             var side = width * 0.08;
-            SubtitleTextBlock.Margin = new Thickness(side, 0, side, bottom);
+            SubtitleBackgroundBorder.Margin = new Thickness(side, 0, side, bottom);
         }
 
         private static Color ParseColor(string value)
