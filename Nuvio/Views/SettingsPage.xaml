@@ -1,0 +1,214 @@
+<!-- Settings page (Milestone 6, Addons + Debrid only): root list, the Addons
+     section and the Debrid section. Ported from web/js/views/settings.js.
+     Every user-visible string is set in code-behind through S() (no literals
+     here); the root rows, addon cards and debrid rows are built imperatively
+     in code-behind so focus can be restored by key across re-renders.
+     XYFocus keyboard navigation is off on purpose: the controller poll owns
+     every move (see MainPage.OnPreviewKeyDown). -->
+<Page
+    x:Class="Nuvio.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:shared="using:Nuvio.Views.Shared"
+    mc:Ignorable="d"
+    XYFocusKeyboardNavigation="Disabled"
+    Background="Transparent">
+
+    <Page.Resources>
+        <!-- Primary button (Install Addon): the web .btn primary (28 high,
+             radius 14, font 9) on the same glass template as the Details hero
+             buttons and the Streams primary button. -->
+        <Style x:Key="SettingsPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#A62F6FED"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid" Background="Transparent" CornerRadius="{TemplateBinding CornerRadius}">
+                            <Border x:Name="GlassBorder" CornerRadius="{TemplateBinding CornerRadius}">
+                                <Border.Background>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.Background>
+                            </Border>
+                            <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
+                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="TintBorder" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#CC3C7BFF"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Secondary button (Reset to Defaults, addon actions): same glass
+             template, translucent white fill instead of blue. -->
+        <Style x:Key="SettingsButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1FFFFFFF"/>
+            <Setter Property="Foreground" Value="#B8FFFFFF"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid" Background="Transparent" CornerRadius="{TemplateBinding CornerRadius}">
+                            <Border x:Name="GlassBorder" CornerRadius="{TemplateBinding CornerRadius}">
+                                <Border.Background>
+                                    <shared:SidebarBackdropBlurBrush/>
+                                </Border.Background>
+                            </Border>
+                            <Border x:Name="TintBorder" CornerRadius="{TemplateBinding CornerRadius}" Background="{TemplateBinding Background}"/>
+                            <TextBlock x:Name="ContentText" Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="{TemplateBinding Padding}" shared:TextGlow.IsEnabled="True"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="{TemplateBinding CornerRadius}" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="TintBorder" Storyboard.TargetProperty="Background"><DiscreteObjectKeyFrame KeyTime="0" Value="#4DFFFFFF"/></ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Small action button inside an addon card: the secondary template,
+             tighter padding and font. -->
+        <Style x:Key="SettingsActionButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsButtonStyle}">
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontSize" Value="8"/>
+        </Style>
+        <!-- Full-width settings row (root list, debrid rows): label +
+             description stacked, value/chevron at the end (set as Content in
+             code-behind). The focus ring is the plain white static ring, 3 epx,
+             Margin -1 — the same ring as every other page. No zoom: a
+             full-width row must not scale. -->
+        <Style x:Key="SettingsRowButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="MinHeight" Value="56"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="UseSystemFocusVisuals" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid" Background="{TemplateBinding Background}">
+                            <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="6" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed"/>
+                                </VisualStateGroup>
+                                <VisualStateGroup x:Name="FocusStates">
+                                    <VisualState x:Name="Focused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Unfocused"/>
+                                    <VisualState x:Name="PointerFocused">
+                                        <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <!-- Page padding is set in code-behind (40 start / 32 end / 28 top) so RTL
+         flips the sides, like StreamsPage. -->
+    <ScrollViewer VerticalScrollBarVisibility="Hidden" XYFocusKeyboardNavigation="Disabled">
+        <StackPanel x:Name="ContentStack" Spacing="0">
+            <TextBlock x:Name="PageTitle" Foreground="White" FontSize="21" FontWeight="ExtraBold" TextWrapping="Wrap" shared:TextGlow.IsEnabled="True"/>
+
+            <!-- Root list: one row per section, built in code-behind. -->
+            <StackPanel x:Name="RootPanel" Spacing="6" Margin="0,16,0,0"/>
+
+            <!-- Addons section. -->
+            <StackPanel x:Name="AddonsPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="InstallAddonButton" Style="{StaticResource SettingsPrimaryButtonStyle}" Click="InstallAddonButton_Click"/>
+                    <Button x:Name="ResetAddonsButton" Style="{StaticResource SettingsButtonStyle}" Click="ResetAddonsButton_Click"/>
+                </StackPanel>
+                <TextBlock x:Name="AddonsHint" Foreground="#B8FFFFFF" FontSize="9" TextWrapping="Wrap" Margin="0,12,0,0" shared:TextGlow.IsEnabled="True"/>
+                <StackPanel x:Name="AddonsHost" Margin="0,12,0,0"/>
+                <Grid x:Name="AddonsEmptyState" Visibility="Collapsed" MinHeight="200">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" MaxWidth="384">
+                        <TextBlock x:Name="AddonsEmptyTitle" FontSize="14" FontWeight="Bold" TextAlignment="Center" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="AddonsEmptyMessage" FontSize="9" Foreground="#B8FFFFFF" TextAlignment="Center" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+
+            <!-- Debrid section. -->
+            <StackPanel x:Name="DebridPanel" Visibility="Collapsed" Margin="0,16,0,0">
+                <TextBlock x:Name="DebridHint" Foreground="#B8FFFFFF" FontSize="9" TextWrapping="Wrap" shared:TextGlow.IsEnabled="True"/>
+                <TextBlock x:Name="DebridConnectHeader" FontSize="9" FontWeight="Bold" Foreground="#80FFFFFF" Margin="0,16,0,0" Visibility="Collapsed" shared:TextGlow.IsEnabled="True"/>
+                <StackPanel x:Name="DebridHost" Spacing="6" Margin="0,8,0,0"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
