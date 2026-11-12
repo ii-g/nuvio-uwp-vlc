@@ -27,7 +27,7 @@ namespace Nuvio.Views
     /// recent searches. Ported from views/search.js. NavigationCacheMode is Required
     /// so the query, results and focus survive back-navigation.
     /// </summary>
-    internal sealed partial class SearchPage : Page, IPageInputHandler, IArrivalFocus
+    internal sealed partial class SearchPage : FocusablePage, IPageInputHandler
     {
         private const int DebounceMs = 700;
 
@@ -94,6 +94,11 @@ namespace Nuvio.Views
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
+            // Sync page: the arrival target (the search box) exists in XAML
+            // at navigate time, so the content is ready now. The router's
+            // synchronous first attempt covers it; this also covers a
+            // ContentReady subscriber arriving later.
+            RaiseContentReady();
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             // Back-navigation preserves the cached query and results; a fresh
             // navigation re-runs the view (the web builds a new searchView per
@@ -259,7 +264,7 @@ namespace Nuvio.Views
 
         /// <summary>Fresh-arrival target: the search box. Called by the router's
         /// SettleArrivalFocus, which retries when this returns false.</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             return SearchBox.Focus(FocusState.Programmatic);
         }
@@ -268,7 +273,7 @@ namespace Nuvio.Views
         /// search box. Keys are "box" or "meta:" plus a meta id — the same scheme
         /// OnGotFocus records into the shell registry. Returns true when the box
         /// was focused as the fallback, so the router does not retry.</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key) || key == "box")
             {
@@ -367,11 +372,13 @@ namespace Nuvio.Views
             // A recent chip leaves the key alone; the box is the fallback.
             // The key is also recorded into the shell registry — the page
             // instance is destroyed on Back, so the registry is what the
-            // router's TryFocusKey call reads back.
+            // router's TryFocusKey call reads back. The base GotFocus hook
+            // cannot record these: the box is a TextBox and cards are
+            // GridViewItems, neither a Button with a Tag.
             if (ReferenceEquals(focused, SearchBox))
             {
                 _lastFocusedKey = "box";
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey);
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey);
             }
             else
             {
@@ -380,7 +387,7 @@ namespace Nuvio.Views
                 if (card != null && card.Meta != null)
                 {
                     _lastFocusedKey = "meta:" + card.Meta.Id;
-                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey);
+                    MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey);
                 }
             }
         }
