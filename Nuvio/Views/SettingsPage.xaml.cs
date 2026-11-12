@@ -39,7 +39,7 @@ namespace Nuvio.Views
     /// (transportUrl|action) across re-renders. No custom input handling: the
     /// router owns the D-pad and back is the frame's GoBack.
     /// </summary>
-    internal sealed partial class SettingsPage : Page, IArrivalFocus
+    internal sealed partial class SettingsPage : FocusablePage
     {
         private readonly SettingsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
@@ -54,7 +54,6 @@ namespace Nuvio.Views
             _viewModel = new SettingsViewModel(shell.Stremio, shell.Debrid, shell.Settings, shell.Navigation);
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
-            GotFocus += OnGotFocus;
             _viewModel.AddonsChanged += OnViewModelAddonsChanged;
             _viewModel.DebridChanged += OnViewModelDebridChanged;
         }
@@ -62,8 +61,8 @@ namespace Nuvio.Views
         private void ApplyFlowDirection(bool rtl)
         {
             FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            // Page padding comes from the shared ContentPagePadding (68 start
-            // / 32 end / 28 top) — do not hardcode it here.
+            // Page padding comes from the shared ContentPagePadding
+            // (content-start + visual anchor, 28 top) — do not hardcode it here.
             ContentStack.Padding = FlowDirectionToThicknessConverter.ContentPagePadding(rtl);
         }
 
@@ -76,6 +75,9 @@ namespace Nuvio.Views
                 ? param.Section.ToLowerInvariant()
                 : string.Empty;
             ShowSection();
+            // Sync page: ShowSection builds the rows imperatively, so the
+            // arrival target (_firstFocusTarget) exists now.
+            RaiseContentReady();
             // Arrival focus (fresh or back) is owned by the router's
             // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
             // this page — nothing focuses here.
@@ -96,7 +98,7 @@ namespace Nuvio.Views
         /// SettleArrivalFocus, which retries when this returns false (the rows
         /// are not focusable until layout runs). Bails out when focus is
         /// already inside the page, so a late settle never yanks focus away.</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused != null && IsDescendantOf(focused, this)) return true;
@@ -112,7 +114,7 @@ namespace Nuvio.Views
         /// manifest URL, not a stream URL or secret), debrid rows
         /// "debrid|&lt;providerId&gt;" / "debrid|disconnect", and the addons
         /// section chrome "addons|install" / "addons|reset".</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key)) return false;
             if (RootRows.Any(r => r.Id == key)) key = "root|" + key;
@@ -137,34 +139,6 @@ namespace Nuvio.Views
                 return debridButton != null && debridButton.Focus(FocusState.Programmatic);
             }
             return false;
-        }
-
-        private void OnGotFocus(object sender, RoutedEventArgs e)
-        {
-            var focused = FocusManager.GetFocusedElement() as DependencyObject;
-            if (focused == null) return;
-            for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
-            {
-                var button = node as Button;
-                if (button == null) continue;
-                var tag = button.Tag as string;
-                if (!string.IsNullOrEmpty(tag))
-                {
-                    // Root rows ("root|<id>"), addon actions ("<manifestUrl>|<action>")
-                    // and debrid rows ("debrid|<id>") all record under their Tag.
-                    MainPage.Current?.RecordArrivalFocusKey(GetType(), tag);
-                }
-                return;
-            }
-        }
-
-        /// <summary>Dialog restore (part C): back to the element that opened
-        /// the dialog, else the page's arrival target.</summary>
-        private void RestoreDialogInvoker(UIElement invoker)
-        {
-            var control = invoker as Control;
-            if (control != null && control.Focus(FocusState.Programmatic)) return;
-            TryFocusArrival();
         }
 
         private string S(string key, string fallback)
