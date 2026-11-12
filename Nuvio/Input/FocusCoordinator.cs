@@ -417,6 +417,32 @@ namespace Nuvio.Input
                 }
             }
             if (focused != null && IsEdgeMove(focused, direction)) return;
+            // Toward the sidebar from content: intercept ONLY when XYFocus
+            // itself would land on the strip — open it and land on its
+            // first button (Home) instead of the geometrically nearest
+            // button. Toward-start is right in RTL, left in LTR. Peek at
+            // the move XYFocus would make (FindNextFocusableElement moves
+            // nothing, it only reports the candidate): a sidebar button —
+            // or null, meaning no focusable element at all in that
+            // direction — takes the FocusSidebarFirst path; a content
+            // element (a card / row neighbour, e.g. mid-row in Catalog,
+            // which has no HandleAction of its own) is left alone so the
+            // TryMoveFocus below carries it to the neighbour. When the
+            // sidebar is Hidden (Details / Catalog / Streams / Player)
+            // FocusSidebarFirst returns false and the move falls through
+            // to XYFocus as today. Dialogs never reach here: HandleInput
+            // gates DispatchInput while a dialog is open.
+            if (focused != null && !IsFocusInSidebar && IsTowardSidebar(direction))
+            {
+                var next = FocusManager.FindNextFocusableElement(direction);
+                bool nextIsFirst;
+                bool nextIsLast;
+                bool nextIsSidebar = next != null && _shell.IsSidebarButton(next, out nextIsFirst, out nextIsLast);
+                if (next == null || nextIsSidebar)
+                {
+                    if (_shell.FocusSidebarFirst()) return;
+                }
+            }
             // Vertical moves between rows use per-row remembered position: a
             // row entered for the first time lands on its first poster; a row
             // visited before lands on the poster last focused in that row.
@@ -547,6 +573,13 @@ namespace Nuvio.Input
                 first = grid.ContainerFromIndex(0) as GridViewItem;
             }
             if (first != null) first.Focus(FocusState.Programmatic);
+        }
+
+        /// <summary>Toward the sidebar = toward the flow-start edge: right in RTL, left in LTR (the strip sits at the start edge).</summary>
+        private bool IsTowardSidebar(FocusNavigationDirection direction)
+        {
+            var rtl = _shell.FlowDirection == FlowDirection.RightToLeft;
+            return rtl ? direction == FocusNavigationDirection.Right : direction == FocusNavigationDirection.Left;
         }
 
         /// <summary>
@@ -791,7 +824,7 @@ namespace Nuvio.Input
             try
             {
                 if (IsFocusInsidePage(page)) settled = true;
-                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus) && !IsFocusInSidebar)
                 {
                     // The user deliberately moved focus off the settle's
                     // starting element (e.g. Up/Down in the strip inside
@@ -800,7 +833,19 @@ namespace Nuvio.Input
                     Log.Write("Settle takeover: focus moved by the user; stopping without placing arrival focus");
                     StopSettle(clearGuard: true);
                 }
-                else if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
+                else
+                {
+                    // Focus moved inside the sidebar during the settle (a
+                    // D-pad press while the strip was still collapsed and
+                    // the content not loaded yet): not a takeover — keep
+                    // retrying below until the content loads and the
+                    // arrival target lands.
+                    if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                    {
+                        Log.Write("Settle: focus moved inside the sidebar during settle; ignoring, settle continues");
+                    }
+                    if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
+                }
             }
             catch (Exception)
             {
@@ -902,6 +947,16 @@ namespace Nuvio.Input
             if (_settlingPage == null) return;
             if (DateTime.UtcNow - _settleStartedAt < SettleInputIgnoreWindow) return;
             if (ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)) return;
+            if (IsFocusInSidebar)
+            {
+                // A D-pad press inside the strip during the settle is not
+                // a takeover: the strip is collapsed and the content is
+                // not loaded yet, so the press only shuffled focus between
+                // sidebar buttons. Keep the settle running; the arrival
+                // target lands when the content loads.
+                Log.Write("Settle: user input moved focus inside the sidebar during settle; ignoring, settle continues");
+                return;
+            }
             Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
             StopSettle(clearGuard: true);
         }
