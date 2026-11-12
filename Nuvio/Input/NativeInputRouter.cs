@@ -87,6 +87,16 @@ namespace Nuvio.Input
         private int _settleAttempts;
         private DateTime _settleStartedAt = DateTime.MinValue;
         private DispatcherTimer _settleTimer;
+        // Focus captured at settle start (lag fix): a press only counts as
+        // user takeover if it actually moved focus away from this element.
+        // A press that could not move focus (content not laid out / hero
+        // not loaded yet) must not kill the settle.
+        private object _settleInitialFocus;
+        // One-shot first-layout probe for the settle (lag fix): the
+        // LayoutUpdated subscription that fires the first layout attempt.
+        // Stored so StopSettle can unsubscribe it on every exit path.
+        private Page _settleLayoutPage;
+        private EventHandler<object> _settleLayoutHandler;
         private const int SettleMaxAttempts = 10;
         private static readonly TimeSpan SettleWatchdogInterval = TimeSpan.FromMilliseconds(500);
         // Inputs arriving within this window of a settle starting are the
@@ -215,6 +225,7 @@ namespace Nuvio.Input
             _settleIsBack = isBack;
             _settleAttempts = 0;
             _settleStartedAt = DateTime.UtcNow;
+            _settleInitialFocus = FocusManager.GetFocusedElement();
             Log.Write("Settle arrival: page=" + page.GetType().Name + ", entry=" + page.EntryKey + ", isBack=" + isBack);
             // (a) Synchronous first attempt, in this call.
             if (AttemptSettle("sync"))
@@ -236,7 +247,24 @@ namespace Nuvio.Input
                     return;
                 }
             }
-            // (c) Watchdog: keep trying while async content loads.
+            // (c) First-layout attempt: a sync page becomes focusable at
+            // its first layout pass, ~one frame after Navigated — up to
+            // 500 ms before the next watchdog tick. One-shot: unsubscribe
+            // on the first fire that sees a laid-out page; StopSettle
+            // unsubscribes on every other exit path.
+            if (page.ActualWidth <= 0)
+            {
+                _settleLayoutPage = page;
+                _settleLayoutHandler = (s, e) =>
+                {
+                    if (!ReferenceEquals(_settlingPage, page)) { UnsubscribeSettleLayout(); return; }
+                    if (page.ActualWidth <= 0) return;
+                    UnsubscribeSettleLayout();
+                    if (AttemptSettle("layout")) CompleteSettle(success: true);
+                };
+                page.LayoutUpdated += _settleLayoutHandler;
+            }
+            // (d) Watchdog: keep trying while async content loads.
             _settleTimer = new DispatcherTimer();
             _settleTimer.Interval = SettleWatchdogInterval;
             _settleTimer.Tick += OnSettleWatchdogTick;
@@ -310,6 +338,15 @@ namespace Nuvio.Input
             try
             {
                 if (IsFocusInsidePage(page)) settled = true;
+                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                {
+                    // The user deliberately moved focus off the settle's
+                    // starting element (e.g. Up/Down in the strip inside
+                    // the 200 ms ignore window): treat as takeover instead
+                    // of yanking focus back to the arrival target.
+                    Log.Write("Settle takeover: focus moved by the user; stopping without placing arrival focus");
+                    StopSettle(clearGuard: true);
+                }
                 else if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
             }
             catch (Exception)
@@ -336,10 +373,21 @@ namespace Nuvio.Input
         private void StopSettle(bool clearGuard)
         {
             StopWatchdog();
+            UnsubscribeSettleLayout();
             var page = _settlingPage;
             if (page != null) page.ContentReady -= OnSettleContentReady;
             _settlingPage = null;
+            _settleInitialFocus = null;
             if (clearGuard) _shell.ClearSidebarExpandSuppression();
+        }
+
+        private void UnsubscribeSettleLayout()
+        {
+            var handler = _settleLayoutHandler;
+            var page = _settleLayoutPage;
+            _settleLayoutHandler = null;
+            _settleLayoutPage = null;
+            if (handler != null && page != null) page.LayoutUpdated -= handler;
         }
 
         private void StopWatchdog()
@@ -366,6 +414,11 @@ namespace Nuvio.Input
         {
             if (_settlingPage == null) return;
             if (DateTime.UtcNow - _settleStartedAt < SettleInputIgnoreWindow) return;
+            // Takeover only if the press actually moved focus: a press that
+            // could not move anything (content not laid out / hero not
+            // loaded yet) leaves the settle running, so the arrival target
+            // still lands when the page is ready.
+            if (ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)) return;
             Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
             StopSettle(clearGuard: true);
         }
