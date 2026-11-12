@@ -55,6 +55,9 @@ namespace Nuvio.Views
             }
         }
 
+        /// <summary>Resets the row anchor (call on navigation: a new page means fresh row-anchor state, matching the discarded per-page instance lifecycle).</summary>
+        public void ResetRowAnchor() { _lastAnchoredRow = null; }
+
         // ---------------------------------------------------------------------------
         // Smooth scrolling — a port of web/js/core/focus.js smoothScrollTo.
         // The web feels calm because each strip glides continuously toward a destination
