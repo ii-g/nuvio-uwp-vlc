@@ -56,7 +56,7 @@ namespace Nuvio
         internal LibraryService Library { get; private set; }
         internal ProgressService Progress { get; private set; }
         internal NavigationService Navigation { get; private set; }
-        public PlayerService PlayerService { get; private set; }
+        internal PlayerService PlayerService { get; private set; }
 
         /// <summary>True while a ContentDialog is open; pauses the controller (see NativeInputRouter).</summary>
         public bool DialogOpen
