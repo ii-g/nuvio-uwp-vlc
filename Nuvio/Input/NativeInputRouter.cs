@@ -110,6 +110,20 @@ namespace Nuvio.Input
         internal bool IsSettling { get { return _settlingPage != null; } }
 
         /// <summary>
+        /// Phase 1 Focus Manager coordinator, linked by MainPage after both
+        /// are constructed (the coordinator's moveFocus / handleBack
+        /// delegates are this router's MoveFocus / HandleBack, so the link
+        /// cannot be passed in the constructor). Null until linked. When
+        /// set and FocusCoordinator.UseFocusCoordinator is true, Handle
+        /// delegates to the coordinator and SettleArrivalFocus routes
+        /// Settings pages to it; the legacy paths below stay as the
+        /// rollback path. Never null-checked into a different behaviour
+        /// when the flag is off: every flag check below falls through to
+        /// the legacy body exactly as before.
+        /// </summary>
+        internal FocusCoordinator Coordinator { get; set; }
+
+        /// <summary>
         /// Stable identity for a navigation parameter, so two navigations to
         /// the same page with different parameters are different registry
         /// entries. Only ids and catalog manifest URLs appear here — never
@@ -214,6 +228,23 @@ namespace Nuvio.Input
         /// </summary>
         internal void SettleArrivalFocus(FocusablePage page, bool isBack, object parameter)
         {
+            // Phase 1: Settings is the ONLY migrated page — its settle is
+            // coordinator-owned. A coordinator settle from a previous
+            // navigation is cancelled first when a legacy settle takes over
+            // (and vice versa: RequestArrival stops its own settle), so
+            // only one settle ever runs. Every other page keeps the legacy
+            // settle below, unchanged. With the flag off this block is
+            // skipped entirely and the legacy body runs exactly as before.
+            if (Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                if (page is SettingsPage)
+                {
+                    StopSettle(clearGuard: false);
+                    Coordinator.RequestArrival(page, isBack);
+                    return;
+                }
+                Coordinator.CancelArrival();
+            }
             StopSettle(clearGuard: false);
             if (page == null)
             {
@@ -354,7 +385,15 @@ namespace Nuvio.Input
                 settled = false;
             }
             var focused = FocusManager.GetFocusedElement();
-            Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null"));
+            var focusedElement = focused as FrameworkElement;
+            var focusName = focusedElement != null && !string.IsNullOrEmpty(focusedElement.Name) ? focusedElement.Name : "(none)";
+            var focusTag = "(none)";
+            if (focusedElement != null && focusedElement.Tag != null)
+            {
+                var tagText = focusedElement.Tag.ToString();
+                if (!string.IsNullOrEmpty(tagText)) focusTag = tagText;
+            }
+            Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null") + ", focusName=" + focusName + ", focusTag=" + focusTag);
             return settled;
         }
 
@@ -465,6 +504,16 @@ namespace Nuvio.Input
 
         public void Handle(string action, bool repeat)
         {
+            // Phase 1: the coordinator owns input when linked and the flag
+            // is on — it performs dispatch plus the takeover decision
+            // internally, so MainPage must not also call NoteUserInput
+            // afterwards. With the flag off (or unlinked) the legacy body
+            // below runs exactly as before.
+            if (Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                Coordinator.HandleInput(action, repeat);
+                return;
+            }
             if (_shell.DialogOpen) return;
             if (!repeat && (action == "up" || action == "down" || action == "left" || action == "right"))
             {
@@ -513,7 +562,10 @@ namespace Nuvio.Input
             }
         }
 
-        private void MoveFocus(FocusNavigationDirection direction)
+        // Internal (not private) so MainPage can hand these to the
+        // FocusCoordinator as its moveFocus / handleBack delegates.
+        // Accessibility change only; no logic change.
+        internal void MoveFocus(FocusNavigationDirection direction)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null)
@@ -705,7 +757,10 @@ namespace Nuvio.Input
             return null;
         }
 
-        private void HandleBack()
+        // Internal (not private) so MainPage can hand this to the
+        // FocusCoordinator as its handleBack delegate. Accessibility
+        // change only; no logic change.
+        internal void HandleBack()
         {
             // A dialog open means the controller is paused and XAML handles back; this never runs then.
             // The current page already had its say via IPageInputHandler above.
@@ -713,7 +768,12 @@ namespace Nuvio.Input
             // synchronously and the framework's focus fallback can land on
             // a sidebar button while the guard is down (root cause A). The
             // new page's settle clears it once arrival focus lands.
-            _shell.ArmSidebarExpandSuppression();
+            // Phase 1: arm through the coordinator when it owns the guard
+            // (it also arms the shell bit, the enforcement point); the
+            // shell method stays the low-level bit setter and never
+            // delegates back, so this cannot recurse.
+            if (Coordinator != null && FocusCoordinator.UseFocusCoordinator) Coordinator.ArmNavigationGuard();
+            else _shell.ArmSidebarExpandSuppression();
             if (_frame.CanGoBack)
             {
                 _frame.GoBack();
