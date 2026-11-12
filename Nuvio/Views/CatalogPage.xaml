@@ -3,7 +3,7 @@
      XYFocus keyboard navigation is off on purpose: the controller poll owns
      every move (see MainPage.OnPreviewKeyDown). Left on, the framework moves
      focus a second card per D-pad press on top of the router's move. -->
-<Page
+<views:FocusablePage
     x:Class="Nuvio.Views.CatalogPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -14,11 +14,11 @@
     XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <views:FocusablePage.Resources>
         <views:ChipSelectedBackgroundConverter x:Key="ChipSelectedBackgroundConverter"/>
         <views:ChipSelectedBorderConverter x:Key="ChipSelectedBorderConverter"/>
         <views:ChipSelectedForegroundConverter x:Key="ChipSelectedForegroundConverter"/>
-    </Page.Resources>
+    </views:FocusablePage.Resources>
 
     <!-- Full-bleed: no page padding on the catalog (the sidebar is hidden
          here, so the whole 960 epx window width is available). The old
@@ -104,4 +104,4 @@
         <!-- Footer spinner (web .grid-footer padding 1rem = 8 epx). -->
         <ProgressRing Grid.Row="3" IsActive="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" Margin="0,8,0,8"/>
     </Grid>
-</Page>
+</views:FocusablePage>
