@@ -128,7 +128,14 @@ namespace Nuvio.Views
         {
             base.OnNavigatedFrom(e);
             _debounceTimer.Stop();
-            _scrollHelper.Stop();
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                MainPage.Current.Coordinator.StopScrolling();
+            }
+            else
+            {
+                _scrollHelper.Stop();
+            }
         }
 
         private void OnSearchBoxTextChanged(object sender, TextChangedEventArgs e)
@@ -269,13 +276,16 @@ namespace Nuvio.Views
             return SearchBox.Focus(FocusState.Programmatic);
         }
 
-        /// <summary>Back-arrival target: the result for a recorded key, else the
-        /// search box. Keys are "box" or "meta:" plus a meta id — the same scheme
-        /// OnGotFocus records into the shell registry. Returns true when the box
-        /// was focused as the fallback, so the router does not retry.</summary>
+        /// <summary>Back-arrival target: the result for a recorded key.
+        /// Keys are "box" or "meta:" plus a meta id — the same scheme
+        /// OnGotFocus records into the shell registry. Returns true only
+        /// when the recorded target actually took focus; returns false on
+        /// a missing or unknown key, so the coordinator falls back to
+        /// TryFocusArrival (the search box).</summary>
         public override bool TryFocusKey(string key)
         {
-            if (string.IsNullOrEmpty(key) || key == "box")
+            if (string.IsNullOrEmpty(key)) return false;
+            if (key == "box")
             {
                 return SearchBox.Focus(FocusState.Programmatic);
             }
@@ -283,19 +293,18 @@ namespace Nuvio.Views
             {
                 var metaId = key.Substring(5);
                 var grid = FindResultGrid(this, metaId, out var index);
-                if (grid != null)
+                if (grid == null || index < 0 || index >= grid.Items.Count) return false;
+                var container = grid.ContainerFromIndex(index) as GridViewItem;
+                if (container == null)
                 {
-                    var container = grid.ContainerFromIndex(index) as GridViewItem;
-                    if (container == null)
-                    {
-                        grid.ScrollIntoView(grid.Items[index]);
-                        grid.UpdateLayout();
-                        container = grid.ContainerFromIndex(index) as GridViewItem;
-                    }
-                    if (container != null && container.Focus(FocusState.Programmatic)) return true;
+                    grid.ScrollIntoView(grid.Items[index]);
+                    grid.UpdateLayout();
+                    container = grid.ContainerFromIndex(index) as GridViewItem;
                 }
+                if (container == null) return false;
+                return container.Focus(FocusState.Programmatic);
             }
-            return SearchBox.Focus(FocusState.Programmatic);
+            return false;
         }
 
         /// <summary>Finds the results row holding the card for a meta id, and its
@@ -365,7 +374,14 @@ namespace Nuvio.Views
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return;
-            _scrollHelper.AnchorFocusedRowElement(focused, Scroller);
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                MainPage.Current.Coordinator.AnchorFocusedRowElement(focused, Scroller);
+            }
+            else
+            {
+                _scrollHelper.AnchorFocusedRowElement(focused, Scroller);
+            }
             UpdateDynamicBackground(focused);
             // Track the last focused element for back-navigation restore (same
             // pattern as HomePage): the search box, or the focused result card.
