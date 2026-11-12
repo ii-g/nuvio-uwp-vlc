@@ -17,7 +17,7 @@ namespace Nuvio.Views
     /// rebuilt from its CatalogNavigation parameter every time, like the web view
     /// re-load()s on each push.
     /// </summary>
-    internal sealed partial class CatalogPage : Page, IArrivalFocus
+    internal sealed partial class CatalogPage : FocusablePage
     {
         private const double NearBottomPx = 600;
 
@@ -69,6 +69,8 @@ namespace Nuvio.Views
             _viewModel = new CatalogViewModel(shell.Stremio, shell.Progress, shell.Navigation, navigation);
             DataContext = _viewModel;
             await _viewModel.LoadAsync().ConfigureAwait(true);
+            // First page rendered: the arrival target (first card) exists now.
+            RaiseContentReady();
         }
 
         protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -87,7 +89,7 @@ namespace Nuvio.Views
         /// <summary>Fresh-arrival target: the first card. Called by the router's
         /// SettleArrivalFocus, which retries when this returns false (no card
         /// is focusable until the first page loads).</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             return FocusFirstCard();
         }
@@ -97,7 +99,7 @@ namespace Nuvio.Views
         /// or the card sits on a page not loaded yet) so the router falls back
         /// to TryFocusArrival. The static LastOpenedCatalogKey guard still
         /// applies: a key recorded in another catalog never restores here.</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key) || !key.StartsWith("meta:", StringComparison.Ordinal)) return false;
             return TryFocusOpenedCard(key.Substring(5));
@@ -155,7 +157,7 @@ namespace Nuvio.Views
             {
                 LastOpenedMetaId = card.Meta.Id;
                 LastOpenedCatalogKey = _catalogKey;
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), "meta:" + card.Meta.Id);
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "meta:" + card.Meta.Id);
                 _viewModel.OpenTitle(card.Meta);
             }
         }
@@ -183,13 +185,15 @@ namespace Nuvio.Views
             _scrollHelper.KeepGridItemInView(grid, item);
             // Record the focused card so Back can return to it: the page
             // instance is destroyed on Back, so the shell registry (keyed by
-            // page type) is what the router's TryFocusKey call reads back.
-            // The LastOpenedCatalogKey guard in TryFocusKey still applies —
-            // a key only restores when it was opened from this catalog.
+            // navigation entry) is what the router's TryFocusKey call reads
+            // back. The base GotFocus hook cannot record this: cards are
+            // GridViewItems, not Buttons with Tags. The LastOpenedCatalogKey
+            // guard in TryFocusKey still applies — a key only restores when
+            // it was opened from this catalog.
             var card = item.Content as CatalogCardItem;
             if (card != null && card.Meta != null)
             {
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), "meta:" + card.Meta.Id);
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "meta:" + card.Meta.Id);
             }
         }
     }
