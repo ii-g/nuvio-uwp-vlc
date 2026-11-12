@@ -46,7 +46,7 @@ jobs:
           # CompositionGraphicsDevice.CreateDrawingSurface instead), and
           # OpacityMask (WPF only, not UWP). GetContainerVisual is NOT banned:
           # TextGlow.cs legitimately has a TryGetContainerVisual helper.
-          bad_api='([Cc]Compositor\.CreateDrawingSurface|CanvasComposition\.CreateDrawingSurface|OpacityMask)'
+          bad_api='([Cc]ompositor\.CreateDrawingSurface|CanvasComposition\.CreateDrawingSurface|OpacityMask)'
           if grep -rE --include='*.cs' --include='*.xaml' --include='*.csproj' --include='*.js' --include='*.xml' "$bad_api" Nuvio web; then
             echo "::error::Banned API found — this API does not exist in UWP. See matches above."
             exit 1
