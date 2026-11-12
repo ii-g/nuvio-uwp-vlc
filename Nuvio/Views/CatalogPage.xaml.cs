@@ -76,7 +76,14 @@ namespace Nuvio.Views
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             base.OnNavigatedFrom(e);
-            _scrollHelper.Stop();
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                MainPage.Current.Coordinator.StopScrolling();
+            }
+            else
+            {
+                _scrollHelper.Stop();
+            }
             if (_gridScroller != null)
             {
                 _gridScroller.ViewChanged -= OnGridScrollerViewChanged;
@@ -182,7 +189,14 @@ namespace Nuvio.Views
             var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
             if (grid != CatalogGridView || _viewModel == null) return;
             _viewModel.MaybeLoadMore(grid.IndexFromContainer(item));
-            _scrollHelper.KeepGridItemInView(grid, item);
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                MainPage.Current.Coordinator.KeepGridItemInView(grid, item);
+            }
+            else
+            {
+                _scrollHelper.KeepGridItemInView(grid, item);
+            }
             // Record the focused card so Back can return to it: the page
             // instance is destroyed on Back, so the shell registry (keyed by
             // navigation entry) is what the router's TryFocusKey call reads
