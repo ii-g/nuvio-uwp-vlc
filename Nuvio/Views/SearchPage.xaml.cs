@@ -27,7 +27,7 @@ namespace Nuvio.Views
     /// recent searches. Ported from views/search.js. NavigationCacheMode is Required
     /// so the query, results and focus survive back-navigation.
     /// </summary>
-    internal sealed partial class SearchPage : Page, IPageInputHandler
+    internal sealed partial class SearchPage : Page, IPageInputHandler, IArrivalFocus
     {
         private const int DebounceMs = 700;
 
@@ -98,9 +98,11 @@ namespace Nuvio.Views
             // Back-navigation preserves the cached query and results; a fresh
             // navigation re-runs the view (the web builds a new searchView per
             // route): a query param runs it, an empty one resets to recent searches.
+            // Arrival focus (fresh or back) is owned by the router's
+            // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey —
+            // nothing focuses here.
             if (e.NavigationMode == NavigationMode.Back)
             {
-                RestoreLastFocus();
                 return;
             }
             var query = e.Parameter as string;
@@ -115,7 +117,6 @@ namespace Nuvio.Views
             _focusFirstResult = false;
             RunSearch(SearchBox.Text);
             UpdateEmptyHero(false);
-            SearchBox.Focus(FocusState.Programmatic);
         }
 
         protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -254,60 +255,42 @@ namespace Nuvio.Views
             TryFocusFirstResult();
         }
 
-        /// <summary>Restores focus after back-navigation (HomePage.RestoreLastFocus
-        /// pattern): the framework's own restore fails for the same reason — the
-        /// focused result container was unrealized while the page was detached —
-        /// so focus would fall back to HomeButton and open the strip. Deferred
-        /// one dispatcher tick, bails out if focus is already inside the page,
-        /// falls back to the search box. Never yanks focus to the box when the
-        /// user had focus on a result card.</summary>
-        private void RestoreLastFocus()
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: the search box. Called by the router's
+        /// SettleArrivalFocus, which retries when this returns false.</summary>
+        public bool TryFocusArrival()
         {
-            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                try
-                {
-                    var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                    if (focused != null && IsDescendantOf(focused, this)) return;
-                    if (!RestoreLastFocusNow())
-                    {
-                        SearchBox.Focus(FocusState.Programmatic);
-                    }
-                }
-                finally
-                {
-                    // The navigation-restore artifact window is over either way:
-                    // a real move onto the sidebar from here must expand it again.
-                    MainPage.Current?.ClearSidebarExpandSuppression();
-                }
-            });
+            return SearchBox.Focus(FocusState.Programmatic);
         }
 
-        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
-        /// key is gone (card no longer listed) so the caller falls back to the
-        /// search box.</summary>
-        private bool RestoreLastFocusNow()
+        /// <summary>Back-arrival target: the result for a recorded key, else the
+        /// search box. Keys are "box" or "meta:" plus a meta id — the same scheme
+        /// OnGotFocus records into the shell registry. Returns true when the box
+        /// was focused as the fallback, so the router does not retry.</summary>
+        public bool TryFocusKey(string key)
         {
-            if (string.IsNullOrEmpty(_lastFocusedKey)) return false;
-            if (_lastFocusedKey == "box")
+            if (string.IsNullOrEmpty(key) || key == "box")
             {
                 return SearchBox.Focus(FocusState.Programmatic);
             }
-            if (_lastFocusedKey.StartsWith("meta:", StringComparison.Ordinal))
+            if (key.StartsWith("meta:", StringComparison.Ordinal))
             {
-                var metaId = _lastFocusedKey.Substring(5);
+                var metaId = key.Substring(5);
                 var grid = FindResultGrid(this, metaId, out var index);
-                if (grid == null) return false;
-                var container = grid.ContainerFromIndex(index) as GridViewItem;
-                if (container == null)
+                if (grid != null)
                 {
-                    grid.ScrollIntoView(grid.Items[index]);
-                    grid.UpdateLayout();
-                    container = grid.ContainerFromIndex(index) as GridViewItem;
+                    var container = grid.ContainerFromIndex(index) as GridViewItem;
+                    if (container == null)
+                    {
+                        grid.ScrollIntoView(grid.Items[index]);
+                        grid.UpdateLayout();
+                        container = grid.ContainerFromIndex(index) as GridViewItem;
+                    }
+                    if (container != null && container.Focus(FocusState.Programmatic)) return true;
                 }
-                return container != null && container.Focus(FocusState.Programmatic);
             }
-            return false;
+            return SearchBox.Focus(FocusState.Programmatic);
         }
 
         /// <summary>Finds the results row holding the card for a meta id, and its
@@ -382,15 +365,23 @@ namespace Nuvio.Views
             // Track the last focused element for back-navigation restore (same
             // pattern as HomePage): the search box, or the focused result card.
             // A recent chip leaves the key alone; the box is the fallback.
+            // The key is also recorded into the shell registry — the page
+            // instance is destroyed on Back, so the registry is what the
+            // router's TryFocusKey call reads back.
             if (ReferenceEquals(focused, SearchBox))
             {
                 _lastFocusedKey = "box";
+                MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey);
             }
             else
             {
                 var item = FocusScrollHelper.FindAncestorGridViewItem(focused);
                 var card = item != null ? item.Content as CatalogCardItem : null;
-                if (card != null && card.Meta != null) _lastFocusedKey = "meta:" + card.Meta.Id;
+                if (card != null && card.Meta != null)
+                {
+                    _lastFocusedKey = "meta:" + card.Meta.Id;
+                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey);
+                }
             }
         }
 
