@@ -24,7 +24,7 @@ namespace Nuvio.Views
     /// Home: hero carousel, Continue Watching row, one row per catalog. Ported from views/home.js.
     /// NavigationCacheMode is Required so scroll + focus survive back-navigation.
     /// </summary>
-    internal sealed partial class HomePage : Page, IPageInputHandler, IArrivalFocus, IRowFocusInfo
+    internal sealed partial class HomePage : FocusablePage, IPageInputHandler, IRowFocusInfo
     {
         private const int HeroIntervalMs = 9000;
         private const int BackdropDebounceMs = 350;
@@ -101,6 +101,11 @@ namespace Nuvio.Views
             }
             _loadedOnce = true;
             await _viewModel.LoadAsync().ConfigureAwait(true);
+            // Hero / first data rendered: the arrival target (hero Play
+            // button, or Manage Addons when empty) exists now. On later
+            // navigations the cached page is already ready and the settle's
+            // synchronous attempt covers it; this fire is once-only.
+            RaiseContentReady();
         }
 
         protected override void OnNavigatedFrom(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -136,7 +141,7 @@ namespace Nuvio.Views
         /// SettleArrivalFocus, which retries when this returns false (the hero
         /// button is not focusable until layout runs). Bails out when focus is
         /// already inside the page, so a late settle never yanks focus away.</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused != null && IsDescendantOf(focused, this)) return true;
@@ -156,7 +161,7 @@ namespace Nuvio.Views
         /// row: the same title can appear in several rows, so a bare meta id
         /// is not enough. A legacy bare "meta:" key (no row) still resolves
         /// by searching every row, first match wins.</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key)) return false;
             if (key == "hero")
@@ -248,6 +253,20 @@ namespace Nuvio.Views
             return "catalog:" + row.Catalog.Type + "|" + row.Catalog.Id + "|" + row.Addon.TransportUrl;
         }
 
+        /// <summary>Stable row key for the row holding <paramref name="focused"/>
+        /// (FocusablePage hook): the row key of a GridViewItem ancestor via the
+        /// same RowKeyForContainer logic, so the base GotFocus recorder stores
+        /// the per-row memory the router's row-to-row moves read back. Null
+        /// when the focused element is not in a remembered row (hero, empty
+        /// state) — the entry key is still recorded without a row key.</summary>
+        protected override string RowKeyForElement(DependencyObject focused)
+        {
+            var item = FindAncestorGridViewItem(focused);
+            if (item == null) return null;
+            var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+            return grid != null ? RowKeyForContainer(grid) : null;
+        }
+
         /// <summary>Finds the row GridView for a row key, walking the same
         /// ContentStack tree FindCardGrid uses. Null when the row is gone
         /// (emptied, addon removed) so the caller falls back to index 0.</summary>
@@ -268,13 +287,6 @@ namespace Nuvio.Views
                 if (found != null) return found;
             }
             return null;
-        }
-
-        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
-        /// key is gone (card no longer listed) so the caller falls back.</summary>
-        private bool RestoreLastFocusNow()
-        {
-            return TryFocusKey(_lastFocusedKey);
         }
 
         /// <summary>Finds the row grid holding the card for a meta id, and its index
@@ -994,7 +1006,7 @@ namespace Nuvio.Views
                     _lastFocusedKey = rowKey != null
                         ? "meta:" + rowKey + "|" + card.Meta.Id
                         : "meta:" + card.Meta.Id;
-                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, rowKey);
+                    MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey, rowKey);
                     ShowBackdrop(card.Meta.Background);
                     SetBackdropFadeRowState(true);
                     return;
@@ -1003,7 +1015,7 @@ namespace Nuvio.Views
                 if (entry != null)
                 {
                     _lastFocusedKey = "cw:" + entry.ContentId;
-                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, rowKey);
+                    MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey, rowKey);
                     ShowBackdrop(entry.Background);
                     SetBackdropFadeRowState(true);
                     return;
@@ -1012,7 +1024,7 @@ namespace Nuvio.Views
             if (IsDescendantOf(focused, HeroSection))
             {
                 _lastFocusedKey = "hero";
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, null);
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey, null);
                 var hero = _viewModel.CurrentHero;
                 // No poster fallback: a 300x450 poster blown up 3.2x is the
                 // "enlarged" look. ShowBackdrop ignores empty, so the previous
@@ -1169,25 +1181,13 @@ namespace Nuvio.Views
             }
             else
             {
-                // Cancelled: back to the card that opened the menu.
-                RestoreDialogInvoker(invoker);
+                // Cancelled: back to the card that opened the menu. The base
+                // FocusablePage.RestoreDialogInvoker does this synchronously
+                // (Control cast first, arrival-target fallback); the dialog
+                // has already closed by the time ShowAsync returns, so no
+                // deferred dispatcher tick is needed here.
+                RestoreDialogInvoker(invoker as UIElement);
             }
-        }
-
-        /// <summary>Focuses the element that opened a dialog, once the dialog
-        /// has closed. Deferred one dispatcher tick so the dialog teardown
-        /// finishes first; no-op when the invoker is gone or focus already
-        /// landed inside the page.</summary>
-        private void RestoreDialogInvoker(DependencyObject invoker)
-        {
-            if (invoker == null) return;
-            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                if (focused != null && IsDescendantOf(focused, this)) return;
-                var control = invoker as Control;
-                if (control != null) control.Focus(FocusState.Programmatic);
-            });
         }
 
         /// <summary>After a Continue card is dismissed, focus must land on a
@@ -1217,7 +1217,7 @@ namespace Nuvio.Views
                         if (neighbour != null)
                         {
                             _lastFocusedKey = "cw:" + neighbour.ContentId;
-                            MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, "continue");
+                            MainPage.Current?.RecordArrivalFocusKey(EntryKey, _lastFocusedKey, "continue");
                         }
                         return;
                     }
@@ -1710,32 +1710,44 @@ namespace Nuvio.Views
     /// while home, search and catalog keep the shared branches untouched.</summary>
     internal sealed class FlowDirectionToThicknessConverter : Windows.UI.Xaml.Data.IValueConverter
     {
+        /// <summary>The distance from the content edge to the hero / row
+        /// visual anchor: 88 epx RTL / 6 epx LTR. This is the same value
+        /// the "hero" and "rowHeader" branches use — the hero content's
+        /// start edge (x=804 RTL / x=74 LTR) sits this far inside the
+        /// content edge, so every branch that aligns to that edge derives
+        /// from this one definition instead of repeating the literal.</summary>
+        internal static double VisualAnchorInset(bool rtl) => rtl ? 88 : 6;
+
         /// <summary>The home row's start anchor inset: the hero's start margin
-        /// (88 epx RTL / 6 epx LTR, the same value as the "hero" branch) plus
+        /// (VisualAnchorInset, the same value as the "hero" branch) plus
         /// the start bleed (20 epx, the same value as the "rowBleed" branch) —
         /// 108 epx RTL / 26 epx LTR inside the track edge. The first card rests
         /// here (rowHome padding) and AnchorRow pins the focused card here, so
         /// the row's start edge sits on the hero content's start edge.</summary>
-        internal static double RowStartAnchorInset(bool rtl) => (rtl ? 88 : 6) + 20;
+        internal static double RowStartAnchorInset(bool rtl) => VisualAnchorInset(rtl) + 20;
 
-        /// <summary>The standard page padding for code-behind pages (Streams,
-        /// Settings): 68 start / 32 end / 28 top. The 68 / 32 are the same
-        /// numbers as the "content" branch of Convert below (68 = 48 collapsed
-        /// sidebar + 20 bleed, so the content edge lands on the sidebar's
-        /// inner edge, x=912 collapsed in RTL); the 28 top is the shared
+        /// <summary>The page padding for code-behind pages (Streams,
+        /// Settings) whose content must sit on Home's visual anchor
+        /// (x=804 RTL / x=74 LTR): content-start + anchor, i.e. the
+        /// "content" branch's start (68 RTL / 32 LTR, the same numbers
+        /// as the "content" branch of Convert below) plus
+        /// VisualAnchorInset — never a literal total, so it tracks Home
+        /// automatically if the anchor moves. The 28 top is the shared
         /// page-top inset. This is the single source of truth — do NOT
         /// hardcode page padding in a page's ApplyFlowDirection (the old
         /// web .streams-layout 5rem/40 start value was copied here in M4 and
-        /// drifted 28 epx past the content edge; Settings copied it in M6).
-        /// Details keeps its own halved detailsContent branch on purpose.</summary>
+        /// drifted past the anchor; Settings copied it in M6). The raw
+        /// content edge (68 / 32) remains the "content" branch for XAML
+        /// pages that lay out their own anchor. Details keeps its own
+        /// halved detailsContent branch on purpose.</summary>
         internal static Thickness ContentPagePadding(bool rtl) =>
-            rtl ? new Thickness(32, 28, 68, 0) : new Thickness(68, 28, 32, 0);
+            rtl ? new Thickness(32, 28, 68 + VisualAnchorInset(rtl), 0) : new Thickness(68 + VisualAnchorInset(rtl), 28, 32, 0);
 
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
             if (parameter as string == "hero")
-                return rtl ? new Thickness(0, 0, 88, 20) : new Thickness(6, 0, 0, 20);
+                return rtl ? new Thickness(0, 0, VisualAnchorInset(rtl), 20) : new Thickness(VisualAnchorInset(rtl), 0, 0, 20);
             if (parameter as string == "divider")
                 // Sidebar divider: on the content-facing edge (left in RTL, right in LTR).
                 return rtl ? new Thickness(1, 0, 0, 0) : new Thickness(0, 0, 1, 0);
@@ -1771,7 +1783,7 @@ namespace Nuvio.Views
                 // branch), with no bottom margin — so the title starts on
                 // the hero content's start edge, on the same edge as the
                 // first card.
-                return rtl ? new Thickness(0, 0, 88, 0) : new Thickness(6, 0, 0, 0);
+                return rtl ? new Thickness(0, 0, VisualAnchorInset(rtl), 0) : new Thickness(VisualAnchorInset(rtl), 0, 0, 0);
             if (parameter as string == "catalogRowHeader")
                 // The catalog page's start inset: the grid is full-bleed
                 // (the sidebar is hidden on CatalogPage, so the whole
