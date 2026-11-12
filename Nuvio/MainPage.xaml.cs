@@ -38,6 +38,8 @@ namespace Nuvio
         private AppBridge _bridge;
         private ControllerBridge _controller;
         private NativeInputRouter _router;
+        /// <summary>Phase 1 Focus Manager coordinator (null until OnLoaded constructs it). Owns input dispatch, the Settings arrival settle and the navigation guard while FocusCoordinator.UseFocusCoordinator is true; the router stays the rollback path.</summary>
+        private FocusCoordinator _coordinator;
         private bool _videoViewRequested;
         private bool _videoViewStarting;
         private bool _dialogOpen;
@@ -71,6 +73,11 @@ namespace Nuvio
         internal PlayerService PlayerService { get; private set; }
         internal DebridService Debrid { get; private set; }
 
+        internal FocusCoordinator Coordinator { get { return _coordinator; } }
+
+        /// <summary>Launch arguments the app was started with (App passes e.Arguments as the MainPage navigation parameter). Read by the FocusTestHarness gate; empty on a plain dashboard launch of the installed msix.</summary>
+        internal static string LaunchArguments { get; private set; }
+
         /// <summary>True while a ContentDialog is open; pauses the controller (see NativeInputRouter).</summary>
         public bool DialogOpen
         {
@@ -78,6 +85,15 @@ namespace Nuvio
             set
             {
                 _dialogOpen = value;
+                // Phase 1: route through the coordinator when it owns input
+                // (it pauses its own dispatch and captures the invoker for
+                // Phase 3's restore; focus is NOT moved here or on close).
+                // The ControllerBridge pause below is kept in both branches.
+                if (_coordinator != null && FocusCoordinator.UseFocusCoordinator)
+                {
+                    if (value) _coordinator.NotifyDialogOpened(null);
+                    else _coordinator.NotifyDialogClosed();
+                }
                 if (_controller != null)
                 {
                     _controller.Paused = value;
@@ -250,22 +266,17 @@ namespace Nuvio
             PlayerService = new PlayerService(_player, Settings);
             Debrid = new DebridService(Settings);
             _router = new NativeInputRouter(this, ContentFrame, Navigation);
-            _controller = new ControllerBridge((action, repeat) =>
-            {
-                _userInputSeen = true;
-                // Settling-aware guard rule (Fix 2, root cause A; lag fix):
-                // handle the press FIRST, then the takeover decision, so
-                // NoteUserInput sees the press's effect: it cancels the
-                // settle only if focus actually moved. A press that could
-                // not move focus (content not ready yet) leaves the settle
-                // running, so the arrival target still lands. A back press
-                // is safe either way: HandleBack re-arms the guard before
-                // navigating, and the new settle's 200 ms ignore window
-                // covers the duplicate delivery.
-                _router.Handle(action, repeat);
-                if (_router != null && _router.IsSettling) _router.NoteUserInput();
-                else ClearSidebarExpandSuppression();
-            });
+            // Phase 1: construct the coordinator next to the router (router
+            // first — its MoveFocus / HandleBack are the coordinator's
+            // delegates) and link both directions right away, so no input
+            // can arrive before the wiring is complete. Constructing the
+            // coordinator changes no behaviour on its own (no subscriptions,
+            // no timers, no focus moves); the UseFocusCoordinator flag
+            // selects whether it owns anything.
+            _coordinator = new FocusCoordinator(this, ContentFrame, Navigation, _router.MoveFocus, _router.HandleBack);
+            _router.Coordinator = _coordinator;
+            Navigation.Coordinator = _coordinator;
+            _controller = new ControllerBridge(HandleControllerInput);
 
             try
             {
@@ -290,6 +301,68 @@ namespace Nuvio
             // Manifests refresh in the background; Home already shows cached catalogs meanwhile.
             _ = Stremio.RefreshStaleManifestsAsync();
             CreateVideoView();
+        }
+
+        /// <summary>
+        /// Single controller-input entry point, shared by the ControllerBridge
+        /// poll callback and the FocusTestHarness seam (SimulateFocusInput)
+        /// so the two can never drift. The router is the funnel: with the
+        /// flag on it delegates to the coordinator, which performs dispatch
+        /// plus its own settle's takeover decision internally.
+        /// </summary>
+        private void HandleControllerInput(string action, bool repeat)
+        {
+            _userInputSeen = true;
+            // Settling-aware guard rule (Fix 2, root cause A; lag fix):
+            // handle the press FIRST, then the takeover decision, so
+            // NoteUserInput sees the press's effect: it cancels the
+            // settle only if focus actually moved. A press that could
+            // not move focus (content not ready yet) leaves the settle
+            // running, so the arrival target still lands. A back press
+            // is safe either way: HandleBack re-arms the guard before
+            // navigating, and the new settle's 200 ms ignore window
+            // covers the duplicate delivery.
+            _router.Handle(action, repeat);
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                // The coordinator handled dispatch and its own settle's
+                // takeover inside HandleInput — never call
+                // _router.NoteUserInput() for a coordinator-owned settle
+                // (double evaluation) and never clear the guard while a
+                // coordinator settle is pending. The two lines below cover
+                // only what the coordinator does NOT own: a legacy router
+                // settle (every page but Settings in Phase 1) still needs
+                // its takeover evaluated, and genuine input with no settle
+                // of either kind clears a stale guard (e.g. a refused
+                // navigation armed it with no settle to follow).
+                if (_router != null && _router.IsSettling) _router.NoteUserInput();
+                if (!_coordinator.IsSettling && (_router == null || !_router.IsSettling)) _coordinator.ClearNavigationGuard();
+                return;
+            }
+            if (_router != null && _router.IsSettling) _router.NoteUserInput();
+            else ClearSidebarExpandSuppression();
+        }
+
+        /// <summary>
+        /// Pinned test seam for the FocusTestHarness: drives one input
+        /// through the IDENTICAL code path the ControllerBridge poll
+        /// callback uses (HandleControllerInput above). The harness never
+        /// calls the router or FocusManager directly for input.
+        /// </summary>
+        internal void SimulateFocusInput(string action, bool repeat)
+        {
+            HandleControllerInput(action, repeat);
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+            // App passes the launch arguments as the MainPage navigation
+            // parameter; the harness arms itself from them (or from its
+            // flag file) and stays dormant otherwise. Safe before OnLoaded:
+            // RunIfRequested waits for the shell to be ready.
+            LaunchArguments = e.Parameter as string;
+            FocusTestHarness.RunIfRequested(this, LaunchArguments);
         }
 
         public void SetVideoVisible(bool visible)
@@ -430,13 +503,21 @@ namespace Nuvio
             // Settling-aware guard rule (Fix 2, root cause A): same as the
             // controller callback — clear only when no arrival settle is
             // pending, else hand the press to the router as a takeover.
-            // The old comment here claimed a following navigation re-arms
-            // the guard "before any artifact focus can land"; that was
-            // false — the guard was only re-armed in ContentFrame_Navigated,
-            // after the old page detached, so the framework's synchronous
-            // fallback could land on a sidebar button while the guard was
-            // down. Navigation now arms the guard BEFORE it starts.
-            if (_router != null && _router.IsSettling) _router.NoteUserInput();
+            // Phase 1: the key path stays DISPATCH-FREE (see
+            // FOCUS-MIGRATION.md — the coordinator's 150 ms dedupe covers
+            // directions only, so feeding back/menu/view from here would
+            // double-deliver them, poll + key). Only guard/takeover state
+            // is touched here; the poll path feeds Coordinator.HandleInput
+            // and evaluates the coordinator takeover there. When the flag
+            // is on, a coordinator settle must never be cleared from here,
+            // and a legacy router settle (non-Settings pages) still gets
+            // its takeover evaluated.
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                if (_router != null && _router.IsSettling) _router.NoteUserInput();
+                if (!_coordinator.IsSettling && (_router == null || !_router.IsSettling)) _coordinator.ClearNavigationGuard();
+            }
+            else if (_router != null && _router.IsSettling) _router.NoteUserInput();
             else ClearSidebarExpandSuppression();
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
@@ -617,7 +698,11 @@ namespace Nuvio
             if (_sidebarState == SidebarState.Hidden) return;
             // A deliberate move onto the strip: the back-navigation suppression
             // (if still set) must not swallow a real opening of the menu.
-            ClearSidebarExpandSuppression();
+            // Phase 1: clear through the coordinator when it owns the guard
+            // (it clears the shell bit too); the shell method stays the
+            // low-level bit setter and never delegates back.
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator) _coordinator.ClearNavigationGuard();
+            else ClearSidebarExpandSuppression();
             var button = _activeRoot == "search" ? SearchButton
                 : _activeRoot == "library" ? LibraryButton
                 : _activeRoot == "settings" ? SettingsButton
