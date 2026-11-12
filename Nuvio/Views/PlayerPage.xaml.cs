@@ -27,7 +27,7 @@ namespace Nuvio.Views
     /// subtitles; this page owns the XAML, the ContentDialog menus, focus and
     /// the seek-bar geometry. No playback engine code lives here.
     /// </summary>
-    internal sealed partial class PlayerPage : Page, IPageInputHandler
+    internal sealed partial class PlayerPage : Page, IPageInputHandler, IArrivalFocus
     {
         private sealed class MenuRow
         {
@@ -42,7 +42,6 @@ namespace Nuvio.Views
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private PlayerNavigation _navigationParam;
         private bool _pointerSeeked;
-        private bool _focusedBackOnce;
 
         public PlayerPage()
         {
@@ -106,14 +105,9 @@ namespace Nuvio.Views
             _viewModel.Init(_navigationParam);
             UpdateOsdVisibility();
             ApplySubtitleStyle();
-            if (!_focusedBackOnce)
-            {
-                var _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    if (_focusedBackOnce) return;
-                    if (BackButton.Focus(FocusState.Programmatic)) _focusedBackOnce = true;
-                });
-            }
+            // Arrival focus (fresh or back) is owned by the router's
+            // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
+            // this page — nothing focuses here.
         }
 
         protected override void OnNavigatedFrom(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -122,6 +116,34 @@ namespace Nuvio.Views
             var shell = MainPage.Current;
             if (shell != null) shell.SetVideoVisible(false);
             _viewModel.Dispose();
+        }
+
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: the Back button. Called by the
+        /// router's SettleArrivalFocus, which retries when this returns false.
+        /// Bails out when focus is already inside the page, so a late settle
+        /// never yanks focus away.</summary>
+        public bool TryFocusArrival()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused != null && IsDescendantOf(focused, this)) return true;
+            return BackButton.Focus(FocusState.Programmatic);
+        }
+
+        /// <summary>Back-arrival target: the Back button as well — the player
+        /// has a single arrival target, so any key falls through to arrival.</summary>
+        public bool TryFocusKey(string key)
+        {
+            return TryFocusArrival();
+        }
+
+        /// <summary>Dialog restore (part C): back to the element that opened
+        /// the dialog, else the page's arrival target.</summary>
+        private void RestoreDialogInvoker(UIElement invoker)
+        {
+            if (invoker != null && invoker.Focus(FocusState.Programmatic)) return;
+            TryFocusArrival();
         }
 
         // ---------- ViewModel events ----------
@@ -649,6 +671,9 @@ namespace Nuvio.Views
                 dialog.Opened += (s, e) => first.Focus(FocusState.Programmatic);
             }
             var shell = MainPage.Current;
+            // Part C: remember the invoker (the OSD button that opened the
+            // menu) so focus returns to it when the menu closes.
+            var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             _viewModel.MenuOpen = true;
             try
@@ -659,6 +684,7 @@ namespace Nuvio.Views
             {
                 shell.DialogOpen = false;
                 _viewModel.MenuOpen = false;
+                RestoreDialogInvoker(invoker);
             }
             return choice;
         }
