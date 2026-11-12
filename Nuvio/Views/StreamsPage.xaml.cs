@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Nuvio.Diagnostics;
+using Nuvio.Input;
 using Nuvio.Services;
 using Nuvio.ViewModels;
 using Windows.ApplicationModel.Resources;
@@ -36,13 +37,11 @@ namespace Nuvio.Views
     /// unless the filter changed. No custom input handling: the router owns the
     /// D-pad and back is the frame's GoBack.
     /// </summary>
-    internal sealed partial class StreamsPage : Page
+    internal sealed partial class StreamsPage : Page, IArrivalFocus
     {
         private readonly StreamsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private StreamsNavigation _navigationParam;
-        private bool _focusedFirst;
-        private bool _initialFocusDone;
         private bool _backdropFrontIsA;
         private string _backdropCurrentUrl;
         private int _backdropGeneration;
@@ -57,6 +56,7 @@ namespace Nuvio.Views
             DataContext = _viewModel;
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
+            GotFocus += OnGotFocus;
             _viewModel.EntriesChanged += OnEntriesChanged;
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         }
@@ -153,30 +153,9 @@ namespace Nuvio.Views
             {
                 FocusEntry(focusedOrder.Value);
             }
-            else if (!_initialFocusDone)
-            {
-                // Web focuses the filter row on entry; the first results then
-                // move focus to the first row (see below).
-                _initialFocusDone = true;
-                var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                if (focused == null || !IsDescendantOf(focused, this))
-                {
-                    FocusChip("all");
-                }
-            }
-
-            if (!_focusedFirst && StreamsListView.Items.Count > 0)
-            {
-                _focusedFirst = true;
-                // Land on the first result once some arrive, unless the user
-                // already moved focus into the page (a filter chip still counts
-                // as "not yet placed", as on the web).
-                var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                if (focused == null || !IsDescendantOf(focused, this) || IsDescendantOf(focused, FiltersPanel))
-                {
-                    FocusEntryAt(0);
-                }
-            }
+            // No initial focus here: arrival focus is router-owned (see
+            // TryFocusArrival below); this method only restores focus across
+            // re-renders.
         }
 
         private void RebuildChips()
@@ -258,6 +237,9 @@ namespace Nuvio.Views
             };
             dialog.Opened += (s, e) => dialog.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
+            // Part C: remember the invoker (the focused stream row) so focus
+            // returns to it when the dialog closes instead of being lost.
+            var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             ContentDialogResult result;
             try
@@ -267,6 +249,7 @@ namespace Nuvio.Views
             finally
             {
                 shell.DialogOpen = false;
+                RestoreDialogInvoker(invoker);
             }
             return result == ContentDialogResult.Primary;
         }
@@ -305,34 +288,35 @@ namespace Nuvio.Views
             return null;
         }
 
-        private void FocusChip(string key)
+        private bool FocusChip(string key)
         {
             foreach (var child in FiltersPanel.Children)
             {
                 var button = child as Button;
                 if (button != null && (button.Tag as string) == key)
                 {
-                    button.Focus(FocusState.Programmatic);
-                    return;
+                    return button.Focus(FocusState.Programmatic);
                 }
             }
+            return false;
         }
 
-        private void FocusEntry(int order)
+        private bool FocusEntry(int order)
         {
             for (var i = 0; i < StreamsListView.Items.Count; i++)
             {
                 var row = StreamsListView.Items[i] as StreamRowItem;
                 if (row != null && row.Entry != null && row.Entry.Order == order)
                 {
-                    FocusEntryAt(i);
-                    return;
+                    return FocusEntryAt(i);
                 }
             }
+            return false;
         }
 
-        private void FocusEntryAt(int index)
+        private bool FocusEntryAt(int index)
         {
+            if (index < 0 || index >= StreamsListView.Items.Count) return false;
             var container = StreamsListView.ContainerFromIndex(index) as ListViewItem;
             if (container == null)
             {
@@ -340,7 +324,68 @@ namespace Nuvio.Views
                 StreamsListView.UpdateLayout();
                 container = StreamsListView.ContainerFromIndex(index) as ListViewItem;
             }
-            if (container != null) container.Focus(FocusState.Programmatic);
+            return container != null && container.Focus(FocusState.Programmatic);
+        }
+
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: the "all" filter chip, else the first
+        /// stream row. Called by the router's SettleArrivalFocus, which retries
+        /// when this returns false (chips/rows are not focusable until the
+        /// first render). Bails out when focus is already inside the page, so
+        /// a late settle never yanks focus away.</summary>
+        public bool TryFocusArrival()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused != null && IsDescendantOf(focused, this)) return true;
+            if (FocusChip("all")) return true;
+            if (StreamsListView.Items.Count > 0) return FocusEntryAt(0);
+            return false;
+        }
+
+        /// <summary>Back-arrival target: the chip or stream row for a recorded
+        /// key. Returns false when the key is gone so the router falls back to
+        /// TryFocusArrival. Keys are "chip:" plus the filter-chip key ("all" or
+        /// the addon manifest URL the ViewModel uses as the filter id) or
+        /// "entry:" plus the row's Order (the ViewModel's stable per-load sort
+        /// key, never a stream URL).</summary>
+        public bool TryFocusKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            if (key.StartsWith("chip:", StringComparison.Ordinal))
+            {
+                return FocusChip(key.Substring(5));
+            }
+            if (key.StartsWith("entry:", StringComparison.Ordinal))
+            {
+                int order;
+                if (int.TryParse(key.Substring(6), out order)) return FocusEntry(order);
+                return false;
+            }
+            return false;
+        }
+
+        private void OnGotFocus(object sender, RoutedEventArgs e)
+        {
+            var chipKey = FocusedChipKey();
+            if (!string.IsNullOrEmpty(chipKey))
+            {
+                MainPage.Current?.RecordArrivalFocusKey(GetType(), "chip:" + chipKey);
+                return;
+            }
+            var order = FocusedEntryOrder();
+            if (order.HasValue)
+            {
+                MainPage.Current?.RecordArrivalFocusKey(GetType(), "entry:" + order.Value.ToString());
+            }
+        }
+
+        /// <summary>Dialog restore (part C): back to the element that opened
+        /// the dialog, else the page's arrival target.</summary>
+        private void RestoreDialogInvoker(UIElement invoker)
+        {
+            if (invoker != null && invoker.Focus(FocusState.Programmatic)) return;
+            TryFocusArrival();
         }
 
         private static ScrollViewer FindScrollViewer(DependencyObject root)
