@@ -60,9 +60,13 @@ namespace Nuvio.Views
         private void ApplyFlowDirection(bool rtl)
         {
             FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            // Same page padding as StreamsPage: 40 start / 32 end / 28 top.
-            // Thickness is physical, so the sides flip here.
-            ContentStack.Padding = rtl ? new Thickness(32, 28, 40, 0) : new Thickness(40, 28, 32, 0);
+            // Page padding: the established content pad, 68 start / 32 end /
+            // 28 top (68 = 48 collapsed sidebar + 20 bleed, so the content
+            // edge lands on the sidebar's inner edge, x=912 collapsed in
+            // RTL — the same edge home/search/catalog use). Thickness is
+            // physical, so the sides flip here. (Was 40 start: the rows ran
+            // 28 epx too far toward the sidebar and crowded the screen edge.)
+            ContentStack.Padding = rtl ? new Thickness(32, 28, 68, 0) : new Thickness(68, 28, 32, 0);
         }
 
         protected override void OnNavigatedTo(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
