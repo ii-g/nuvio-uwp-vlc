@@ -27,7 +27,7 @@ namespace Nuvio.Views
     /// subtitles; this page owns the XAML, the ContentDialog menus, focus and
     /// the seek-bar geometry. No playback engine code lives here.
     /// </summary>
-    internal sealed partial class PlayerPage : Page, IPageInputHandler, IArrivalFocus
+    internal sealed partial class PlayerPage : FocusablePage, IPageInputHandler
     {
         private sealed class MenuRow
         {
@@ -105,6 +105,9 @@ namespace Nuvio.Views
             _viewModel.Init(_navigationParam);
             UpdateOsdVisibility();
             ApplySubtitleStyle();
+            // Sync page: the arrival target (Back button) exists in XAML at
+            // navigate time, so the content is ready now.
+            RaiseContentReady();
             // Arrival focus (fresh or back) is owned by the router's
             // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
             // this page — nothing focuses here.
@@ -124,7 +127,7 @@ namespace Nuvio.Views
         /// router's SettleArrivalFocus, which retries when this returns false.
         /// Bails out when focus is already inside the page, so a late settle
         /// never yanks focus away.</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused != null && IsDescendantOf(focused, this)) return true;
@@ -133,18 +136,9 @@ namespace Nuvio.Views
 
         /// <summary>Back-arrival target: the Back button as well — the player
         /// has a single arrival target, so any key falls through to arrival.</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             return TryFocusArrival();
-        }
-
-        /// <summary>Dialog restore (part C): back to the element that opened
-        /// the dialog, else the page's arrival target.</summary>
-        private void RestoreDialogInvoker(UIElement invoker)
-        {
-            var control = invoker as Control;
-            if (control != null && control.Focus(FocusState.Programmatic)) return;
-            TryFocusArrival();
         }
 
         // ---------- ViewModel events ----------
