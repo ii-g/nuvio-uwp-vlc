@@ -111,6 +111,8 @@
     <Compile Include="ViewModels\StreamsViewModel.cs" />
     <Compile Include="ViewModels\PlayerViewModel.cs" />
     <Compile Include="ViewModels\SettingsViewModel.cs" />
+    <!-- Fix 2: shared focus base class for every hosted page. -->
+    <Compile Include="Views\FocusablePage.cs" />
     <Compile Include="Views\StreamsPage.xaml.cs">
       <DependentUpon>StreamsPage.xaml</DependentUpon>
     </Compile>
