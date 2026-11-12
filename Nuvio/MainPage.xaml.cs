@@ -56,6 +56,7 @@ namespace Nuvio
         internal LibraryService Library { get; private set; }
         internal ProgressService Progress { get; private set; }
         internal NavigationService Navigation { get; private set; }
+        public PlayerService PlayerService { get; private set; }
 
         /// <summary>True while a ContentDialog is open; pauses the controller (see NativeInputRouter).</summary>
         public bool DialogOpen
@@ -225,6 +226,7 @@ namespace Nuvio
             Progress = new ProgressService(Store);
             Stremio = new StremioService(Store);
             Navigation = new NavigationService(ContentFrame, Settings);
+            PlayerService = new PlayerService(_player, Settings);
             _router = new NativeInputRouter(this, ContentFrame, Navigation);
             _controller = new ControllerBridge((action, repeat) =>
             {
@@ -261,6 +263,14 @@ namespace Nuvio
             // Manifests refresh in the background; Home already shows cached catalogs meanwhile.
             _ = Stremio.RefreshStaleManifestsAsync();
             CreateVideoView();
+        }
+
+        public void SetVideoVisible(bool visible)
+        {
+            if (ShellGrid == null) return;
+            ShellGrid.Background = visible
+                ? new SolidColorBrush(Colors.Transparent)
+                : new SolidColorBrush(Color.FromArgb(0xFF, 0x0D, 0x0E, 0x13));
         }
 
         public void ShowToast(string message, string kind = "info", int durationMs = 3000)
@@ -488,7 +498,7 @@ namespace Nuvio
             // sidebar strip while one is open, and restore it on any other
             // page — back navigation included, since Frame.GoBack raises
             // Navigated too.
-            if (e.Content is DetailsPage || e.Content is CatalogPage)
+            if (e.Content is DetailsPage || e.Content is CatalogPage || e.Content is PlayerPage)
             {
                 HideSidebar();
             }
@@ -959,8 +969,19 @@ namespace Nuvio
 
         private void OnWindowVisibilityChanged(object sender, VisibilityChangedEventArgs e)
         {
-            // Nothing to forward in M1 (the web bridge is gone); visibility handling returns
-            // with the player in M4.
+            // M4: pause playback when the window is hidden (e.g. the user
+            // switches away); nothing else is forwarded here.
+            if (!e.Visible && PlayerService != null && PlayerService.IsPlaying)
+            {
+                try
+                {
+                    PlayerService.Pause();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Pausing playback on window hide failed", ex);
+                }
+            }
         }
     }
 }
