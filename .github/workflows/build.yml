@@ -317,11 +317,12 @@ jobs:
 
       - name: Trust sideload certificate
         shell: pwsh
+        timeout-minutes: 2        
         run: |
-          # Self-signed certs must be trusted before Add-AppxPackage accepts them
-          # (Microsoft Learn: import the public .cer into CurrentUser\Root — Trusted Root, required by AppX signature validation — as well as CurrentUser\TrustedPeople).
-          Import-Certificate -FilePath smoke\NuvioUWP.cer -CertStoreLocation Cert:\CurrentUser\Root
-          Import-Certificate -FilePath smoke\NuvioUWP.cer -CertStoreLocation Cert:\CurrentUser\TrustedPeople
+      # Import-Certificate hangs on the Root store in non-interactive sessions
+      # (it waits on a security prompt), so use certutil instead.
+      certutil -user -addstore -f Root smoke\NuvioUWP.cer
+      certutil -user -addstore -f TrustedPeople smoke\NuvioUWP.cer
 
       - name: Install and launch
         id: launch
