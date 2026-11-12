@@ -18,13 +18,12 @@ namespace Nuvio.Input
     /// integration worker can swap the router's calls for these one by one
     /// behind the UseFocusCoordinator rollback flag.
     ///
-    /// NOT wired in yet: nothing constructs this class in the running app,
-    /// and constructing it changes no behaviour (no subscriptions, no
-    /// timers started, no focus moves). All work happens only when its
-    /// methods are called. Row/edge moves stay in the router until Phase 2;
-    /// the moveFocus / handleBack delegates are the router's existing
-    /// MoveFocus / HandleBack. Restore-on-close stays with the pages until
-    /// Phase 3. The integration worker also adds this file to Nuvio.csproj
+    /// Row/edge moves live here since Phase 2 (port of the router's
+    /// MoveFocus and its helpers, reading this coordinator's registry);
+    /// the router's MoveFocus stays as the legacy rollback path. The
+    /// handleBack delegate is the router's existing HandleBack.
+    /// Restore-on-close stays with the pages until Phase 3. The
+    /// integration worker also adds this file to Nuvio.csproj
     /// (legacy project: Compile items are listed explicitly).
     /// </summary>
     internal sealed class FocusCoordinator
@@ -34,8 +33,14 @@ namespace Nuvio.Input
 
         private readonly MainPage _shell;
         private readonly Frame _frame;
-        private readonly Action<FocusNavigationDirection> _moveFocus;
         private readonly Action _handleBack;
+
+        // Coordinator-owned scroll engine (Phase 2): one shared
+        // FocusScrollHelper for all pages, replacing the per-page
+        // instances (discarded on navigation). RequestArrival resets
+        // the row anchor on every new navigation, matching that
+        // lifecycle.
+        private readonly FocusScrollHelper _scrollHelper = new FocusScrollHelper();
 
         // Same-direction dedupe as the router: one physical press can reach
         // the app twice within 150 ms (poll + native key handling). The
@@ -162,13 +167,14 @@ namespace Nuvio.Input
         /// integration worker; Phase 1 needs nothing from it (back is
         /// delegated to handleBack, and navigation itself stays behind
         /// NavigationService's choke-point). Phase 2 stores it when the
-        /// row model needs it.
+        /// row model needs it. Row/edge moves are the coordinator's own
+        /// MoveFocus (Phase 2 port of the router's); back is delegated
+        /// to handleBack, the router's existing HandleBack.
         /// </summary>
-        public FocusCoordinator(MainPage shell, Frame frame, NavigationService navigation, Action<FocusNavigationDirection> moveFocus, Action handleBack)
+        public FocusCoordinator(MainPage shell, Frame frame, NavigationService navigation, Action handleBack)
         {
             _shell = shell;
             _frame = frame;
-            _moveFocus = moveFocus;
             _handleBack = handleBack;
         }
 
@@ -317,12 +323,13 @@ namespace Nuvio.Input
         }
 
         /// <summary>
-        /// Single input entry point (port of NativeInputRouter.Handle, minus
-        /// the row/edge logic that moves in Phase 2): dialog gate, then
-        /// 150 ms same-direction dedupe, then page-first via
-        /// IPageInputHandler, then the global switch. The moveFocus /
-        /// handleBack delegates are the router's existing MoveFocus /
-        /// HandleBack. The takeover check runs after dispatch on every exit
+        /// Single input entry point (port of NativeInputRouter.Handle):
+        /// dialog gate, then 150 ms same-direction dedupe, then
+        /// page-first via IPageInputHandler, then the global switch.
+        /// Row/edge moves are the coordinator's own MoveFocus (Phase 2
+        /// port of the router's, reading this coordinator's registry);
+        /// back is delegated to handleBack, the router's HandleBack.
+        /// The takeover check runs after dispatch on every exit
         /// path (dialog-gated and deduped presses included) — this is the
         /// coordinator's NoteUserInput, folded in here because the interface
         /// exposes no separate method for it; it mirrors MainPage calling
@@ -359,16 +366,16 @@ namespace Nuvio.Input
             switch (action)
             {
                 case "up":
-                    _moveFocus(FocusNavigationDirection.Up);
+                    MoveFocus(FocusNavigationDirection.Up);
                     break;
                 case "down":
-                    _moveFocus(FocusNavigationDirection.Down);
+                    MoveFocus(FocusNavigationDirection.Down);
                     break;
                 case "left":
-                    _moveFocus(FocusNavigationDirection.Left);
+                    MoveFocus(FocusNavigationDirection.Left);
                     break;
                 case "right":
-                    _moveFocus(FocusNavigationDirection.Right);
+                    MoveFocus(FocusNavigationDirection.Right);
                     break;
                 case "select":
                     // XAML activates the focused element natively; nothing to do here.
@@ -388,6 +395,213 @@ namespace Nuvio.Input
                     // Continue Watching card, which the page handles above via IPageInputHandler.
                     break;
             }
+        }
+
+        /// <summary>
+        /// Row/edge navigation (Phase 2 port of NativeInputRouter.MoveFocus
+        /// and its helpers — same algorithm, same comments — except the
+        /// row memory lookup reads this coordinator's registry
+        /// (TryGetRowFocusKey below) instead of the router's. The router's
+        /// MoveFocus stays untouched as the legacy rollback path.
+        /// </summary>
+        public void MoveFocus(FocusNavigationDirection direction)
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null)
+            {
+                var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
+                if (first != null)
+                {
+                    first.Focus(FocusState.Programmatic);
+                    return;
+                }
+            }
+            if (focused != null && IsEdgeMove(focused, direction)) return;
+            // Vertical moves between rows use per-row remembered position: a
+            // row entered for the first time lands on its first poster; a row
+            // visited before lands on the poster last focused in that row.
+            // Falls through to XYFocus when there is no adjacent row (first/
+            // last row, single-grid pages like Catalog) or the target row is
+            // not a remembered row. HomePage/SearchPage handle up/down only at
+            // their hero/box edges, so in-row vertical moves reach here.
+            if (focused != null && (direction == FocusNavigationDirection.Up || direction == FocusNavigationDirection.Down))
+            {
+                if (TryMoveToAdjacentRow(focused, direction)) return;
+            }
+            // Sidebar → content is a geometric XYFocus move (the page's HandleAction has
+            // no row to index from while focus sits in the strip), and the geometry skips
+            // the row's first card: the strip is expanded (136 epx) while a sidebar button
+            // has focus, so the button (832..952) overlaps the first card (798..886) and
+            // the first card is not strictly to the left of it — XYFocus takes the second
+            // card instead (the web restores the first element instead of measuring).
+            // Pin the landing to index 0 of whatever row the framework picked.
+            bool fromSidebar = false;
+            if (focused != null)
+            {
+                bool sidebarFirst;
+                bool sidebarLast;
+                fromSidebar = _shell.IsSidebarButton(focused, out sidebarFirst, out sidebarLast);
+            }
+            FocusManager.TryMoveFocus(direction);
+            if (fromSidebar)
+            {
+                FocusFirstCardOfEnteredRow();
+            }
+        }
+
+        /// <summary>
+        /// Moves up/down into the adjacent row GridView in visual-tree order
+        /// within the current page (up = previous, down = next), landing on
+        /// the poster's remembered position in that row: the key recorded for
+        /// the row (via IRowFocusInfo's stable row key) when the row was
+        /// visited before, else the row's first poster (index 0). Returns
+        /// false (fall through to XYFocus) when focus is not in a row, there
+        /// is no adjacent GridView, the target row is not a remembered row
+        /// (RowKeyForContainer returns null — e.g. single-grid pages), or
+        /// the target row is empty / unrealized.
+        /// </summary>
+        private bool TryMoveToAdjacentRow(DependencyObject focused, FocusNavigationDirection direction)
+        {
+            var item = FocusScrollHelper.FindAncestorGridViewItem(focused);
+            if (item == null) return false;
+            var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+            if (grid == null) return false;
+            var page = _frame.Content as Page;
+            if (page == null) return false;
+            var grids = new List<GridView>();
+            CollectGridViews(page, grids);
+            var at = grids.IndexOf(grid);
+            if (at < 0) return false;
+            var target = direction == FocusNavigationDirection.Down ? at + 1 : at - 1;
+            if (target < 0 || target >= grids.Count) return false;
+            var targetGrid = grids[target];
+            if (targetGrid.Items.Count == 0) return false;
+            var rowInfo = page as IRowFocusInfo;
+            var rowKey = rowInfo != null ? rowInfo.RowKeyForContainer(targetGrid) : null;
+            if (string.IsNullOrEmpty(rowKey)) return false;
+            var arrival = page as IArrivalFocus;
+            // Row memory is keyed by navigation entry, like arrival focus:
+            // a row visited under one entry must not leak into another.
+            var fp = page as FocusablePage;
+            var entryKey = fp != null && !string.IsNullOrEmpty(fp.EntryKey)
+                ? fp.EntryKey
+                : page.GetType().FullName;
+            if (fp == null)
+            {
+                Log.Write("TryMoveToAdjacentRow: page " + page.GetType().Name + " is not a FocusablePage yet; row memory falls back to the type key");
+            }
+            string savedKey;
+            if (arrival != null && TryGetRowFocusKey(entryKey, rowKey, out savedKey))
+            {
+                if (arrival.TryFocusKey(savedKey)) return true;
+                // Saved poster is gone (item removed): fall through to index 0 below.
+            }
+            var first = targetGrid.ContainerFromIndex(0) as GridViewItem;
+            if (first == null)
+            {
+                targetGrid.ScrollIntoView(targetGrid.Items[0]);
+                targetGrid.UpdateLayout();
+                first = targetGrid.ContainerFromIndex(0) as GridViewItem;
+            }
+            if (first == null) return false;
+            first.Focus(FocusState.Programmatic);
+            return true;
+        }
+
+        /// <summary>Collects every GridView under a root in visual-tree (document) order — the same DFS order as SearchPage.FindFirstGridView.</summary>
+        private static void CollectGridViews(DependencyObject root, List<GridView> grids)
+        {
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var grid = child as GridView;
+                if (grid != null)
+                {
+                    grids.Add(grid);
+                }
+                CollectGridViews(child, grids);
+            }
+        }
+
+        /// <summary>
+        /// After a sidebar → content move, the focus may sit on any card of the row the
+        /// framework picked; move it to that row's first card (index 0 in flow order).
+        /// No-op when focus did not land in a row (e.g. the hero) or is already on the
+        /// first card. Scrolls the row to the start first when the first container is
+        /// virtualized away.
+        /// </summary>
+        private void FocusFirstCardOfEnteredRow()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            var item = focused != null ? FocusScrollHelper.FindAncestorGridViewItem(focused) : null;
+            if (item == null) return;
+            var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+            if (grid == null || grid.Items.Count == 0) return;
+            if (grid.IndexFromContainer(item) == 0) return;
+            var first = grid.ContainerFromIndex(0) as GridViewItem;
+            if (first == null)
+            {
+                grid.ScrollIntoView(grid.Items[0]);
+                grid.UpdateLayout();
+                first = grid.ContainerFromIndex(0) as GridViewItem;
+            }
+            if (first != null) first.Focus(FocusState.Programmatic);
+        }
+
+        /// <summary>
+        /// Moves that must stop dead instead of letting XYFocus carry focus somewhere else:
+        /// past the last card of a row (the old code dropped to the next row) and past
+        /// either end of the sidebar (which also collapsed the strip and threw focus into
+        /// the content). The row's start edge is left open on purpose: pressing toward the
+        /// sidebar there returns to the sidebar, as in the web UI.
+        /// </summary>
+        private bool IsEdgeMove(DependencyObject focused, FocusNavigationDirection direction)
+        {
+            if (direction == FocusNavigationDirection.Left || direction == FocusNavigationDirection.Right)
+            {
+                var item = FocusScrollHelper.FindAncestorGridViewItem(focused);
+                if (item != null)
+                {
+                    var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+                    if (grid != null)
+                    {
+                        var index = grid.IndexFromContainer(item);
+                        var rtl = grid.FlowDirection == FlowDirection.RightToLeft;
+                        var forward = rtl ? direction == FocusNavigationDirection.Left : direction == FocusNavigationDirection.Right;
+                        if (forward && index >= 0 && index == grid.Items.Count - 1) return true;
+                    }
+                }
+            }
+            if (direction == FocusNavigationDirection.Up || direction == FocusNavigationDirection.Down)
+            {
+                bool isFirst;
+                bool isLast;
+                if (_shell.IsSidebarButton(focused, out isFirst, out isLast))
+                {
+                    if (direction == FocusNavigationDirection.Up && isFirst) return true;
+                    if (direction == FocusNavigationDirection.Down && isLast) return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Pins the focused card to its row's start edge and the row to ~16% of the page (shared scroll engine; delegates to FocusScrollHelper).</summary>
+        public void AnchorFocusedRowElement(DependencyObject focused, ScrollViewer pageScroller)
+        {
+            _scrollHelper.AnchorFocusedRowElement(focused, pageScroller);
+        }
+
+        /// <summary>Scrolls the minimal amount to reveal a card of a wrapping grid (shared scroll engine; delegates to FocusScrollHelper).</summary>
+        public void KeepGridItemInView(GridView grid, GridViewItem item)
+        {
+            _scrollHelper.KeepGridItemInView(grid, item);
+        }
+
+        /// <summary>Stops every running scroll glide (shared scroll engine; delegates to FocusScrollHelper.Stop).</summary>
+        public void StopScrolling()
+        {
+            _scrollHelper.Stop();
         }
 
         /// <summary>
@@ -412,6 +626,10 @@ namespace Nuvio.Input
         /// </summary>
         public void RequestArrival(FocusablePage page, bool isBack)
         {
+            // New navigation means fresh row-anchor state for the shared
+            // scroll engine, matching the discarded per-page instance
+            // lifecycle.
+            _scrollHelper.ResetRowAnchor();
             StopSettle(clearGuard: false);
             if (page == null)
             {
@@ -845,10 +1063,11 @@ namespace Nuvio.Input
         /// visible, enabled, and in the live tree — nothing happens. If
         /// not, focus moves in order: (a) the same recorded key if it
         /// still resolves (via the page's TryFocusKey); (b) nearest valid
-        /// sibling in the same container — DEFERRED to Phase 2, which
-        /// adds the row model this needs to pick a sibling reliably;
-        /// (c) the page arrival target. Never leaves focus null: the
-        /// last resort is the frame's first focusable element.
+        /// sibling in the same container (Phase 2 row model); (c) the
+        /// page arrival target. Never leaves focus null: the last resort
+        /// is the frame's first focusable element. Has NO callers today —
+        /// the step (b) implementation below was added in Phase 2 ahead
+        /// of the callers that will use it.
         /// </summary>
         public void NotifyContentChanged(FocusablePage page)
         {
@@ -860,6 +1079,32 @@ namespace Nuvio.Input
                 if (!string.IsNullOrEmpty(page.EntryKey) && TryGetLastFocusKey(page.EntryKey, out key))
                 {
                     if (page.TryFocusKey(key) && IsFocusValid(CurrentFocused)) return;
+                }
+                // (b) Nearest valid sibling in the same container: the
+                // focused element's GridViewItem (if any) gives the row
+                // and index; search outward (index-1, index+1, index-2,
+                // index+2, ...) for the nearest container that is
+                // Visible and enabled, realizing virtualized containers
+                // via ScrollIntoView + UpdateLayout (same pattern as
+                // TryFocusKey in the pages). Focus it and return if
+                // focus is now valid. No GridViewItem ancestor, or no
+                // valid sibling, falls through to (c) below.
+                var currentItem = FocusScrollHelper.FindAncestorGridViewItem(CurrentFocused);
+                if (currentItem != null)
+                {
+                    var grid = ItemsControl.ItemsControlFromItemContainer(currentItem) as GridView;
+                    if (grid != null)
+                    {
+                        var index = grid.IndexFromContainer(currentItem);
+                        if (index >= 0)
+                        {
+                            for (var distance = 1; distance < grid.Items.Count; distance++)
+                            {
+                                if (TryFocusSibling(grid, index - distance) && IsFocusValid(CurrentFocused)) return;
+                                if (TryFocusSibling(grid, index + distance) && IsFocusValid(CurrentFocused)) return;
+                            }
+                        }
+                    }
                 }
                 if (page.TryFocusArrival() && IsFocusValid(CurrentFocused)) return;
             }
@@ -876,6 +1121,30 @@ namespace Nuvio.Input
             {
                 // Last resort is best-effort; focus may stay where it is.
             }
+        }
+
+        /// <summary>
+        /// Focuses the container at one index of a GridView for step (b)
+        /// of NotifyContentChanged. False when the index is out of range,
+        /// the container cannot be realized, or it is collapsed/disabled
+        /// (the caller then tries the next outward index). A virtualized
+        /// container is realized via ScrollIntoView + UpdateLayout, the
+        /// same pattern as TryFocusKey in the pages. Returns the Focus()
+        /// result: true only when focus was actually set on the candidate.
+        /// </summary>
+        private bool TryFocusSibling(GridView grid, int candidateIndex)
+        {
+            if (candidateIndex < 0 || candidateIndex >= grid.Items.Count) return false;
+            var candidate = grid.ContainerFromIndex(candidateIndex) as GridViewItem;
+            if (candidate == null)
+            {
+                grid.ScrollIntoView(grid.Items[candidateIndex]);
+                grid.UpdateLayout();
+                candidate = grid.ContainerFromIndex(candidateIndex) as GridViewItem;
+            }
+            if (candidate == null) return false;
+            if (candidate.Visibility != Visibility.Visible || !candidate.IsEnabled) return false;
+            return candidate.Focus(FocusState.Programmatic);
         }
 
         private bool IsFocusValid(DependencyObject focused)
