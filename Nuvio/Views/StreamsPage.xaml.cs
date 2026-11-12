@@ -1,7 +1,9 @@
 using System;
+using System.Threading.Tasks;
 using Nuvio.Diagnostics;
 using Nuvio.Services;
 using Nuvio.ViewModels;
+using Windows.ApplicationModel.Resources;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -37,6 +39,7 @@ namespace Nuvio.Views
     internal sealed partial class StreamsPage : Page
     {
         private readonly StreamsViewModel _viewModel;
+        private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private StreamsNavigation _navigationParam;
         private bool _focusedFirst;
         private bool _initialFocusDone;
@@ -50,11 +53,18 @@ namespace Nuvio.Views
             NavigationCacheMode = Windows.UI.Xaml.Navigation.NavigationCacheMode.Disabled;
             var shell = MainPage.Current;
             _viewModel = new StreamsViewModel(shell.Stremio, shell.Settings, shell.Navigation);
+            _viewModel.Debrid = shell.Debrid;
             DataContext = _viewModel;
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             _viewModel.EntriesChanged += OnEntriesChanged;
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        }
+
+        private string S(string key, string fallback)
+        {
+            var text = _strings.GetString(key);
+            return string.IsNullOrEmpty(text) ? fallback : text;
         }
 
         private void ApplyFlowDirection(bool rtl)
@@ -201,20 +211,67 @@ namespace Nuvio.Views
             if (scrollViewer != null) scrollViewer.ChangeView(null, 0, null, true);
         }
 
-        private void StreamsListView_ItemClick(object sender, ItemClickEventArgs e)
+        private async void StreamsListView_ItemClick(object sender, ItemClickEventArgs e)
         {
             var row = e.ClickedItem as StreamRowItem;
             if (row == null || row.Entry == null) return;
-            var toast = _viewModel.Play(row.Entry);
-            if (toast != null)
+            StreamsViewModel.PlayResult result;
+            try
             {
-                MainPage.Current.ShowToast(toast, "error");
+                result = await _viewModel.PlayAsync(row.Entry).ConfigureAwait(true);
             }
+            catch (Exception ex)
+            {
+                Log.Error("Playing stream failed", ex);
+                return;
+            }
+            if (result != null && result.Toast != null)
+            {
+                MainPage.Current.ShowToast(result.Toast, "error");
+            }
+            if (result != null && result.OfferDebridSettings)
+            {
+                var open = await ShowDebridSettingsDialogAsync().ConfigureAwait(true);
+                if (open)
+                {
+                    MainPage.Current.Navigation.NavigateSettings("debrid");
+                }
+            }
+        }
+
+        /// <summary>Invalid-key dialog (DetailsPage pattern): primary opens debrid settings.</summary>
+        private async Task<bool> ShowDebridSettingsDialogAsync()
+        {
+            var dialog = new ContentDialog
+            {
+                Title = S("StreamsDebridInvalidKeyTitle", "Debrid key invalid"),
+                Content = new TextBlock
+                {
+                    Text = S("StreamsDebridInvalidKeyMessage", "Your debrid key is no longer valid. Open debrid settings to check it and enter a new key."),
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                PrimaryButtonText = S("StreamsOpenDebridSettings", "Open debrid settings"),
+                CloseButtonText = S("Cancel", "Cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            dialog.Opened += (s, e) => dialog.Focus(FocusState.Programmatic);
+            var shell = MainPage.Current;
+            shell.DialogOpen = true;
+            ContentDialogResult result;
+            try
+            {
+                result = await dialog.ShowAsync().AsTask().ConfigureAwait(true);
+            }
+            finally
+            {
+                shell.DialogOpen = false;
+            }
+            return result == ContentDialogResult.Primary;
         }
 
         private void ManageAddonsButton_Click(object sender, RoutedEventArgs e)
         {
-            MainPage.Current.Navigation.NavigateRoot("settings");
+            MainPage.Current.Navigation.NavigateSettings("addons");
         }
 
         // ---------- Focus restore ----------
