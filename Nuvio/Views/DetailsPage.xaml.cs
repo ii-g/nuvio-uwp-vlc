@@ -207,12 +207,15 @@ namespace Nuvio.Views
 
         // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
 
-        /// <summary>Fresh-arrival target: the Play button. Called by the router's
-        /// SettleArrivalFocus, which retries when this returns false (the button
-        /// is not focusable until the content loads).</summary>
+        /// <summary>Fresh-arrival target: the Play button; on a load error
+        /// the hero (and Play) is collapsed with the content, so the error
+        /// panel's Retry button is the arrival target instead. Called by
+        /// the router's SettleArrivalFocus, which retries when this returns
+        /// false.</summary>
         public override bool TryFocusArrival()
         {
-            return PlayButton.Focus(FocusState.Programmatic);
+            if (PlayButton.Focus(FocusState.Programmatic)) return true;
+            return RetryButton.Focus(FocusState.Programmatic);
         }
 
         /// <summary>Back-arrival target: the episode for a recorded "video:" key.
