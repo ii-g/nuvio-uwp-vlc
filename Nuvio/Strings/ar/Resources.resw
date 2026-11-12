@@ -482,4 +482,220 @@
   <data name="PlayerChooseAnotherSource" xml:space="preserve">
     <value>اختر مصدراً آخر</value>
   </data>
+  <data name="SettingsAbout" xml:space="preserve">
+    <value>حول</value>
+  </data>
+  <data name="SettingsAboutDescription" xml:space="preserve">
+    <value>الإصدارات والتراخيص</value>
+  </data>
+  <data name="SettingsAccount" xml:space="preserve">
+    <value>الحساب</value>
+  </data>
+  <data name="SettingsAccountDescription" xml:space="preserve">
+    <value>سجّل الدخول لمزامنة الإضافات والمكتبة والتقدّم</value>
+  </data>
+  <data name="SettingsAddonActive" xml:space="preserve">
+    <value>نشطة</value>
+  </data>
+  <data name="SettingsAddonCatalogs" xml:space="preserve">
+    <value>{0} كتالوجات</value>
+  </data>
+  <data name="SettingsAddonConfigurable" xml:space="preserve">
+    <value>قابلة للإعداد</value>
+  </data>
+  <data name="SettingsAddonDisabled" xml:space="preserve">
+    <value>معطّلة</value>
+  </data>
+  <data name="SettingsAddonInstalled" xml:space="preserve">
+    <value>تم تثبيت {0}</value>
+  </data>
+  <data name="SettingsAddonRefreshed" xml:space="preserve">
+    <value>تم تحديث الإضافة</value>
+  </data>
+  <data name="SettingsAddonUnavailable" xml:space="preserve">
+    <value>غير متاحة</value>
+  </data>
+  <data name="SettingsAddonUrlLabel" xml:space="preserve">
+    <value>رابط الإضافة</value>
+  </data>
+  <data name="SettingsAddons" xml:space="preserve">
+    <value>الإضافات</value>
+  </data>
+  <data name="SettingsAddonsDescription" xml:space="preserve">
+    <value>ثبّت الإضافات وأزلها وحدّثها ورتّب مصادر المحتوى</value>
+  </data>
+  <data name="SettingsAddonsHint" xml:space="preserve">
+    <value>الصق رابط manifest الخاص بالإضافة (من صفحة إعداداتها). إضافات Debrid مثل Torrentio وComet وMediaFusion وAIOStreams المُعدّة مع Real-Debrid أو AllDebrid أو Premiumize أو TorBox تعطي روابط مباشرة تُشغَّل على هذا الجهاز.</value>
+  </data>
+  <data name="SettingsAddonsReset" xml:space="preserve">
+    <value>تمت إعادة تعيين الإضافات</value>
+  </data>
+  <data name="SettingsAddonsTitle" xml:space="preserve">
+    <value>الإضافات</value>
+  </data>
+  <data name="SettingsAppearance" xml:space="preserve">
+    <value>المظهر</value>
+  </data>
+  <data name="SettingsAppearanceDescription" xml:space="preserve">
+    <value>تخطيط الرئيسية والسمة</value>
+  </data>
+  <data name="SettingsCheckingAddon" xml:space="preserve">
+    <value>جارٍ فحص الإضافة…</value>
+  </data>
+  <data name="SettingsCheckingKey" xml:space="preserve">
+    <value>جارٍ فحص المفتاح…</value>
+  </data>
+  <data name="SettingsConfigureAddon" xml:space="preserve">
+    <value>إعداد</value>
+  </data>
+  <data name="SettingsConfigureFailed" xml:space="preserve">
+    <value>تعذّر فتح صفحة إعدادات الإضافة</value>
+  </data>
+  <data name="SettingsDebrid" xml:space="preserve">
+    <value>Debrid</value>
+  </data>
+  <data name="SettingsDebridConnect" xml:space="preserve">
+    <value>اتصال</value>
+  </data>
+  <data name="SettingsDebridConnectHeader" xml:space="preserve">
+    <value>اتصل بخدمة</value>
+  </data>
+  <data name="SettingsDebridConnected" xml:space="preserve">
+    <value>تم الاتصال بـ {0}</value>
+  </data>
+  <data name="SettingsDebridConnectedDescription" xml:space="preserve">
+    <value>متصل. نتائج التورنت ستظهر «عبر {0}» وتُشغَّل من خلاله.</value>
+  </data>
+  <data name="SettingsDebridConnectedValue" xml:space="preserve">
+    <value>متصل</value>
+  </data>
+  <data name="SettingsDebridDescription" xml:space="preserve">
+    <value>شغّل نتائج التورنت عبر Real-Debrid أو TorBox أو Premiumize</value>
+  </data>
+  <data name="SettingsDebridHint" xml:space="preserve">
+    <value>الإضافات التي تتضمن خدمة Debrid أصلًا (Torrentio وComet وAIOStreams...) تعمل بدون هذا. اتصل بخدمة هنا لتشغيل نتائج التورنت العادية أيضًا: الخدمة تجلب التورنت وهذا الجهاز يشغّل الملف الذي تقدّمه. النتائج المخزّنة لدى الخدمة فقط هي التي تُشغَّل مباشرة.</value>
+  </data>
+  <data name="SettingsDebridKeyFrom" xml:space="preserve">
+    <value>مفتاح API من {0}</value>
+  </data>
+  <data name="SettingsDebridKeyLabel" xml:space="preserve">
+    <value>مفتاح {0} API — تجده في {1}</value>
+  </data>
+  <data name="SettingsDebridKeyRejected" xml:space="preserve">
+    <value>{0} لم يقبل هذا المفتاح.</value>
+  </data>
+  <data name="SettingsDebridTitle" xml:space="preserve">
+    <value>Debrid</value>
+  </data>
+  <data name="SettingsDebridUnavailable" xml:space="preserve">
+    <value>خدمة Debrid غير متاحة بعد.</value>
+  </data>
+  <data name="SettingsDebridUnreachable" xml:space="preserve">
+    <value>تعذّر الوصول إلى {0}: {1}</value>
+  </data>
+  <data name="SettingsDevice" xml:space="preserve">
+    <value>الجهاز</value>
+  </data>
+  <data name="SettingsDeviceDescription" xml:space="preserve">
+    <value>خيارات يد التحكم والتطبيق</value>
+  </data>
+  <data name="SettingsDisableAddon" xml:space="preserve">
+    <value>تعطيل</value>
+  </data>
+  <data name="SettingsDisconnect" xml:space="preserve">
+    <value>قطع الاتصال</value>
+  </data>
+  <data name="SettingsDisconnectDebridMessage" xml:space="preserve">
+    <value>ستُخفى نتائج التورنت من جديد.</value>
+  </data>
+  <data name="SettingsDisconnectDebridRow" xml:space="preserve">
+    <value>قطع الاتصال بـ {0}</value>
+  </data>
+  <data name="SettingsDisconnectDebridTitle" xml:space="preserve">
+    <value>قطع الاتصال بـ {0}؟</value>
+  </data>
+  <data name="SettingsEnableAddon" xml:space="preserve">
+    <value>تفعيل</value>
+  </data>
+  <data name="SettingsInstallAddon" xml:space="preserve">
+    <value>تثبيت إضافة</value>
+  </data>
+  <data name="SettingsInstallFailed" xml:space="preserve">
+    <value>فشل التثبيت: {0}</value>
+  </data>
+  <data name="SettingsIntegrations" xml:space="preserve">
+    <value>التكاملات</value>
+  </data>
+  <data name="SettingsIntegrationsDescription" xml:space="preserve">
+    <value>خوادم Trakt وJellyfin وEmby وTMDB</value>
+  </data>
+  <data name="SettingsInvalidAddonUrl" xml:space="preserve">
+    <value>أدخل رابط إضافة صحيحًا يبدأ بـ http:// أو https://</value>
+  </data>
+  <data name="SettingsMoveDown" xml:space="preserve">
+    <value>نقل لأسفل</value>
+  </data>
+  <data name="SettingsMoveUp" xml:space="preserve">
+    <value>نقل لأعلى</value>
+  </data>
+  <data name="SettingsNoAddonsMessage" xml:space="preserve">
+    <value>أضف رابط manifest لبدء تحميل الكتالوجات والبيانات والمصادر والترجمة في Nuvio.</value>
+  </data>
+  <data name="SettingsNoAddonsTitle" xml:space="preserve">
+    <value>لا توجد إضافات مثبّتة بعد.</value>
+  </data>
+  <data name="SettingsPlayback" xml:space="preserve">
+    <value>التشغيل</value>
+  </data>
+  <data name="SettingsPlaybackDescription" xml:space="preserve">
+    <value>اللغات والاستئناف والحلقة التالية والمصادر</value>
+  </data>
+  <data name="SettingsRefreshAddon" xml:space="preserve">
+    <value>تحديث</value>
+  </data>
+  <data name="SettingsRefreshFailed" xml:space="preserve">
+    <value>فشل التحديث: {0}</value>
+  </data>
+  <data name="SettingsRemoveAddonMessage" xml:space="preserve">
+    <value>حذف {0}؟</value>
+  </data>
+  <data name="SettingsRemoveAddonTitle" xml:space="preserve">
+    <value>حذف الإضافة؟</value>
+  </data>
+  <data name="SettingsReset" xml:space="preserve">
+    <value>إعادة تعيين</value>
+  </data>
+  <data name="SettingsResetAddonsMessage" xml:space="preserve">
+    <value>سيؤدي هذا إلى إزالة كل إضافاتك وتثبيت Cinemeta وOpenSubtitles من جديد.</value>
+  </data>
+  <data name="SettingsResetAddonsTitle" xml:space="preserve">
+    <value>إعادة تعيين الإضافات؟</value>
+  </data>
+  <data name="SettingsResetToDefaults" xml:space="preserve">
+    <value>إعادة تعيين للافتراضي</value>
+  </data>
+  <data name="SettingsSubtitles" xml:space="preserve">
+    <value>الترجمة</value>
+  </data>
+  <data name="SettingsSubtitlesDescription" xml:space="preserve">
+    <value>حجم ولون وموضع ترجمة الإضافات</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>الإعدادات</value>
+  </data>
+  <data name="StreamsDebridInvalidKey" xml:space="preserve">
+    <value>مفتاح Debrid لم يعد صالحًا. تحقق منه في الإعدادات.</value>
+  </data>
+  <data name="StreamsDebridInvalidKeyMessage" xml:space="preserve">
+    <value>مفتاح Debrid لم يعد صالحًا. افتح إعدادات Debrid للتحقق منه وإدخال مفتاح جديد.</value>
+  </data>
+  <data name="StreamsDebridInvalidKeyTitle" xml:space="preserve">
+    <value>مفتاح Debrid غير صالح</value>
+  </data>
+  <data name="StreamsDebridResolveFailed" xml:space="preserve">
+    <value>تعذّر حل هذا التورنت عبر خدمة Debrid. حاول مرة أخرى لاحقًا.</value>
+  </data>
+  <data name="StreamsOpenDebridSettings" xml:space="preserve">
+    <value>فتح إعدادات Debrid</value>
+  </data>
 </root>
