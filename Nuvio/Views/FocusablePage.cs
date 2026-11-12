@@ -134,8 +134,24 @@ namespace Nuvio.Views
                 // are never arrival keys in this app; skip them.
                 if (!string.IsNullOrEmpty(tag) && tag.Length > 1)
                 {
+                    // Phase 1 dual-write: the router's registry stays the
+                    // rollback path (every page's legacy settle reads it),
+                    // and the coordinator's registry gets the same key so
+                    // its Settings settle can restore Back arrivals. Same
+                    // key format, same Tag discipline; the flag gates the
+                    // second write. RowKeyForElement is evaluated once and
+                    // shared by both writes.
+                    var rowKey = RowKeyForElement(focused);
                     var shell = MainPage.Current;
-                    if (shell != null) shell.RecordArrivalFocusKey(EntryKey, tag, RowKeyForElement(focused));
+                    if (shell != null)
+                    {
+                        shell.RecordArrivalFocusKey(EntryKey, tag, rowKey);
+                        var coordinator = shell.Coordinator;
+                        if (coordinator != null && FocusCoordinator.UseFocusCoordinator)
+                        {
+                            coordinator.RecordFocus(EntryKey, tag, rowKey);
+                        }
+                    }
                 }
                 return;
             }
