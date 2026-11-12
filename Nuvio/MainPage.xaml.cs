@@ -253,18 +253,18 @@ namespace Nuvio
             _controller = new ControllerBridge((action, repeat) =>
             {
                 _userInputSeen = true;
-                // Settling-aware guard rule (Fix 2, root cause A): a real
-                // controller press clears the navigation suppression ONLY
-                // when no arrival settle is pending. Clearing it blindly
-                // here would clear the guard for the very press (B) that
-                // starts a back navigation, before HandleBack re-arms it —
-                // the old code's race. While a settle is pending the press
-                // is a takeover instead: the router stops settling (and
-                // clears the guard itself, since no settle would be left
-                // to clear it).
+                // Settling-aware guard rule (Fix 2, root cause A; lag fix):
+                // handle the press FIRST, then the takeover decision, so
+                // NoteUserInput sees the press's effect: it cancels the
+                // settle only if focus actually moved. A press that could
+                // not move focus (content not ready yet) leaves the settle
+                // running, so the arrival target still lands. A back press
+                // is safe either way: HandleBack re-arms the guard before
+                // navigating, and the new settle's 200 ms ignore window
+                // covers the duplicate delivery.
+                _router.Handle(action, repeat);
                 if (_router != null && _router.IsSettling) _router.NoteUserInput();
                 else ClearSidebarExpandSuppression();
-                _router.Handle(action, repeat);
             });
 
             try
