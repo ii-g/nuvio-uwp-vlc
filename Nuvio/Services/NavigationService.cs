@@ -83,10 +83,31 @@ namespace Nuvio.Services
 
         public bool CanGoBack { get { return _frame.CanGoBack; } }
 
+        /// <summary>
+        /// Choke-point for EVERY navigation (Fix 2, root cause A): (a) arms
+        /// the sidebar guard BEFORE the frame navigation starts, so the
+        /// framework's synchronous focus fallback can never land on a
+        /// sidebar button while the guard is down; (b) refuses targets
+        /// that are not FocusablePage — the router's settle and the
+        /// entry-keyed registry depend on the base class; (c) performs
+        /// the navigation. Back-stack handling stays with the caller:
+        /// roots clear it, pushes do not.
+        /// </summary>
+        private bool Navigate(Type pageType, object parameter)
+        {
+            MainPage.Current?.ArmSidebarExpandSuppression();
+            if (!typeof(FocusablePage).IsAssignableFrom(pageType))
+            {
+                Log.Write("Navigation refused: " + pageType.Name + " is not a FocusablePage");
+                return false;
+            }
+            return _frame.Navigate(pageType, parameter);
+        }
+
         public void NavigateHome()
         {
             _frame.BackStack.Clear();
-            _frame.Navigate(typeof(HomePage));
+            Navigate(typeof(HomePage), null);
             AppEvents.RaiseRouteChanged("home");
         }
 
@@ -105,7 +126,7 @@ namespace Nuvio.Services
                     NavigatePlaceholder("Library", "Library lands in Milestone 5.", "Milestone 5", "library");
                     break;
                 case "settings":
-                    NavigateSettings(null);
+                    NavigateSettingsRoot();
                     break;
                 default:
                     NavigateHome();
@@ -117,29 +138,49 @@ namespace Nuvio.Services
         public void NavigateSearch(string query)
         {
             _frame.BackStack.Clear();
-            _frame.Navigate(typeof(SearchPage), query);
+            Navigate(typeof(SearchPage), query);
             AppEvents.RaiseRouteChanged("search");
         }
 
-        /// <summary>Sidebar root: the real Settings page (M6). Section "addons" | "debrid" | null.</summary>
-        public void NavigateSettings(string section)
+        /// <summary>
+        /// Sidebar root: the real Settings page (M6) at its root list.
+        /// Root semantics: clears the back stack, then navigates with a
+        /// null section. Section navigation uses NavigateSettings(section),
+        /// which pushes — see below.
+        /// </summary>
+        public void NavigateSettingsRoot()
         {
             _frame.BackStack.Clear();
-            _frame.Navigate(typeof(SettingsPage), new SettingsNavigation { Section = section });
+            Navigate(typeof(SettingsPage), new SettingsNavigation { Section = null });
+            AppEvents.RaiseRouteChanged("settings");
+        }
+
+        /// <summary>
+        /// Settings page, section semantics (Fix 2, root cause D): a PLAIN
+        /// PUSH — Back returns to wherever the section was opened from.
+        /// Section "addons" | "debrid" | null (null = root list pushed, not
+        /// a root navigation; roots use NavigateSettingsRoot). The old
+        /// version cleared the back stack on every call, destroying real
+        /// back history: opening Addons from Home then pressing Back
+        /// skipped Home's restore and lost the section entry.
+        /// </summary>
+        public void NavigateSettings(string section)
+        {
+            Navigate(typeof(SettingsPage), new SettingsNavigation { Section = section });
             AppEvents.RaiseRouteChanged("settings");
         }
 
         /// <summary>"View All" from a Home row (M2): a push, so back returns to Home.</summary>
         public void NavigateCatalog(CatalogNavigation navigation)
         {
-            _frame.Navigate(typeof(CatalogPage), navigation);
+            Navigate(typeof(CatalogPage), navigation);
             AppEvents.RaiseRouteChanged("catalog");
         }
 
         public void NavigatePlaceholder(string title, string message, string milestone, string sidebarRoot = null)
         {
             _frame.BackStack.Clear();
-            _frame.Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
+            Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
             {
                 Title = title,
                 Message = message,
@@ -157,7 +198,7 @@ namespace Nuvio.Services
                 return;
             }
             Log.Write("OpenTitle navigating to details for " + meta.Type + "/" + meta.Id);
-            _frame.Navigate(typeof(DetailsPage), new DetailsNavigation
+            Navigate(typeof(DetailsPage), new DetailsNavigation
             {
                 Type = meta.Type ?? "movie",
                 Id = meta.Id,
@@ -178,7 +219,7 @@ namespace Nuvio.Services
             bool navigated;
             try
             {
-                navigated = _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
+                navigated = Navigate(typeof(StreamsPage), new StreamsNavigation
                 {
                     Type = meta.Type ?? "movie",
                     Id = meta.Id,
@@ -201,7 +242,7 @@ namespace Nuvio.Services
         public void OpenPlayer(Meta meta, Video video, StreamItem stream, List<StreamItem> streams, bool restart, bool fallbackToStreams)
         {
             if (meta == null || stream == null) return;
-            _frame.Navigate(typeof(PlayerPage), new PlayerNavigation
+            Navigate(typeof(PlayerPage), new PlayerNavigation
             {
                 Meta = meta,
                 Video = video,
@@ -235,7 +276,7 @@ namespace Nuvio.Services
                 : null;
             if (!restart && _settings.RememberLastStream && entry.Stream != null && !string.IsNullOrEmpty(entry.Stream.Url))
             {
-                _frame.Navigate(typeof(PlayerPage), new PlayerNavigation
+                Navigate(typeof(PlayerPage), new PlayerNavigation
                 {
                     Meta = meta,
                     Video = video,
@@ -253,6 +294,9 @@ namespace Nuvio.Services
         /// <summary>Back with an empty stack on a non-home root navigates home.</summary>
         public void GoBackOrHome()
         {
+            // Arm the guard before GoBack, like HandleBack: the old page
+            // detaches synchronously and focus can fall back to the strip.
+            MainPage.Current?.ArmSidebarExpandSuppression();
             if (_frame.CanGoBack) _frame.GoBack();
             else NavigateHome();
         }
