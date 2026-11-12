@@ -24,7 +24,7 @@ namespace Nuvio.Views
     /// Home: hero carousel, Continue Watching row, one row per catalog. Ported from views/home.js.
     /// NavigationCacheMode is Required so scroll + focus survive back-navigation.
     /// </summary>
-    internal sealed partial class HomePage : Page, IPageInputHandler
+    internal sealed partial class HomePage : Page, IPageInputHandler, IArrivalFocus, IRowFocusInfo
     {
         private const int HeroIntervalMs = 9000;
         private const int BackdropDebounceMs = 350;
@@ -33,7 +33,6 @@ namespace Nuvio.Views
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private readonly DispatcherTimer _heroTimer;
         private readonly DispatcherTimer _backdropTimer;
-        private bool _focusedOnce;
         private bool _loadedOnce;
         private bool _backdropFrontIsA;
         private string _backdropCurrentUrl;
@@ -94,21 +93,14 @@ namespace Nuvio.Views
             Log.Write("Home page flow direction: " + (FlowDirection == FlowDirection.RightToLeft ? "RTL" : "LTR"));
             _heroTimer.Start();
             // The page is cached, so this runs once; addons/progress events drive later refreshes.
+            // Arrival focus (fresh or back) is owned by the router's SettleArrivalFocus,
+            // which calls TryFocusArrival / TryFocusKey on this page — nothing focuses here.
             if (_loadedOnce)
             {
-                // Back from Details (or a catalog): the framework cannot restore
-                // focus to the card — its GridView container was unrealized while
-                // the page was detached — so focus falls back to HomeButton and
-                // the strip opens. Put focus back on the card the user came from.
-                if (e.NavigationMode == Windows.UI.Xaml.Navigation.NavigationMode.Back) RestoreLastFocus();
                 return;
             }
             _loadedOnce = true;
             await _viewModel.LoadAsync().ConfigureAwait(true);
-            if (!_focusedOnce && (_viewModel.HasHero || _viewModel.IsEmpty))
-            {
-                FocusFirst();
-            }
         }
 
         protected override void OnNavigatedFrom(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -135,98 +127,45 @@ namespace Nuvio.Views
         private void OnViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(HomeViewModel.HeroIndex)) UpdateDots();
-            if (!_focusedOnce && (_viewModel.HasHero || _viewModel.IsEmpty))
-            {
-                FocusFirst();
-            }
         }
 
-        /// <summary>Moves initial focus into the content (hero play button, or the manage
-        /// addons button when the library is empty). Two launch bugs lived here: the
-        /// PropertyChanged handler fires synchronously when HasHero flips, before the
-        /// layout pass makes the hero button focusable, so a direct Focus() returns
-        /// false — and the old code spent the one-shot _focusedOnce flag before calling
-        /// FocusFirst, so the focus was never retried, initial focus stayed on
-        /// HomeButton, and the sidebar stayed open (build 216). The focus is now
-        /// deferred one dispatcher tick (after layout) and the flag is set only when
-        /// Focus() actually lands; a miss is retried by the next property change or
-        /// by OnNavigatedTo after LoadAsync. It also bails out if the user already
-        /// moved focus into the page, so a late tick never yanks focus away.</summary>
-        private void FocusFirst()
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: the hero Play button (or the manage
+        /// addons button when the library is empty). Called by the router's
+        /// SettleArrivalFocus, which retries when this returns false (the hero
+        /// button is not focusable until layout runs). Bails out when focus is
+        /// already inside the page, so a late settle never yanks focus away.</summary>
+        public bool TryFocusArrival()
         {
-            // Fire-and-forget: the IAsyncAction is deliberately not captured, so no
-            // `var _` shadows a later discard (that shadow caused CS0266 in MainPage).
-            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                if (_focusedOnce) return;
-                var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                if (focused != null && IsDescendantOf(focused, this))
-                {
-                    // The user already moved focus into the page: initial focus is done.
-                    _focusedOnce = true;
-                    return;
-                }
-                bool moved = false;
-                if (_viewModel.HasHero)
-                {
-                    moved = HeroPlayButton.Focus(FocusState.Programmatic);
-                }
-                else if (_viewModel.IsEmpty)
-                {
-                    moved = ManageAddonsButton.Focus(FocusState.Programmatic);
-                }
-                else
-                {
-                    // No hero and not empty: nothing to focus here, the input router
-                    // focuses the first focusable element on first input.
-                    _focusedOnce = true;
-                    return;
-                }
-                if (moved) _focusedOnce = true;
-            });
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused != null && IsDescendantOf(focused, this)) return true;
+            if (_viewModel.HasHero) return HeroPlayButton.Focus(FocusState.Programmatic);
+            if (_viewModel.IsEmpty) return ManageAddonsButton.Focus(FocusState.Programmatic);
+            // No hero and not empty: nothing to focus here, the input router
+            // focuses the first focusable element on first input.
+            return false;
         }
 
-        /// <summary>Restores focus to the card (or hero button) the user came from
-        /// after a back-navigation. The framework's own restore fails here: the
-        /// focused GridViewItem container was unrealized while the page was
-        /// detached, so focus falls back to the shell's first focusable element
-        /// (HomeButton) and the strip opens. Deferred one dispatcher tick like
-        /// FocusFirst, and bails out if focus is already inside the page, so a
-        /// late tick never yanks focus away.</summary>
-        private void RestoreLastFocus()
+        /// <summary>Back-arrival target: the card (or hero button) for a recorded
+        /// key. Returns false when the key is gone (card no longer listed) so the
+        /// router falls back to TryFocusArrival. Keys are "hero", "cw:" plus a
+        /// content id, or "meta:" plus a composite row+card key ("meta:" +
+        /// rowKey + "|" + meta id) — the same scheme OnGotFocus records into
+        /// the shell registry. The row in the key pins the card to the RIGHT
+        /// row: the same title can appear in several rows, so a bare meta id
+        /// is not enough. A legacy bare "meta:" key (no row) still resolves
+        /// by searching every row, first match wins.</summary>
+        public bool TryFocusKey(string key)
         {
-            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                try
-                {
-                    var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                    if (focused != null && IsDescendantOf(focused, this)) return;
-                    if (!RestoreLastFocusNow() && !FocusFirstCardOfFirstRow())
-                    {
-                        if (_viewModel.HasHero) HeroPlayButton.Focus(FocusState.Programmatic);
-                    }
-                }
-                finally
-                {
-                    // The navigation-restore artifact window is over either way:
-                    // a real move onto the sidebar from here must expand it again.
-                    MainPage.Current?.ClearSidebarExpandSuppression();
-                }
-            });
-        }
-
-        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
-        /// key is gone (card no longer listed) so the caller falls back.</summary>
-        private bool RestoreLastFocusNow()
-        {
-            if (string.IsNullOrEmpty(_lastFocusedKey)) return false;
-            if (_lastFocusedKey == "hero")
+            if (string.IsNullOrEmpty(key)) return false;
+            if (key == "hero")
             {
                 return _viewModel.HasHero && HeroPlayButton.Focus(FocusState.Programmatic);
             }
-            if (_lastFocusedKey.StartsWith("cw:", StringComparison.Ordinal))
+            if (key.StartsWith("cw:", StringComparison.Ordinal))
             {
-                var contentId = _lastFocusedKey.Substring(3);
+                var contentId = key.Substring(3);
                 for (var i = 0; i < ContinueGridView.Items.Count; i++)
                 {
                     var entry = ContinueGridView.Items[i] as ProgressEntry;
@@ -242,10 +181,22 @@ namespace Nuvio.Views
                 }
                 return false;
             }
-            if (_lastFocusedKey.StartsWith("meta:", StringComparison.Ordinal))
+            if (key.StartsWith("meta:", StringComparison.Ordinal))
             {
-                var metaId = _lastFocusedKey.Substring(5);
-                var grid = FindCardGrid(ContentStack, metaId, out var index);
+                var rest = key.Substring(5);
+                // Composite key: rowKey + "|" + meta id. The row key itself
+                // contains "|" separators, and a meta id never does, so the
+                // LAST "|" is the split point.
+                var sep = rest.LastIndexOf('|');
+                if (sep > 0)
+                {
+                    var rowKey = rest.Substring(0, sep);
+                    var metaId = rest.Substring(sep + 1);
+                    var rowGrid = FindRowGrid(rowKey);
+                    if (rowGrid == null) return false;
+                    return FocusCardInGrid(rowGrid, metaId);
+                }
+                var grid = FindCardGrid(ContentStack, rest, out var index);
                 if (grid == null) return false;
                 var container = grid.ContainerFromIndex(index) as GridViewItem;
                 if (container == null)
@@ -257,6 +208,73 @@ namespace Nuvio.Views
                 return container != null && container.Focus(FocusState.Programmatic);
             }
             return false;
+        }
+
+        /// <summary>Focuses the card for a meta id inside one row grid.
+        /// Returns false when the card is not in that row.</summary>
+        private bool FocusCardInGrid(GridView grid, string metaId)
+        {
+            for (var i = 0; i < grid.Items.Count; i++)
+            {
+                var card = grid.Items[i] as CatalogCardItem;
+                if (card == null || card.Meta == null || card.Meta.Id != metaId) continue;
+                var container = grid.ContainerFromIndex(i) as GridViewItem;
+                if (container == null)
+                {
+                    grid.ScrollIntoView(grid.Items[i]);
+                    grid.UpdateLayout();
+                    container = grid.ContainerFromIndex(i) as GridViewItem;
+                }
+                return container != null && container.Focus(FocusState.Programmatic);
+            }
+            return false;
+        }
+
+        /// <summary>Stable row key for a Home row GridView (IRowFocusInfo):
+        /// "continue" for Continue Watching, "catalog:" + catalog type + "|"
+        /// + catalog id + "|" + addon manifest URL for a catalog row — the
+        /// same catalog identity CatalogPage uses as its key. Data identity,
+        /// never ordinal position: rows appear/disappear (Continue Watching
+        /// empties, addons change) and shift ordinals. Null when the grid is
+        /// not a remembered row (no row view model, or identity incomplete).</summary>
+        public string RowKeyForContainer(GridView grid)
+        {
+            if (grid == null) return null;
+            if (ReferenceEquals(grid, ContinueGridView)) return "continue";
+            var row = grid.DataContext as CatalogRowViewModel;
+            if (row == null || row.Catalog == null || row.Addon == null) return null;
+            if (string.IsNullOrEmpty(row.Catalog.Type) || string.IsNullOrEmpty(row.Catalog.Id) ||
+                string.IsNullOrEmpty(row.Addon.TransportUrl)) return null;
+            return "catalog:" + row.Catalog.Type + "|" + row.Catalog.Id + "|" + row.Addon.TransportUrl;
+        }
+
+        /// <summary>Finds the row GridView for a row key, walking the same
+        /// ContentStack tree FindCardGrid uses. Null when the row is gone
+        /// (emptied, addon removed) so the caller falls back to index 0.</summary>
+        private GridView FindRowGrid(string rowKey)
+        {
+            return FindRowGrid(ContentStack, rowKey);
+        }
+
+        private GridView FindRowGrid(DependencyObject root, string rowKey)
+        {
+            if (root == null || string.IsNullOrEmpty(rowKey)) return null;
+            var grid = root as GridView;
+            if (grid != null && RowKeyForContainer(grid) == rowKey) return grid;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindRowGrid(VisualTreeHelper.GetChild(root, i), rowKey);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        /// <summary>Focuses the element for _lastFocusedKey. Returns false when the
+        /// key is gone (card no longer listed) so the caller falls back.</summary>
+        private bool RestoreLastFocusNow()
+        {
+            return TryFocusKey(_lastFocusedKey);
         }
 
         /// <summary>Finds the row grid holding the card for a meta id, and its index
@@ -964,10 +982,19 @@ namespace Nuvio.Views
             var item = FindAncestorGridViewItem(focused);
             if (item != null)
             {
+                // Per-row memory: the row key travels with the record, and the
+                // card key itself is composite (rowKey + "|" + card id) so
+                // TryFocusKey can pin the card to the right row — the same
+                // title can appear in several rows.
+                var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+                var rowKey = grid != null ? RowKeyForContainer(grid) : null;
                 var card = item.Content as CatalogCardItem;
                 if (card != null && card.Meta != null)
                 {
-                    _lastFocusedKey = "meta:" + card.Meta.Id;
+                    _lastFocusedKey = rowKey != null
+                        ? "meta:" + rowKey + "|" + card.Meta.Id
+                        : "meta:" + card.Meta.Id;
+                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, rowKey);
                     ShowBackdrop(card.Meta.Background);
                     SetBackdropFadeRowState(true);
                     return;
@@ -976,6 +1003,7 @@ namespace Nuvio.Views
                 if (entry != null)
                 {
                     _lastFocusedKey = "cw:" + entry.ContentId;
+                    MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, rowKey);
                     ShowBackdrop(entry.Background);
                     SetBackdropFadeRowState(true);
                     return;
@@ -984,6 +1012,7 @@ namespace Nuvio.Views
             if (IsDescendantOf(focused, HeroSection))
             {
                 _lastFocusedKey = "hero";
+                MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, null);
                 var hero = _viewModel.CurrentHero;
                 // No poster fallback: a 300x450 poster blown up 3.2x is the
                 // "enlarged" look. ShowBackdrop ignores empty, so the previous
@@ -1107,6 +1136,15 @@ namespace Nuvio.Views
             dialog.Content = panel;
             dialog.Opened += (s, e) => detailsButton.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
+            // Dialog restore (part C): remember the card that opened the menu,
+            // and its row index, so focus can come back to it — or to a
+            // neighbour when the card is dismissed below.
+            var invoker = FocusManager.GetFocusedElement() as DependencyObject;
+            var invokerIndex = -1;
+            for (var i = 0; i < ContinueGridView.Items.Count; i++)
+            {
+                if (ReferenceEquals(ContinueGridView.Items[i], entry)) { invokerIndex = i; break; }
+            }
             shell.DialogOpen = true;
             try
             {
@@ -1127,7 +1165,65 @@ namespace Nuvio.Views
             else if (choice == "remove")
             {
                 _viewModel.DismissContinueWatching(entry.ContentId);
+                FocusContinueNeighbour(invokerIndex);
             }
+            else
+            {
+                // Cancelled: back to the card that opened the menu.
+                RestoreDialogInvoker(invoker);
+            }
+        }
+
+        /// <summary>Focuses the element that opened a dialog, once the dialog
+        /// has closed. Deferred one dispatcher tick so the dialog teardown
+        /// finishes first; no-op when the invoker is gone or focus already
+        /// landed inside the page.</summary>
+        private void RestoreDialogInvoker(DependencyObject invoker)
+        {
+            if (invoker == null) return;
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                if (focused != null && IsDescendantOf(focused, this)) return;
+                var control = invoker as Control;
+                if (control != null) control.Focus(FocusState.Programmatic);
+            });
+        }
+
+        /// <summary>After a Continue card is dismissed, focus must land on a
+        /// neighbouring card in the same row — the next card (which slid into
+        /// the removed index), else the previous, else the first card of the
+        /// row — never the sidebar, never nothing. When the row is empty, the
+        /// first card of the first remaining row. Deferred one dispatcher tick
+        /// so the removal reaches the GridView first.</summary>
+        private void FocusContinueNeighbour(int removedIndex)
+        {
+            Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                var count = ContinueGridView.Items.Count;
+                if (count > 0)
+                {
+                    var target = removedIndex >= 0 && removedIndex < count ? removedIndex : count - 1;
+                    var container = ContinueGridView.ContainerFromIndex(target) as GridViewItem;
+                    if (container == null)
+                    {
+                        ContinueGridView.ScrollIntoView(ContinueGridView.Items[target]);
+                        ContinueGridView.UpdateLayout();
+                        container = ContinueGridView.ContainerFromIndex(target) as GridViewItem;
+                    }
+                    if (container != null && container.Focus(FocusState.Programmatic))
+                    {
+                        var neighbour = ContinueGridView.Items[target] as ProgressEntry;
+                        if (neighbour != null)
+                        {
+                            _lastFocusedKey = "cw:" + neighbour.ContentId;
+                            MainPage.Current?.RecordArrivalFocusKey(GetType(), _lastFocusedKey, "continue");
+                        }
+                        return;
+                    }
+                }
+                FocusFirstCardOfFirstRow();
+            });
         }
 
         // ---------- Catalog rows ----------
