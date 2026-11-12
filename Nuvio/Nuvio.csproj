@@ -107,6 +107,14 @@
     <Compile Include="Models\SubtitleItem.cs" />
     <Compile Include="Services\SubtitleService.cs" />
     <Compile Include="Services\PlayerService.cs" />
+    <Compile Include="ViewModels\StreamsViewModel.cs" />
+    <Compile Include="ViewModels\PlayerViewModel.cs" />
+    <Compile Include="Views\StreamsPage.xaml.cs">
+      <DependentUpon>StreamsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\PlayerPage.xaml.cs">
+      <DependentUpon>PlayerPage.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Views\HomePage.xaml.cs">
       <DependentUpon>HomePage.xaml</DependentUpon>
     </Compile>
@@ -169,6 +177,14 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Views\DetailsPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\StreamsPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\PlayerPage.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
