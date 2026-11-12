@@ -145,16 +145,36 @@ namespace Nuvio.Services
             AppEvents.RaiseRouteChanged("details");
         }
 
-        /// <summary>Opens the stream list for a movie (video null) or an episode.</summary>
+        /// <summary>Opens the real Streams page for a movie (video null) or an episode (M4).</summary>
         public void PlayVideo(Meta meta, Video video, bool restart = false)
         {
-            _frame.Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
+            if (meta == null) return;
+            _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
             {
-                Title = meta != null && !string.IsNullOrEmpty(meta.Name) ? meta.Name : "Streams",
-                Message = "Streams land in Milestone 4.",
-                Milestone = "Milestone 4",
+                Type = meta.Type ?? "movie",
+                Id = meta.Id,
+                VideoId = video != null ? video.Id : meta.Id,
+                Meta = meta,
+                Video = video,
+                Restart = restart,
             });
             AppEvents.RaiseRouteChanged("streams");
+        }
+
+        /// <summary>Opens the player for a meta/video/stream (M4). Called by the Streams and Player view models with named arguments.</summary>
+        public void OpenPlayer(Meta meta, Video video, StreamItem stream, List<StreamItem> streams, bool restart, bool fallbackToStreams)
+        {
+            if (meta == null || stream == null) return;
+            _frame.Navigate(typeof(PlayerPage), new PlayerNavigation
+            {
+                Meta = meta,
+                Video = video,
+                Stream = stream,
+                Streams = streams ?? new List<StreamItem> { stream },
+                Restart = restart,
+                FallbackToStreams = fallbackToStreams,
+            });
+            AppEvents.RaiseRouteChanged("player");
         }
 
         /// <summary>Continue Watching: play the next episode, or resume with the last stream if we have it.</summary>
@@ -179,11 +199,14 @@ namespace Nuvio.Services
                 : null;
             if (!restart && _settings.RememberLastStream && entry.Stream != null && !string.IsNullOrEmpty(entry.Stream.Url))
             {
-                _frame.Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
+                _frame.Navigate(typeof(PlayerPage), new PlayerNavigation
                 {
-                    Title = meta.Name ?? "Player",
-                    Message = "Playback lands in Milestone 4.",
-                    Milestone = "Milestone 4",
+                    Meta = meta,
+                    Video = video,
+                    Stream = entry.Stream,
+                    Streams = new List<StreamItem> { entry.Stream },
+                    Restart = restart,
+                    FallbackToStreams = true,
                 });
                 AppEvents.RaiseRouteChanged("player");
                 return;
