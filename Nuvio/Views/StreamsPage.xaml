@@ -273,12 +273,12 @@
                 <!-- Filter chips (web .stream-filters): horizontal scroll row,
                      rebuilt in code-behind so focus can be restored by chip key. -->
                 <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Auto" VerticalScrollMode="Disabled">
-                    <StackPanel x:Name="FiltersPanel" Orientation="Horizontal" Spacing="6" Padding="4,4,8"/>
+                    <StackPanel x:Name="FiltersPanel" Orientation="Horizontal" Spacing="6" Padding="4,4,4,8"/>
                 </ScrollViewer>
 
                 <!-- Status line (web .streams-status): loading / hidden-torrent /
                      failed-addon lines, rebuilt in code-behind. -->
-                <ItemsControl x:Name="StatusItems" Grid.Row="1" Padding="4,0,6">
+                <ItemsControl x:Name="StatusItems" Grid.Row="1" Padding="4,0,4,6">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2">
@@ -292,7 +292,7 @@
 
                 <!-- Stream list (web .stream-list) + loading / empty states. -->
                 <Grid Grid.Row="2">
-                    <ListView x:Name="StreamsListView" ItemTemplate="{StaticResource StreamItemTemplate}" ItemContainerStyle="{StaticResource StreamsListViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="StreamsListView_ItemClick" Padding="4,4,32" ScrollViewer.VerticalScrollBarVisibility="Hidden" Visibility="{Binding HasVisibleEntries, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <ListView x:Name="StreamsListView" ItemTemplate="{StaticResource StreamItemTemplate}" ItemContainerStyle="{StaticResource StreamsListViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="StreamsListView_ItemClick" Padding="4,4,4,32" ScrollViewer.VerticalScrollBarVisibility="Hidden" Visibility="{Binding HasVisibleEntries, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                     <Grid Visibility="{Binding ShowEmptyLoading, Converter={StaticResource BooleanToVisibilityConverter}}" MinHeight="324">
                         <ProgressRing IsActive="True" Width="24" Height="24" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Grid>
