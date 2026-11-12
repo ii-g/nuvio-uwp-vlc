@@ -480,4 +480,220 @@
   <data name="PlayerChooseAnotherSource" xml:space="preserve">
     <value>Choose another source</value>
   </data>
+  <data name="SettingsAbout" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="SettingsAboutDescription" xml:space="preserve">
+    <value>Versions and licences</value>
+  </data>
+  <data name="SettingsAccount" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="SettingsAccountDescription" xml:space="preserve">
+    <value>Sign in to sync your addons, library and progress</value>
+  </data>
+  <data name="SettingsAddonActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="SettingsAddonCatalogs" xml:space="preserve">
+    <value>{0} catalogs</value>
+  </data>
+  <data name="SettingsAddonConfigurable" xml:space="preserve">
+    <value>Configurable</value>
+  </data>
+  <data name="SettingsAddonDisabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="SettingsAddonInstalled" xml:space="preserve">
+    <value>{0} installed</value>
+  </data>
+  <data name="SettingsAddonRefreshed" xml:space="preserve">
+    <value>Addon refreshed</value>
+  </data>
+  <data name="SettingsAddonUnavailable" xml:space="preserve">
+    <value>Unavailable</value>
+  </data>
+  <data name="SettingsAddonUrlLabel" xml:space="preserve">
+    <value>Addon URL</value>
+  </data>
+  <data name="SettingsAddons" xml:space="preserve">
+    <value>Addons</value>
+  </data>
+  <data name="SettingsAddonsDescription" xml:space="preserve">
+    <value>Install, remove, refresh, and sort your content sources</value>
+  </data>
+  <data name="SettingsAddonsHint" xml:space="preserve">
+    <value>Paste an addon's manifest URL (from its configure page). Debrid addons such as Torrentio, Comet, MediaFusion or AIOStreams set up with Real-Debrid, AllDebrid, Premiumize or TorBox give direct links that play on this device.</value>
+  </data>
+  <data name="SettingsAddonsReset" xml:space="preserve">
+    <value>Addons reset</value>
+  </data>
+  <data name="SettingsAddonsTitle" xml:space="preserve">
+    <value>Addons</value>
+  </data>
+  <data name="SettingsAppearance" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="SettingsAppearanceDescription" xml:space="preserve">
+    <value>Home layout and theme</value>
+  </data>
+  <data name="SettingsCheckingAddon" xml:space="preserve">
+    <value>Checking addon…</value>
+  </data>
+  <data name="SettingsCheckingKey" xml:space="preserve">
+    <value>Checking key…</value>
+  </data>
+  <data name="SettingsConfigureAddon" xml:space="preserve">
+    <value>Configure</value>
+  </data>
+  <data name="SettingsConfigureFailed" xml:space="preserve">
+    <value>Couldn't open the addon settings page</value>
+  </data>
+  <data name="SettingsDebrid" xml:space="preserve">
+    <value>Debrid</value>
+  </data>
+  <data name="SettingsDebridConnect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SettingsDebridConnectHeader" xml:space="preserve">
+    <value>CONNECT A SERVICE</value>
+  </data>
+  <data name="SettingsDebridConnected" xml:space="preserve">
+    <value>{0} connected</value>
+  </data>
+  <data name="SettingsDebridConnectedDescription" xml:space="preserve">
+    <value>Connected. Torrent results show "via {0}" and play through it.</value>
+  </data>
+  <data name="SettingsDebridConnectedValue" xml:space="preserve">
+    <value>Connected</value>
+  </data>
+  <data name="SettingsDebridDescription" xml:space="preserve">
+    <value>Play torrent results through Real-Debrid, TorBox or Premiumize</value>
+  </data>
+  <data name="SettingsDebridHint" xml:space="preserve">
+    <value>Addons that already include your debrid service (Torrentio, Comet, AIOStreams...) work without this. Connect a service here to also play plain torrent results: the service fetches the torrent and this device plays the file it serves. Only results already cached by the service play straight away.</value>
+  </data>
+  <data name="SettingsDebridKeyFrom" xml:space="preserve">
+    <value>API key from {0}</value>
+  </data>
+  <data name="SettingsDebridKeyLabel" xml:space="preserve">
+    <value>{0} API key — find it at {1}</value>
+  </data>
+  <data name="SettingsDebridKeyRejected" xml:space="preserve">
+    <value>{0} didn't accept that key.</value>
+  </data>
+  <data name="SettingsDebridTitle" xml:space="preserve">
+    <value>Debrid</value>
+  </data>
+  <data name="SettingsDebridUnavailable" xml:space="preserve">
+    <value>Debrid isn't available yet.</value>
+  </data>
+  <data name="SettingsDebridUnreachable" xml:space="preserve">
+    <value>Couldn't reach {0}: {1}</value>
+  </data>
+  <data name="SettingsDevice" xml:space="preserve">
+    <value>Device</value>
+  </data>
+  <data name="SettingsDeviceDescription" xml:space="preserve">
+    <value>Controller and app options</value>
+  </data>
+  <data name="SettingsDisableAddon" xml:space="preserve">
+    <value>Disable</value>
+  </data>
+  <data name="SettingsDisconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="SettingsDisconnectDebridMessage" xml:space="preserve">
+    <value>Torrent results will be hidden again.</value>
+  </data>
+  <data name="SettingsDisconnectDebridRow" xml:space="preserve">
+    <value>Disconnect {0}</value>
+  </data>
+  <data name="SettingsDisconnectDebridTitle" xml:space="preserve">
+    <value>Disconnect {0}?</value>
+  </data>
+  <data name="SettingsEnableAddon" xml:space="preserve">
+    <value>Enable</value>
+  </data>
+  <data name="SettingsInstallAddon" xml:space="preserve">
+    <value>Install Addon</value>
+  </data>
+  <data name="SettingsInstallFailed" xml:space="preserve">
+    <value>Install failed: {0}</value>
+  </data>
+  <data name="SettingsIntegrations" xml:space="preserve">
+    <value>Integrations</value>
+  </data>
+  <data name="SettingsIntegrationsDescription" xml:space="preserve">
+    <value>Trakt, Jellyfin and Emby servers, TMDB</value>
+  </data>
+  <data name="SettingsInvalidAddonUrl" xml:space="preserve">
+    <value>Enter a valid addon URL starting with http:// or https://</value>
+  </data>
+  <data name="SettingsMoveDown" xml:space="preserve">
+    <value>Move down</value>
+  </data>
+  <data name="SettingsMoveUp" xml:space="preserve">
+    <value>Move up</value>
+  </data>
+  <data name="SettingsNoAddonsMessage" xml:space="preserve">
+    <value>Add a manifest URL to start loading catalogs, metadata, streams or subtitles into Nuvio.</value>
+  </data>
+  <data name="SettingsNoAddonsTitle" xml:space="preserve">
+    <value>No addons installed yet.</value>
+  </data>
+  <data name="SettingsPlayback" xml:space="preserve">
+    <value>Playback</value>
+  </data>
+  <data name="SettingsPlaybackDescription" xml:space="preserve">
+    <value>Languages, resume, next episode, streams</value>
+  </data>
+  <data name="SettingsRefreshAddon" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="SettingsRefreshFailed" xml:space="preserve">
+    <value>Refresh failed: {0}</value>
+  </data>
+  <data name="SettingsRemoveAddonMessage" xml:space="preserve">
+    <value>Remove {0}?</value>
+  </data>
+  <data name="SettingsRemoveAddonTitle" xml:space="preserve">
+    <value>Delete addon?</value>
+  </data>
+  <data name="SettingsReset" xml:space="preserve">
+    <value>Reset</value>
+  </data>
+  <data name="SettingsResetAddonsMessage" xml:space="preserve">
+    <value>This removes all your addons and installs Cinemeta and OpenSubtitles again.</value>
+  </data>
+  <data name="SettingsResetAddonsTitle" xml:space="preserve">
+    <value>Reset addons?</value>
+  </data>
+  <data name="SettingsResetToDefaults" xml:space="preserve">
+    <value>Reset to Defaults</value>
+  </data>
+  <data name="SettingsSubtitles" xml:space="preserve">
+    <value>Subtitles</value>
+  </data>
+  <data name="SettingsSubtitlesDescription" xml:space="preserve">
+    <value>Size, colour and position of addon subtitles</value>
+  </data>
+  <data name="SettingsTitle" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="StreamsDebridInvalidKey" xml:space="preserve">
+    <value>Your debrid key is no longer valid. Check it in Settings.</value>
+  </data>
+  <data name="StreamsDebridInvalidKeyMessage" xml:space="preserve">
+    <value>Your debrid key is no longer valid. Open debrid settings to check it and enter a new key.</value>
+  </data>
+  <data name="StreamsDebridInvalidKeyTitle" xml:space="preserve">
+    <value>Debrid key invalid</value>
+  </data>
+  <data name="StreamsDebridResolveFailed" xml:space="preserve">
+    <value>Couldn't resolve this torrent with your debrid service. Try again later.</value>
+  </data>
+  <data name="StreamsOpenDebridSettings" xml:space="preserve">
+    <value>Open debrid settings</value>
+  </data>
 </root>
