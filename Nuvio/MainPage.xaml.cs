@@ -57,6 +57,7 @@ namespace Nuvio
         internal ProgressService Progress { get; private set; }
         internal NavigationService Navigation { get; private set; }
         internal PlayerService PlayerService { get; private set; }
+        internal DebridService Debrid { get; private set; }
 
         /// <summary>True while a ContentDialog is open; pauses the controller (see NativeInputRouter).</summary>
         public bool DialogOpen
@@ -227,6 +228,7 @@ namespace Nuvio
             Stremio = new StremioService(Store);
             Navigation = new NavigationService(ContentFrame, Settings);
             PlayerService = new PlayerService(_player, Settings);
+            Debrid = new DebridService(Settings);
             _router = new NativeInputRouter(this, ContentFrame, Navigation);
             _controller = new ControllerBridge((action, repeat) =>
             {
