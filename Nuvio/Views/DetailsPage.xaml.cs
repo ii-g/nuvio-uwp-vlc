@@ -25,12 +25,11 @@ namespace Nuvio.Views
     /// Ported from web/js/views/details.js. No playback here: Play routes to the
     /// Streams page (M4) through Navigation.PlayVideo.
     /// </summary>
-    internal sealed partial class DetailsPage : Page, IPageInputHandler
+    internal sealed partial class DetailsPage : Page, IPageInputHandler, IArrivalFocus
     {
         private readonly DetailsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
         private DetailsNavigation _navigationParam;
-        private bool _focusedOnce;
         private bool _backdropFrontIsA;
         private string _backdropCurrentUrl;
         private int _backdropGeneration;
@@ -110,20 +109,8 @@ namespace Nuvio.Views
         {
             var meta = _viewModel.Meta;
             if (meta != null) ShowBackdrop(meta.Background);
-            if (!_focusedOnce && _viewModel.ShowContent)
-            {
-                // One dispatcher tick after layout, like HomePage.FocusFirst:
-                // a direct Focus() here returns false because the hero button
-                // is not focusable yet, and the flag must only be spent on a
-                // focus that actually lands.
-                var _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    if (_focusedOnce) return;
-                    var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                    if (focused != null && IsDescendantOf(focused, this)) return;
-                    if (PlayButton.Focus(FocusState.Programmatic)) _focusedOnce = true;
-                });
-            }
+            // Arrival focus is owned by the router's SettleArrivalFocus, which
+            // calls TryFocusArrival / TryFocusKey — nothing focuses here.
         }
 
         private void OnTmdbExtrasLoaded(object sender, EventArgs e)
@@ -209,6 +196,25 @@ namespace Nuvio.Views
             BackdropFade?.SetRowState(isRow);
         }
 
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: the Play button. Called by the router's
+        /// SettleArrivalFocus, which retries when this returns false (the button
+        /// is not focusable until the content loads).</summary>
+        public bool TryFocusArrival()
+        {
+            return PlayButton.Focus(FocusState.Programmatic);
+        }
+
+        /// <summary>Back-arrival target: the episode for a recorded "video:" key.
+        /// Returns false when the episode is gone (season changed, list
+        /// refreshed without it) so the router falls back to TryFocusArrival.</summary>
+        public bool TryFocusKey(string key)
+        {
+            if (string.IsNullOrEmpty(key) || !key.StartsWith("video:", StringComparison.Ordinal)) return false;
+            return RestoreEpisodeFocus(key.Substring(6));
+        }
+
         private void OnGotFocus(object sender, RoutedEventArgs e)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
@@ -220,6 +226,13 @@ namespace Nuvio.Views
                 if (episode != null)
                 {
                     _lastFocusedVideoId = episode.Video != null ? episode.Video.Id : null;
+                    // Record the focused episode into the shell registry — the
+                    // page instance is destroyed on Back, so the registry is
+                    // what the router's TryFocusKey call reads back.
+                    if (_lastFocusedVideoId != null)
+                    {
+                        MainPage.Current?.RecordArrivalFocusKey(GetType(), "video:" + _lastFocusedVideoId);
+                    }
                     SetBackdropFadeRowState(true);
                     return;
                 }
@@ -302,11 +315,18 @@ namespace Nuvio.Views
 
         private void RestoreEpisodeFocus()
         {
-            if (_lastFocusedVideoId == null || EpisodesGridView.Items.Count == 0) return;
+            RestoreEpisodeFocus(_lastFocusedVideoId);
+        }
+
+        /// <summary>Focuses the episode card for a video id. Returns false when
+        /// the episode is not in the loaded list, so the caller falls back.</summary>
+        private bool RestoreEpisodeFocus(string videoId)
+        {
+            if (videoId == null || EpisodesGridView.Items.Count == 0) return false;
             for (var i = 0; i < EpisodesGridView.Items.Count; i++)
             {
                 var episode = EpisodesGridView.Items[i] as EpisodeCardItem;
-                if (episode != null && episode.Video != null && episode.Video.Id == _lastFocusedVideoId)
+                if (episode != null && episode.Video != null && episode.Video.Id == videoId)
                 {
                     var container = EpisodesGridView.ContainerFromIndex(i) as GridViewItem;
                     if (container == null)
@@ -315,10 +335,10 @@ namespace Nuvio.Views
                         EpisodesGridView.UpdateLayout();
                         container = EpisodesGridView.ContainerFromIndex(i) as GridViewItem;
                     }
-                    if (container != null) container.Focus(FocusState.Programmatic);
-                    return;
+                    return container != null && container.Focus(FocusState.Programmatic);
                 }
             }
+            return false;
         }
 
         // ---------- Actions ----------
@@ -445,6 +465,9 @@ namespace Nuvio.Views
             dialog.Content = panel;
             dialog.Opened += (s, e) => playButton.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
+            // Dialog restore (part C): remember the episode card that opened
+            // the menu, so focus can come back to it when the menu closes.
+            var invoker = FocusManager.GetFocusedElement() as DependencyObject;
             shell.DialogOpen = true;
             try
             {
@@ -456,19 +479,37 @@ namespace Nuvio.Views
             }
             if (choice == "play")
             {
+                // Navigates to Streams: no restore here, arrival on return
+                // is the router's job.
                 if (meta != null) shell.Navigation.PlayVideo(meta, video);
             }
-            else if (choice == "toggleWatched")
+            else
             {
-                _viewModel.MarkEpisodeWatched(video, !episode.IsWatched);
-            }
-            else if (choice == "previous")
-            {
-                _viewModel.MarkPreviousWatched(video);
-            }
-            else if (choice == "season")
-            {
-                _viewModel.MarkSeasonWatched(video, !episode.IsWatched);
+                // Cancelled, or a mark-watched choice (the episode stays):
+                // back to the card that opened the menu. Deferred one
+                // dispatcher tick so the dialog teardown finishes first.
+                if (invoker != null)
+                {
+                    var _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                    {
+                        var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                        if (focused != null && IsDescendantOf(focused, this)) return;
+                        var control = invoker as Control;
+                        if (control != null) control.Focus(FocusState.Programmatic);
+                    });
+                }
+                if (choice == "toggleWatched")
+                {
+                    _viewModel.MarkEpisodeWatched(video, !episode.IsWatched);
+                }
+                else if (choice == "previous")
+                {
+                    _viewModel.MarkPreviousWatched(video);
+                }
+                else if (choice == "season")
+                {
+                    _viewModel.MarkSeasonWatched(video, !episode.IsWatched);
+                }
             }
         }
 
