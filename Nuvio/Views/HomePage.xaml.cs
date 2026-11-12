@@ -1622,6 +1622,19 @@ namespace Nuvio.Views
         /// the row's start edge sits on the hero content's start edge.</summary>
         internal static double RowStartAnchorInset(bool rtl) => (rtl ? 88 : 6) + 20;
 
+        /// <summary>The standard page padding for code-behind pages (Streams,
+        /// Settings): 68 start / 32 end / 28 top. The 68 / 32 are the same
+        /// numbers as the "content" branch of Convert below (68 = 48 collapsed
+        /// sidebar + 20 bleed, so the content edge lands on the sidebar's
+        /// inner edge, x=912 collapsed in RTL); the 28 top is the shared
+        /// page-top inset. This is the single source of truth — do NOT
+        /// hardcode page padding in a page's ApplyFlowDirection (the old
+        /// web .streams-layout 5rem/40 start value was copied here in M4 and
+        /// drifted 28 epx past the content edge; Settings copied it in M6).
+        /// Details keeps its own halved detailsContent branch on purpose.</summary>
+        internal static Thickness ContentPagePadding(bool rtl) =>
+            rtl ? new Thickness(32, 28, 68, 0) : new Thickness(68, 28, 32, 0);
+
         public object Convert(object value, Type targetType, object parameter, string language)
         {
             var rtl = value is FlowDirection && (FlowDirection)value == FlowDirection.RightToLeft;
