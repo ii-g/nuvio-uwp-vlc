@@ -486,6 +486,7 @@ namespace Nuvio
 
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
         {
+            Log.Write("Navigated to " + (e.Content != null ? e.Content.GetType().Name : "null"));
             // Every navigation re-arms the suppression: any navigation can drop
             // focus onto a sidebar button as a fallback (the framework's restore
             // cannot find a detached page's focused container), and its GotFocus
