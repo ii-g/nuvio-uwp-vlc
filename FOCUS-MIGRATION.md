@@ -387,3 +387,113 @@ the log lines that prove it:
   absorption into the coordinator is complete for Search/Catalog only
   in the flag-on path — Home never used it (own anchor), and
   Details/Streams keep their own scroll handling.
+
+## Fix round — sidebar opens on the first option (three-part fix, 2026-11-13)
+
+Device report (build 561): at launch focus parks on the collapsed
+sidebar first, then moves to the hero; sometimes it sticks there and
+never reaches the hero. Two videos (Settings, Search) show the same
+geometry from content: right toward the sidebar lands on the
+geometrically nearest button by height (Debrid row → Settings, first
+row → Home, bottom search chips → Settings), and the strip expands
+afterward as a `GotFocus` side effect — so the ring flashes on an icon
+while the strip is still collapsed. Root cause, verified by reading the
+code: `FocusSidebar()` is called only from the hero's start-edge branch
+(`HomePage.xaml.cs:1317`); Settings/Search fall through to the router,
+whose `TryMoveFocus` is plain XYFocus and lands on the nearest button.
+The framework parks initial focus on HomeButton (first focusable
+element, no `TabIndex`) while the frame is empty and the hero loads from
+the network; the guard only suppresses expansion, never landing.
+
+Files changed:
+
+- `Nuvio/MainPage.xaml.cs` (part 1 + part 3 shell side) — the
+  constructor sets `IsTabStop = false` on the four sidebar buttons
+  behind the flag, so the framework's launch-time park can never land
+  on them while the strip is collapsed. Re-enabled on every real
+  expansion in `SetSidebarExpanded(true)` and on a deliberate move in
+  `FocusSidebar()` (which now sets `IsTabStop = true` on its target
+  before `Focus()` and logs on failure — `Focus()` on a control with
+  `IsTabStop=false` returns false without moving focus). New method
+  `FocusSidebarFirst()` (next to `FocusSidebar()`): returns `false`
+  immediately, with no side effect, when the sidebar is Hidden
+  (Details / Streams / Player); otherwise clears the expand guard
+  exactly as `FocusSidebar()` does (coordinator
+  `ClearNavigationGuard()` when the flag is on, else
+  `ClearSidebarExpandSuppression()`), opens the strip FIRST via
+  `SetSidebarExpanded(true)` — which re-enables the four buttons —
+  then sets `HomeButton.IsTabStop = true` explicitly (harmless when
+  already expanded: `SetSidebarExpanded` returns early and the buttons
+  are enabled already), focuses `HomeButton` with
+  `Focus(FocusState.Programmatic)`, logs on failure only
+  (`"FocusSidebarFirst failed to focus " + HomeButton.Name`), and
+  returns `true`. It differs from `FocusSidebar()`, which focuses the
+  current page's button and is called only by the hero branch.
+  `FocusSidebarFirst()` is reached only through the coordinator (flag
+  path), so it carries no flag check inside. No `FocusSidebar()`,
+  `CollapseSidebar()`, fold branch or XAML change.
+- `Nuvio/Input/FocusCoordinator.cs` (parts 2 + 3, coordinator side) —
+  part 2: the watchdog tick and `NoteUserInput` both ignore a focus
+  move that stays inside the sidebar (`IsFocusInSidebar`) — it is not
+  a takeover, the settle keeps running and the arrival target lands
+  when the content loads. Part 3: a new branch in `MoveFocus` runs
+  before `TryMoveFocus` — only when focus is in content, not in the
+  sidebar, and the move is toward the sidebar (right in RTL, left in
+  LTR, via `IsTowardSidebar`). It peeks with
+  `FocusManager.FindNextFocusableElement(direction)` (moves nothing,
+  only reports the candidate): a sidebar button — or `null`, meaning no
+  focusable element at all in that direction — takes the
+  `FocusSidebarFirst()` path (`if (_shell.FocusSidebarFirst()) return;`
+  — a Hidden sidebar returns `false` and the move falls through to
+  XYFocus as today); a content element (a card / row neighbour, e.g.
+  mid-row in Catalog, which has no `HandleAction` of its own) is left
+  alone so `TryMoveFocus` carries it to the neighbour. The intercept
+  condition is deliberately narrow: it protects multi-column row
+  navigation in Catalog, where a toward-sidebar move from mid-row must
+  reach the neighbouring card, not the strip. Dialogs never reach the
+  branch: `HandleInput` gates dispatch while a dialog is open.
+
+Accepted trade-off (explicit): browsing the sidebar deliberately
+during a settle no longer cancels it — the settle keeps running and
+pulls focus to the arrival target when the page loads. The stuck-focus
+case (a D-pad press inside the strip during the settle leaving focus
+parked there forever) is worse than losing a deliberate sidebar browse
+during the ~1 s settle window; the press itself still moves between
+sidebar buttons while the settle runs.
+
+### Device test list after the fix (real controller, flag on)
+
+Install the build, then run each step and check the ring position:
+
+1. Cold launch, touch nothing — no ring anywhere until the hero loads,
+   then the ring sits on the hero Play directly, never on the sidebar
+   first; the strip stays collapsed.
+2. Press Down while the hero is still loading — no stuck focus; when the
+   hero loads, the settle lands on the hero Play (a press in that window
+   moves nothing: no element can take focus yet, and the settle is not
+   cancelled).
+3. Settings: right from the Debrid row — the strip opens and focus lands
+   on Home (first option), not on Settings.
+4. Search: right from the bottom chips — the strip opens and focus lands
+   on Home, not on Settings.
+5. Home hero: right from Play — the strip opens and focus lands on Home,
+   as before.
+6. Press a sidebar button — navigates, the strip collapses, focus stays
+   on the chosen button (not pulled back to the page).
+7. Flag off (same build, flag flipped): today's behaviour exactly —
+   launch parks on the sidebar, right lands on the nearest button.
+   The coordinator path (and therefore `FocusSidebarFirst`) is never
+   entered.
+
+### Verification notes
+
+- No local C# compiler: compile verification is by CI (build check on
+  the push). `FocusSidebarFirst()` must ship in the SAME push as the
+  coordinator call, in dependency order (runs 544–546 lesson: the file
+  that defines the member lands BEFORE the file that calls it —
+  `MainPage.xaml.cs` first, `FocusCoordinator.cs` second).
+- Microsoft Learn recommends `FindNextElement` over
+  `FindNextFocusableElement`: the latter returns `null` when the next
+  candidate is not a `UIElement` (e.g. a `Hyperlink`). In our pages the
+  candidates are buttons and cards, so there is no practical effect —
+  but if a focusable `Hyperlink` ever appears, revisit the peek call.
