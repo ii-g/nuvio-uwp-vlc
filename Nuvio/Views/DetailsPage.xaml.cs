@@ -25,7 +25,7 @@ namespace Nuvio.Views
     /// Ported from web/js/views/details.js. No playback here: Play routes to the
     /// Streams page (M4) through Navigation.PlayVideo.
     /// </summary>
-    internal sealed partial class DetailsPage : Page, IPageInputHandler, IArrivalFocus
+    internal sealed partial class DetailsPage : FocusablePage, IPageInputHandler
     {
         private readonly DetailsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
@@ -65,7 +65,13 @@ namespace Nuvio.Views
             shell.Progress.ProgressChanged += OnProgressChanged;
             shell.Progress.WatchedChanged += OnProgressChanged;
             shell.Library.LibraryChanged += OnLibraryChanged;
-            if (_navigationParam == null) return;
+            if (_navigationParam == null)
+            {
+                // No title to load: the arrival target (Play button) exists
+                // in XAML, so the content is ready now.
+                RaiseContentReady();
+                return;
+            }
             await _viewModel.LoadAsync(_navigationParam.Type, _navigationParam.Id, _navigationParam.PreviewMeta).ConfigureAwait(true);
         }
 
@@ -109,6 +115,9 @@ namespace Nuvio.Views
         {
             var meta = _viewModel.Meta;
             if (meta != null) ShowBackdrop(meta.Background);
+            // First render (episodes/meta rendered): the arrival target
+            // (Play button) exists now.
+            RaiseContentReady();
             // Arrival focus is owned by the router's SettleArrivalFocus, which
             // calls TryFocusArrival / TryFocusKey — nothing focuses here.
         }
@@ -201,7 +210,7 @@ namespace Nuvio.Views
         /// <summary>Fresh-arrival target: the Play button. Called by the router's
         /// SettleArrivalFocus, which retries when this returns false (the button
         /// is not focusable until the content loads).</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             return PlayButton.Focus(FocusState.Programmatic);
         }
@@ -209,7 +218,7 @@ namespace Nuvio.Views
         /// <summary>Back-arrival target: the episode for a recorded "video:" key.
         /// Returns false when the episode is gone (season changed, list
         /// refreshed without it) so the router falls back to TryFocusArrival.</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key) || !key.StartsWith("video:", StringComparison.Ordinal)) return false;
             return RestoreEpisodeFocus(key.Substring(6));
@@ -228,10 +237,13 @@ namespace Nuvio.Views
                     _lastFocusedVideoId = episode.Video != null ? episode.Video.Id : null;
                     // Record the focused episode into the shell registry — the
                     // page instance is destroyed on Back, so the registry is
-                    // what the router's TryFocusKey call reads back.
+                    // what the router's TryFocusKey call reads back. The base
+                    // GotFocus hook cannot record this: episode cards are
+                    // GridViewItems, not Buttons with Tags (season chips carry
+                    // an int Tag, hero buttons a glyph Tag — both skipped).
                     if (_lastFocusedVideoId != null)
                     {
-                        MainPage.Current?.RecordArrivalFocusKey(GetType(), "video:" + _lastFocusedVideoId);
+                        MainPage.Current?.RecordArrivalFocusKey(EntryKey, "video:" + _lastFocusedVideoId);
                     }
                     SetBackdropFadeRowState(true);
                     return;
