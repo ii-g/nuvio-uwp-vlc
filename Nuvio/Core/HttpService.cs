@@ -25,6 +25,14 @@ namespace Nuvio.Core
         public double? RetryAfterSeconds { get; }
     }
 
+    /// <summary>Raw HTTP result: status, body text, and parsed JSON (null when empty or not JSON).</summary>
+    internal sealed class RawResult
+    {
+        public int Status { get; set; }
+        public string Text { get; set; }
+        public JsonValue Data { get; set; }
+    }
+
     /// <summary>
     /// Shared HttpClient: 400-entry TTL cache, in-flight de-duplication, 16 MB response cap.
     /// Ports core/http.js (getJson / requestJson / getText). There is no CORS in native code,
@@ -164,6 +172,28 @@ namespace Nuvio.Core
             }
         }
 
+        /// <summary>
+        /// Any method with an explicit body content type (form/multipart). Not cached.
+        /// Returns the status, body text and parsed JSON without throwing on HTTP error
+        /// statuses; throws HttpError only on timeout/network (status 0) or oversize.
+        /// </summary>
+        public static async Task<RawResult> RequestRawAsync(string url, string method, string body, string contentType, int timeoutMs, IDictionary<string, string> headers)
+        {
+            using (var request = new HttpRequestMessage(new HttpMethod(method), url))
+            {
+                if (headers != null)
+                {
+                    foreach (var pair in headers) request.Headers.TryAddWithoutValidation(pair.Key, pair.Value);
+                }
+                if (body != null)
+                {
+                    request.Content = new StringContent(body, Encoding.UTF8, contentType ?? "application/json");
+                }
+                var response = await SendRawAsync(request, timeoutMs).ConfigureAwait(false);
+                return new RawResult { Status = response.Status, Text = response.Text, Data = JsonHelpers.Parse(response.Text) };
+            }
+        }
+
         /// <summary>Fetches text such as a subtitle file, decoding it as UTF-8 or, failing that, Windows-1252.</summary>
         public static async Task<string> GetTextAsync(string url, int timeoutMs = 20000)
         {
@@ -213,6 +243,51 @@ namespace Nuvio.Core
                         throw new HttpError(ErrorMessageFrom(text, status), status, retryAfter);
                     }
                     return new ResponseText { Status = status, Text = text, RetryAfterSeconds = retryAfter };
+                }
+            }
+        }
+
+        /// <summary>Like SendAsync, but HTTP error statuses are returned, not thrown,
+        /// so the caller can read the status and body. Timeout/network surface as
+        /// HttpError with status 0; oversize as HttpError, mirroring SendAsync.</summary>
+        private static async Task<ResponseText> SendRawAsync(HttpRequestMessage request, int timeoutMs)
+        {
+            using (var cts = new CancellationTokenSource(timeoutMs))
+            {
+                HttpResponseMessage response;
+                try
+                {
+                    response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+                }
+                catch (TaskCanceledException)
+                {
+                    throw new HttpError("The request timed out", 0);
+                }
+                catch (HttpRequestException)
+                {
+                    throw new HttpError("The request failed", 0);
+                }
+                using (response)
+                {
+                    double? retryAfter = null;
+                    var retry = response.Headers.RetryAfter;
+                    if (retry != null)
+                    {
+                        if (retry.Delta.HasValue) retryAfter = Math.Max(0, retry.Delta.Value.TotalSeconds);
+                        else if (retry.Date.HasValue) retryAfter = Math.Max(0, (retry.Date.Value - DateTimeOffset.UtcNow).TotalSeconds);
+                    }
+                    var status = (int)response.StatusCode;
+                    var length = response.Content.Headers.ContentLength;
+                    if (length.HasValue && length.Value > MaxBytes)
+                    {
+                        throw new HttpError("Response too large", status, retryAfter);
+                    }
+                    var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+                    if (bytes.Length > MaxBytes)
+                    {
+                        throw new HttpError("Response too large", status, retryAfter);
+                    }
+                    return new ResponseText { Status = status, Text = DecodeText(bytes), RetryAfterSeconds = retryAfter };
                 }
             }
         }
