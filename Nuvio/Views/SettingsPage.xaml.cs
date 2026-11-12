@@ -78,6 +78,17 @@ namespace Nuvio.Views
             // Sync page: ShowSection builds the rows imperatively, so the
             // arrival target (_firstFocusTarget) exists now.
             RaiseContentReady();
+            // TEMPORARY diagnostic probe (Settings alignment): the 536 photo
+            // shows the rows rendering as if ContentPagePadding's Left/Right
+            // were exchanged (anchor on the flow-end instead of flow-start),
+            // which the code says cannot happen — log the real runtime numbers
+            // once, then remove this block after the mechanism is found.
+            var _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                var first = _firstFocusTarget;
+                var p = first != null ? first.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point(0, 0)) : new Windows.Foundation.Point(-1, -1);
+                Log.Write("Settings layout: pageW=" + ActualWidth + ", stackW=" + ContentStack.ActualWidth + ", pad=" + ContentStack.Padding.Left + "," + ContentStack.Padding.Top + "," + ContentStack.Padding.Right + "," + ContentStack.Padding.Bottom + ", firstBtnX=" + p.X + ", firstBtnW=" + (first != null ? first.ActualWidth : -1));
+            });
             // Arrival focus (fresh or back) is owned by the router's
             // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
             // this page — nothing focuses here.
