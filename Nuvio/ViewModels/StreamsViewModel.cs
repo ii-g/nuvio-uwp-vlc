@@ -58,8 +58,9 @@ namespace Nuvio.ViewModels
     /// <summary>
     /// Streams: the stream list for one title/episode. Ported from views/streams.js.
     /// No UI types here: the page renders chips/list/status from EntriesChanged and
-    /// the computed properties below. No debrid in M4, so only http streams play;
-    /// torrent rows show as "Torrent" and toast on click. Never logs stream URLs.
+    /// the computed properties below. Http streams play directly; torrent rows
+    /// resolve through the debrid service (M6) when one is connected, else toast.
+    /// Never logs stream URLs.
     /// </summary>
     internal sealed class StreamsViewModel : ViewModelBase
     {
@@ -80,6 +81,9 @@ namespace Nuvio.ViewModels
         private string _filter = "all";
         private readonly List<StreamEntry> _entries = new List<StreamEntry>();
         private List<AddonStreamState> _addonStates = new List<AddonStreamState>();
+
+        /// <summary>Debrid service (M6), set by the page from MainPage.Current.Debrid. Null until M6 lands.</summary>
+        public DebridService Debrid { get; set; }
 
         public StreamsViewModel(StremioService stremio, AppSettings settings, NavigationService navigation)
         {
@@ -449,23 +453,92 @@ namespace Nuvio.ViewModels
             }
         }
 
+        /// <summary>Result of a PlayAsync attempt. Null result = the player was opened, no toast.</summary>
+        internal sealed class PlayResult
+        {
+            public string Toast { get; set; }
+            public bool OfferDebridSettings { get; set; }
+        }
+
         /// <summary>
         /// Plays an entry, or returns the toast message the page must show when the
         /// entry cannot be played here (null when the player was opened). The caller
-        /// shows the toast; this class owns no UI. Torrents are never resolved in M4.
+        /// shows the toast; this class owns no UI. Torrents resolve through the
+        /// debrid service (M6) when one is connected; without one they toast.
+        /// Never logs stream URLs or provider internals.
         /// </summary>
-        public string Play(StreamEntry entry)
+        public async Task<PlayResult> PlayAsync(StreamEntry entry)
         {
             if (entry == null || entry.Stream == null) return null;
             if (!StreamAnalysis.IsPlayable(entry.Stream))
             {
                 if (entry.Info != null && entry.Info.Kind == StreamKind.Torrent)
                 {
-                    return S("StreamsTorrentToast", "Torrents can't be played on this device. Connect a debrid service in Settings, or use one in your addon.");
+                    return await PlayTorrentAsync(entry).ConfigureAwait(false);
                 }
-                return S("StreamsUnplayableToast", "This link can't be played here.");
+                return new PlayResult { Toast = S("StreamsUnplayableToast", "This link can't be played here.") };
+            }
+            OpenWithOthers(CopyWithAddon(entry));
+            return null;
+        }
+
+        private async Task<PlayResult> PlayTorrentAsync(StreamEntry entry)
+        {
+            var torrentToast = new PlayResult
+            {
+                Toast = S("StreamsTorrentToast", "Torrents can't be played on this device. Connect a debrid service in Settings, or use one in your addon."),
+            };
+            var debrid = Debrid;
+            if (debrid == null || debrid.DebridAccount() == null) return torrentToast;
+            DebridResolved resolved;
+            try
+            {
+                resolved = await debrid.ResolveTorrentAsync(
+                    entry.Stream,
+                    Video != null ? (int?)Video.Season : null,
+                    Video != null ? (int?)Video.Episode : null).ConfigureAwait(false);
+            }
+            catch (DebridError ex)
+            {
+                if (ex.Code == "not_cached" || ex.Code == "missing") return torrentToast;
+                if (ex.Code == "invalid_key")
+                {
+                    return new PlayResult
+                    {
+                        Toast = S("StreamsDebridInvalidKey", "Your debrid key is no longer valid. Check it in Settings."),
+                        OfferDebridSettings = true,
+                    };
+                }
+                return new PlayResult { Toast = S("StreamsDebridResolveFailed", "Couldn't resolve this torrent with your debrid service. Try again later.") };
+            }
+            catch (Exception)
+            {
+                return new PlayResult { Toast = S("StreamsDebridResolveFailed", "Couldn't resolve this torrent with your debrid service. Try again later.") };
+            }
+            if (resolved == null || string.IsNullOrEmpty(resolved.Url))
+            {
+                return new PlayResult { Toast = S("StreamsDebridResolveFailed", "Couldn't resolve this torrent with your debrid service. Try again later.") };
             }
             var chosen = CopyWithAddon(entry);
+            chosen.Url = resolved.Url;
+            if (!string.IsNullOrEmpty(resolved.Filename)) chosen.Name = resolved.Filename;
+            var debridShort = debrid.DebridShort();
+            await RunOnUi(() =>
+            {
+                if (entry.Info != null)
+                {
+                    entry.Info.Debrid = debridShort;
+                    entry.Info.Cached = true;
+                }
+                RaiseDerivedChanged();
+                OpenWithOthers(chosen);
+            }).ConfigureAwait(false);
+            return null;
+        }
+
+        /// <summary>Opens the player with the chosen stream first, then the other http streams (best first).</summary>
+        private void OpenWithOthers(StreamItem chosen)
+        {
             var others = StreamAnalysis.SortForPlayback(_entries.Where(e => e.Info != null && e.Info.Kind == StreamKind.Http).ToList())
                 .Select(e => CopyWithAddon(e))
                 .Where(s => s.Url != chosen.Url)
@@ -473,7 +546,6 @@ namespace Nuvio.ViewModels
             var streams = new List<StreamItem> { chosen };
             streams.AddRange(others);
             _navigation.OpenPlayer(Meta, Video, chosen, streams, _restart, fallbackToStreams: false);
-            return null;
         }
 
         private static StreamItem CopyWithAddon(StreamEntry entry)
