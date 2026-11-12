@@ -19,9 +19,9 @@ and hero behaviour are untouched. No new packages, no WinUI 3 / WPF APIs.
 internal static bool UseFocusCoordinator = true;
 ```
 
-- Default: `true` (coordinator owns input dispatch, the Settings arrival
-  settle, the navigation guard, dialog pause state and the focus registry
-  for Settings).
+- Default: `true` (coordinator owns input dispatch, the arrival settle
+  for Settings, Home, Search and Catalog, the navigation guard, dialog
+  pause state and the focus registry for those pages).
 - Flip: edit that line to `false` and rebuild. No other change needed.
 - When flipped off, every page takes the legacy router paths: `Handle` runs
   the router's own dispatch/dedupe, `SettleArrivalFocus` runs the router's
@@ -253,3 +253,137 @@ except step 3's `Settings layout (loaded):` log line no longer exists —
 verify step 3 by the settle lines and the ring position instead. Plus:
 Details load failure must settle promptly (guard clears, no ~5 s stall);
 a stalled settle anywhere must clear the guard within the hard timeout.
+
+## Phase 2 — row model, scroll ownership, Home/Search/Catalog migrated (2026-11-13)
+
+Files changed:
+
+- `Nuvio/Input/FocusCoordinator.cs` — the row model moves
+  into the coordinator (`AnchorFocusedRowElement` / `KeepGridItemInView` /
+  `StopScrolling`, absorbing `FocusScrollHelper`'s scroll ownership);
+  the constructor drops the `moveFocus` delegate — fixed signature
+  `FocusCoordinator(MainPage shell, Frame frame, NavigationService
+  navigation, Action handleBack)` — the coordinator owns row/edge moves
+  itself now. The guard hard timeout stays 2 s; the registry caps stay
+  200 entries / 20 search-keyed.
+- `Nuvio/Views/Shared/FocusScrollHelper.cs` — one method added,
+  `ResetRowAnchor()`, called by `RequestArrival` on every navigation so
+  the coordinator-owned shared helper gets fresh row-anchor state (the
+  per-page instances it replaces were discarded on navigation). The
+  engine code is otherwise byte-for-byte identical.
+- `Nuvio/Input/NativeInputRouter.cs` — `SettleArrivalFocus`
+  routes `HomePage`, `SearchPage` and `CatalogPage` to
+  `Coordinator.RequestArrival` alongside `SettingsPage`; the
+  `Coordinator.CancelArrival()` call for the legacy-takes-over case and
+  the entire legacy settle body below are untouched. With the flag off
+  the block is skipped exactly as before.
+- `Nuvio/MainPage.xaml.cs` — `RecordArrivalFocusKey` is now
+  the single recording funnel: it always forwards to the router's
+  registry exactly as before, and when the flag is on also writes the
+  coordinator's registry (`RecordFocus`, same key format). Every direct
+  per-page recorder flows through it — Home/Search/Catalog, and also
+  Details/Streams (their keys now land in the coordinator's registry
+  too; inert data, since the coordinator never settles those pages in
+  this phase, and they count toward the 200-entry FIFO cap, which has
+  4–6x headroom). The coordinator construction call site now uses the
+  fixed constructor signature (no `MoveFocus` delegate). No call site
+  of `RecordArrivalFocusKey` changed.
+- `Nuvio/Views/SearchPage.xaml.cs` — `TryFocusKey` now returns false
+  on a missing or unknown key (it used to fall back to the search box
+  silently inside the method); the coordinator applies the arrival
+  fallback (the box) instead. `AnchorFocusedRowElement` and `Stop()`
+  route through the coordinator when the flag is on, else the page's
+  own `FocusScrollHelper` instance (flag-off path).
+- `Nuvio/Views/CatalogPage.xaml.cs` — `KeepGridItemInView` and `Stop()`
+  route through the coordinator when the flag is on, else the page's
+  own `FocusScrollHelper` instance (flag-off path).
+- `Nuvio/Views/FocusablePage.cs` — the base recorder's direct
+  coordinator write (Phase 1) was removed in this phase: the funnel
+  now does the coordinator write, so a base record reaches the
+  coordinator exactly once, via `MainPage.RecordArrivalFocusKey`.
+- No `HomePage` edit: its `TryFocusArrival` / `TryFocusKey` contracts
+  were already correct, its `RowKeyForElement` override feeds the base
+  recorder, and its `OnGotFocus` records through
+  `MainPage.RecordArrivalFocusKey` — which the funnel now dual-writes
+  (verified by reading `HomePage.xaml.cs`: `TryFocusArrival` 145–156,
+  `TryFocusKey` 166–225, `RowKeyForContainer` 236–247,
+  `RowKeyForElement` 255–262, `OnGotFocus` 989–1050, `HandleAction`
+  1252–1400). `FocusScrollHelper` is not deleted in this phase; it
+  stays as the flag-off scroll path.
+
+Flag-on vs flag-off per migrated page (flag off = all legacy, as before):
+
+- Home: settle — coordinator (`RequestArrival`) on / router legacy off;
+  recording — router registry + coordinator registry on / router only
+  off; scroll — coordinator row model on / page-owned
+  `AnchorFocusedElement` (`HomePage.xaml.cs:443`, via `OnGotFocus:993`)
+  off; moves — coordinator row/edge moves on / router `MoveFocus` +
+  `HomePage.HandleAction` off.
+- Search: settle — coordinator on / router legacy off; recording —
+  dual on / router only off; scroll — coordinator on / page-owned
+  `FocusScrollHelper` instance (`SearchPage.xaml.cs:35`) off; moves —
+  coordinator on / router + `SearchPage.TryFocusKey` off.
+- Catalog: settle — coordinator on / router legacy off; recording —
+  dual on / router only off; scroll — coordinator on / page-owned
+  `FocusScrollHelper` instance (`CatalogPage.xaml.cs:24`) off; moves —
+  coordinator on / router + `CatalogPage.TryFocusKey` off.
+- Settings: unchanged from Phase 1 (coordinator settle; the base
+  recorder writes once via the funnel — router + coordinator — on;
+  all legacy off).
+- Details / Streams / Player / Placeholder: untouched by Phase 2 —
+  legacy settle, legacy moves, page-owned scroll in both flag states;
+  only their recorded keys additionally land in the coordinator's
+  registry when the flag is on (inert, see above).
+
+### Phase 2 device test list (real controller, flag on)
+
+Install the build, then run each step and check the ring position and
+the log lines that prove it:
+
+1. Launch → hero Play has focus (same as Phase 1 step 1 — the
+   coordinator now settles Home, so the `Settle attempt ... settled=true,
+   focusName=HeroPlayButton` line must come from the coordinator path,
+   and the strip must stay collapsed).
+2. Home: press Down from the hero — the ring lands on the first card
+   (index 0) of the first row with items. Move Down row to row: each
+   press lands on the remembered poster of the next row (per-row
+   memory), never on the sidebar, never skipping a row.
+3. Home: open a title's Details, press B — the ring returns to the
+   exact card opened (`TryFocusKey` path, composite `meta:` key pinned
+   to the right row); open a Continue Watching card's Details, press B
+   — the ring returns to that exact Continue card (`cw:` key).
+4. Home: first entry after a cold start with no recorded key lands on
+   the hero Play (first card rule applies only on Down from the hero).
+5. Search: open Search from the sidebar — the ring lands on the search
+   box. Type a query, move down into the results — one row per press,
+   grid scrolls to keep the focused result visible.
+6. Search: open a result's Details, press B — the ring returns to that
+   exact result, or to the search box when the result is gone.
+7. Catalog: open a catalog — the ring lands on the first card. Move
+   through the grid (all four directions) — the grid scrolls to keep
+   the focused card visible, no jump to the sidebar, no skipped card.
+8. Catalog: open a card's Details, press B — the ring returns to the
+   opened card.
+9. First entry → first card everywhere: a first visit to Home (no hero
+   yet — empty library) lands on Manage Addons; a first visit to Search
+   lands on the box; a first visit to a catalog lands on its first card.
+10. Flag-off sanity (same build, flag flipped): Home/Search/Catalog
+    behave exactly as on the pre-Phase-2 build — legacy settle lines,
+    router-only registry, page-owned scroll. No coordinator settle line
+    (`RequestArrival`) must appear for any page.
+
+### Known Phase 2 limitations (carried forward)
+
+- Guard-state mirror (from Phase 1, still open): the coordinator's
+  `IsNavigationGuardArmed` can still read stale-true after a
+  Details/Streams/Player/Placeholder legacy settle clears the shell
+  bit — the coordinator is NOT yet the single guard owner. Phase 3
+  should make it so.
+- Dialog restore stays page-owned until Phase 3: the coordinator only
+  pauses input and captures the invoker; `RequestTextAsync` /
+  `ShowConfirmAsync` still restore focus themselves, and no focus move
+  happens on dialog close from the coordinator.
+- `FocusScrollHelper` stays in the tree as the flag-off path; its
+  absorption into the coordinator is complete for Search/Catalog only
+  in the flag-on path — Home never used it (own anchor), and
+  Details/Streams keep their own scroll handling.
