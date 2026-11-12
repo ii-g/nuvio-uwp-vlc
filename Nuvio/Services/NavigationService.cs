@@ -159,15 +159,25 @@ namespace Nuvio.Services
                 Log.Write("PlayVideo called with null meta - ignoring");
                 return;
             }
-            var navigated = _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
+            Log.Write("PlayVideo entered for " + meta.Type + "/" + meta.Id);
+            bool navigated;
+            try
             {
-                Type = meta.Type ?? "movie",
-                Id = meta.Id,
-                VideoId = video != null ? video.Id : meta.Id,
-                Meta = meta,
-                Video = video,
-                Restart = restart,
-            });
+                navigated = _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
+                {
+                    Type = meta.Type ?? "movie",
+                    Id = meta.Id,
+                    VideoId = video != null ? video.Id : meta.Id,
+                    Meta = meta,
+                    Video = video,
+                    Restart = restart,
+                });
+            }
+            catch (Exception ex)
+            {
+                Log.Error("PlayVideo navigate to streams failed", ex);
+                return;
+            }
             Log.Write("PlayVideo navigating to streams for " + meta.Type + "/" + meta.Id + ", navigated=" + navigated);
             AppEvents.RaiseRouteChanged("streams");
         }
