@@ -329,7 +329,16 @@ jobs:
           Remove-Item smoke\loose\AppxSignature.p7x -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -Value 1 -Type DWord -ErrorAction SilentlyContinue
           $deps = Get-ChildItem smoke\Dependencies -Filter *.appx
-          foreach ($d in $deps) { Add-AppxPackage -Path $d.FullName }
+          # A dependency may already be installed on the runner at a NEWER
+          # version (0x80073D06); that satisfies the app, so skip it instead
+          # of failing. Any other install error still fails the step.
+          foreach ($d in $deps) {
+            try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop }
+            catch {
+              if ($_.Exception.Message -match '0x80073D06|higher version') { Write-Host "Skipping $($d.Name): a newer version is already installed." }
+              else { throw }
+            }
+          }
           Add-AppxPackage -Path smoke\loose\AppxManifest.xml -Register
           $pkg = Get-AppxPackage -Name b7f0f2ee-118a-4bad-88af-994615cd4212
           "PACKAGE_FAMILY_NAME=$($pkg.PackageFamilyName)" >> $env:GITHUB_ENV
