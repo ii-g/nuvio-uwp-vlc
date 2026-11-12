@@ -23,7 +23,7 @@ namespace Nuvio.Views
     /// <summary>
     /// Details: hero, actions, episodes, credits, TMDB cast + More Like This.
     /// Ported from web/js/views/details.js. No playback here: Play routes to the
-    /// Streams placeholder (M4) through Navigation.PlayVideo.
+    /// Streams page (M4) through Navigation.PlayVideo.
     /// </summary>
     internal sealed partial class DetailsPage : Page, IPageInputHandler
     {
