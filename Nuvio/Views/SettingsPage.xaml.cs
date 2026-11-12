@@ -12,7 +12,6 @@ using Nuvio.ViewModels;
 using Windows.ApplicationModel.Resources;
 using Windows.System;
 using Windows.UI;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -54,17 +53,6 @@ namespace Nuvio.Views
             _viewModel = new SettingsViewModel(shell.Stremio, shell.Debrid, shell.Settings, shell.Navigation);
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
-            // TEMPORARY diagnostic probe (Settings alignment, part 2): the
-            // OnNavigatedTo probe fires before the first layout pass
-            // (pageW=0, firstBtnX=0) — this Loaded probe reads the geometry
-            // after layout, when ActualWidth is valid. Remove both probes
-            // after the mechanism is found.
-            Loaded += (s, e) =>
-            {
-                var first = _firstFocusTarget;
-                var p = first != null ? first.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point(0, 0)) : new Windows.Foundation.Point(-1, -1);
-                Log.Write("Settings layout (loaded): pageW=" + ActualWidth + ", stackW=" + ContentStack.ActualWidth + ", pad=" + ContentStack.Padding.Left + "," + ContentStack.Padding.Top + "," + ContentStack.Padding.Right + "," + ContentStack.Padding.Bottom + ", firstBtnX=" + p.X + ", firstBtnW=" + (first != null ? first.ActualWidth : -1));
-            };
             _viewModel.AddonsChanged += OnViewModelAddonsChanged;
             _viewModel.DebridChanged += OnViewModelDebridChanged;
         }
@@ -89,17 +77,6 @@ namespace Nuvio.Views
             // Sync page: ShowSection builds the rows imperatively, so the
             // arrival target (_firstFocusTarget) exists now.
             RaiseContentReady();
-            // TEMPORARY diagnostic probe (Settings alignment): the 536 photo
-            // shows the rows rendering as if ContentPagePadding's Left/Right
-            // were exchanged (anchor on the flow-end instead of flow-start),
-            // which the code says cannot happen — log the real runtime numbers
-            // once, then remove this block after the mechanism is found.
-            var _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
-            {
-                var first = _firstFocusTarget;
-                var p = first != null ? first.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point(0, 0)) : new Windows.Foundation.Point(-1, -1);
-                Log.Write("Settings layout: pageW=" + ActualWidth + ", stackW=" + ContentStack.ActualWidth + ", pad=" + ContentStack.Padding.Left + "," + ContentStack.Padding.Top + "," + ContentStack.Padding.Right + "," + ContentStack.Padding.Bottom + ", firstBtnX=" + p.X + ", firstBtnW=" + (first != null ? first.ActualWidth : -1));
-            });
             // Arrival focus (fresh or back) is owned by the router's
             // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
             // this page — nothing focuses here.
