@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using Nuvio.Services;
 using Windows.ApplicationModel.Resources;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -13,6 +15,33 @@ namespace Nuvio.Input
     {
         /// <summary>Returns true if the action was handled and must not fall through.</summary>
         bool HandleAction(string action, bool repeat);
+    }
+
+    /// <summary>
+    /// Implemented by pages that own their arrival focus target. The router's
+    /// SettleArrivalFocus calls these after navigation; pages implement them
+    /// (see HomePage/SearchPage) and record their last-focused key through
+    /// MainPage.RecordArrivalFocusKey so Back restores the same card.
+    /// </summary>
+    internal interface IArrivalFocus
+    {
+        /// <summary>Focuses the page's default arrival target. False when nothing could take focus.</summary>
+        bool TryFocusArrival();
+
+        /// <summary>Focuses the element for a remembered key. False when the key no longer exists.</summary>
+        bool TryFocusKey(string key);
+    }
+
+    /// <summary>
+    /// Implemented only by pages with multiple remembered rows (HomePage).
+    /// Returns the stable row key for a row GridView — data identity, not
+    /// ordinal position, since rows can appear/disappear — or null when the
+    /// container is not a remembered row. The router consumes this to land
+    /// row-to-row moves on the row's last-focused poster.
+    /// </summary>
+    internal interface IRowFocusInfo
+    {
+        string RowKeyForContainer(GridView grid);
     }
 
     /// <summary>
@@ -36,12 +65,140 @@ namespace Nuvio.Input
         private const double DirectionDedupeMs = 150;
         private string _lastDirection;
         private DateTime _lastDirectionTime = DateTime.MinValue;
+        // Central last-focus registry: one entry per page type, overwritten on
+        // every record, plus a per-row map (rowKey -> key) per page type.
+        // Keys are stable content ids (card/item ids), never stream URLs,
+        // API keys or tokens. The rowKey is supplied by the page at record
+        // time (data identity, not ordinal position).
+        private readonly Dictionary<Type, string> _arrivalFocusKeys = new Dictionary<Type, string>();
+        private readonly Dictionary<Type, Dictionary<string, string>> _rowFocusKeys = new Dictionary<Type, Dictionary<string, string>>();
 
         public NativeInputRouter(MainPage shell, Frame frame, NavigationService navigation)
         {
             _shell = shell;
             _frame = frame;
             _navigation = navigation;
+        }
+
+        /// <summary>
+        /// Records the last-focused key for a page type (Back restore) and,
+        /// when rowKey is supplied, the last-focused key for that row within
+        /// the page (row-to-row landing). Overwrites any earlier key for that
+        /// page type / row. rowKey is null for non-row items.
+        /// </summary>
+        internal void RecordArrivalFocusKey(Type pageType, string key, string rowKey = null)
+        {
+            if (pageType == null || string.IsNullOrEmpty(key)) return;
+            _arrivalFocusKeys[pageType] = key;
+            if (!string.IsNullOrEmpty(rowKey))
+            {
+                Dictionary<string, string> rows;
+                if (!_rowFocusKeys.TryGetValue(pageType, out rows))
+                {
+                    rows = new Dictionary<string, string>();
+                    _rowFocusKeys[pageType] = rows;
+                }
+                rows[rowKey] = key;
+            }
+        }
+
+        /// <summary>Looks up the page's last-focused key (Back arrival). False when none was recorded.</summary>
+        internal bool TryGetLastFocusKey(Type pageType, out string key)
+        {
+            key = null;
+            if (pageType == null) return false;
+            return _arrivalFocusKeys.TryGetValue(pageType, out key) && !string.IsNullOrEmpty(key);
+        }
+
+        /// <summary>Looks up the last-focused key for one row of a page. False when the row was never visited.</summary>
+        internal bool TryGetRowFocusKey(Type pageType, string rowKey, out string key)
+        {
+            key = null;
+            if (pageType == null || string.IsNullOrEmpty(rowKey)) return false;
+            Dictionary<string, string> rows;
+            if (!_rowFocusKeys.TryGetValue(pageType, out rows)) return false;
+            return rows.TryGetValue(rowKey, out key) && !string.IsNullOrEmpty(key);
+        }
+
+        /// <summary>
+        /// Central arrival focus, called by the shell from ContentFrame_Navigated.
+        /// Fire-and-forget dispatcher tick chain (same pattern as the pages'
+        /// Dispatcher.RunAsync fire-and-forget restores): one tick tries the
+        /// arrival target — on Back, the registry key for this page type via
+        /// TryFocusKey, else TryFocusArrival — then ONE retry on the next tick
+        /// with the same logic, then the existing FindFirstFocusableElement net
+        /// as last resort. The retry/fallback are skipped when focus is
+        /// already inside the page content (the user moved already). The
+        /// sidebar expansion suppression guard is cleared exactly once, in a
+        /// finally, whatever the outcome.
+        /// </summary>
+        internal void SettleArrivalFocus(Page page, bool isBack)
+        {
+            if (page == null)
+            {
+                _shell.ClearSidebarExpandSuppression();
+                return;
+            }
+            var _ = _frame.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                var retryScheduled = false;
+                try
+                {
+                    if (TrySettleOnce(page, isBack)) return;
+                    if (IsFocusInsidePage(page)) return;
+                    retryScheduled = true;
+                    var __ = _frame.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                    {
+                        try
+                        {
+                            if (TrySettleOnce(page, isBack)) return;
+                            if (IsFocusInsidePage(page)) return;
+                            var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
+                            if (first != null) first.Focus(FocusState.Programmatic);
+                        }
+                        finally
+                        {
+                            _shell.ClearSidebarExpandSuppression();
+                        }
+                    });
+                }
+                finally
+                {
+                    if (!retryScheduled) _shell.ClearSidebarExpandSuppression();
+                }
+            });
+        }
+
+        private bool TrySettleOnce(Page page, bool isBack)
+        {
+            try
+            {
+                var arrival = page as IArrivalFocus;
+                if (arrival == null) return false;
+                if (isBack)
+                {
+                    string key;
+                    if (TryGetLastFocusKey(page.GetType(), out key))
+                    {
+                        if (arrival.TryFocusKey(key)) return true;
+                    }
+                }
+                return arrival.TryFocusArrival();
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsFocusInsidePage(Page page)
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (ReferenceEquals(node, page)) return true;
+            }
+            return false;
         }
 
         public void Handle(string action, bool repeat)
@@ -107,6 +264,17 @@ namespace Nuvio.Input
                 }
             }
             if (focused != null && IsEdgeMove(focused, direction)) return;
+            // Vertical moves between rows use per-row remembered position: a
+            // row entered for the first time lands on its first poster; a row
+            // visited before lands on the poster last focused in that row.
+            // Falls through to XYFocus when there is no adjacent row (first/
+            // last row, single-grid pages like Catalog) or the target row is
+            // not a remembered row. HomePage/SearchPage handle up/down only at
+            // their hero/box edges, so in-row vertical moves reach here.
+            if (focused != null && (direction == FocusNavigationDirection.Up || direction == FocusNavigationDirection.Down))
+            {
+                if (TryMoveToAdjacentRow(focused, direction)) return;
+            }
             // Sidebar → content is a geometric XYFocus move (the page's HandleAction has
             // no row to index from while focus sits in the strip), and the geometry skips
             // the row's first card: the strip is expanded (136 epx) while a sidebar button
@@ -125,6 +293,71 @@ namespace Nuvio.Input
             if (fromSidebar)
             {
                 FocusFirstCardOfEnteredRow();
+            }
+        }
+
+        /// <summary>
+        /// Moves up/down into the adjacent row GridView in visual-tree order
+        /// within the current page (up = previous, down = next), landing on
+        /// the poster's remembered position in that row: the key recorded for
+        /// the row (via IRowFocusInfo's stable row key) when the row was
+        /// visited before, else the row's first poster (index 0). Returns
+        /// false (fall through to XYFocus) when focus is not in a row, there
+        /// is no adjacent GridView, the target row is not a remembered row
+        /// (RowKeyForContainer returns null — e.g. single-grid pages), or
+        /// the target row is empty / unrealized.
+        /// </summary>
+        private bool TryMoveToAdjacentRow(DependencyObject focused, FocusNavigationDirection direction)
+        {
+            var item = FindAncestorGridViewItem(focused);
+            if (item == null) return false;
+            var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
+            if (grid == null) return false;
+            var page = _frame.Content as Page;
+            if (page == null) return false;
+            var grids = new List<GridView>();
+            CollectGridViews(page, grids);
+            var at = grids.IndexOf(grid);
+            if (at < 0) return false;
+            var target = direction == FocusNavigationDirection.Down ? at + 1 : at - 1;
+            if (target < 0 || target >= grids.Count) return false;
+            var targetGrid = grids[target];
+            if (targetGrid.Items.Count == 0) return false;
+            var rowInfo = page as IRowFocusInfo;
+            var rowKey = rowInfo != null ? rowInfo.RowKeyForContainer(targetGrid) : null;
+            if (string.IsNullOrEmpty(rowKey)) return false;
+            var arrival = page as IArrivalFocus;
+            string savedKey;
+            if (arrival != null && TryGetRowFocusKey(page.GetType(), rowKey, out savedKey))
+            {
+                if (arrival.TryFocusKey(savedKey)) return true;
+                // Saved poster is gone (item removed): fall through to index 0 below.
+            }
+            var first = targetGrid.ContainerFromIndex(0) as GridViewItem;
+            if (first == null)
+            {
+                targetGrid.ScrollIntoView(targetGrid.Items[0]);
+                targetGrid.UpdateLayout();
+                first = targetGrid.ContainerFromIndex(0) as GridViewItem;
+            }
+            if (first == null) return false;
+            first.Focus(FocusState.Programmatic);
+            return true;
+        }
+
+        /// <summary>Collects every GridView under a root in visual-tree (document) order — the same DFS order as SearchPage.FindFirstGridView.</summary>
+        private static void CollectGridViews(DependencyObject root, List<GridView> grids)
+        {
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                var grid = child as GridView;
+                if (grid != null)
+                {
+                    grids.Add(grid);
+                }
+                CollectGridViews(child, grids);
             }
         }
 
