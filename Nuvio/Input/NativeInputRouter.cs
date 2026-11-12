@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
+using Nuvio.Diagnostics;
 using Nuvio.Services;
+using Nuvio.Views;
 using Windows.ApplicationModel.Resources;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -65,13 +66,72 @@ namespace Nuvio.Input
         private const double DirectionDedupeMs = 150;
         private string _lastDirection;
         private DateTime _lastDirectionTime = DateTime.MinValue;
-        // Central last-focus registry: one entry per page type, overwritten on
-        // every record, plus a per-row map (rowKey -> key) per page type.
-        // Keys are stable content ids (card/item ids), never stream URLs,
-        // API keys or tokens. The rowKey is supplied by the page at record
+        // Central last-focus registry: one entry per navigation ENTRY
+        // (page type + parameter identity), plus a per-row map (rowKey ->
+        // key) per entry. Keying by entry — not by page type — is the fix
+        // for root cause (B): the Settings root ("settings|root") and a
+        // section ("settings|addons") are different entries and never
+        // overwrite each other, so Back restores the section actually
+        // visited. Keys are stable content ids, never stream URLs, API
+        // keys or tokens. The rowKey is supplied by the page at record
         // time (data identity, not ordinal position).
-        private readonly Dictionary<Type, string> _arrivalFocusKeys = new Dictionary<Type, string>();
-        private readonly Dictionary<Type, Dictionary<string, string>> _rowFocusKeys = new Dictionary<Type, Dictionary<string, string>>();
+        private readonly Dictionary<string, string> _arrivalFocusKeys = new Dictionary<string, string>();
+        private readonly Dictionary<string, Dictionary<string, string>> _rowFocusKeys = new Dictionary<string, Dictionary<string, string>>();
+
+        // Arrival-settle state (Fix 2): the event-driven settle. Only one
+        // settle runs at a time; a new navigation cancels the previous one.
+        // The guard is cleared only by settle success or watchdog expiry
+        // (or by user takeover via NoteUserInput) — never in a finally.
+        private FocusablePage _settlingPage;
+        private bool _settleIsBack;
+        private int _settleAttempts;
+        private DateTime _settleStartedAt = DateTime.MinValue;
+        private DispatcherTimer _settleTimer;
+        private const int SettleMaxAttempts = 10;
+        private static readonly TimeSpan SettleWatchdogInterval = TimeSpan.FromMilliseconds(500);
+        // Inputs arriving within this window of a settle starting are the
+        // duplicate delivery of the press that caused the navigation (the
+        // console delivers one press both as a XAML key event and through
+        // the 30 ms controller poll): they must not count as user takeover
+        // and kill the settle the navigation just started.
+        private static readonly TimeSpan SettleInputIgnoreWindow = TimeSpan.FromMilliseconds(200);
+
+        /// <summary>True while an arrival settle (first attempt / ContentReady wait / watchdog) is active for the current page.</summary>
+        internal bool IsSettling { get { return _settlingPage != null; } }
+
+        /// <summary>
+        /// Stable identity for a navigation parameter, so two navigations to
+        /// the same page with different parameters are different registry
+        /// entries. Only ids and catalog manifest URLs appear here — never
+        /// stream URLs, API keys or tokens (none of these parameter fields
+        /// can carry one: TransportUrl is a catalog manifest URL, the same
+        /// identity CatalogPage already uses as LastOpenedCatalogKey).
+        /// </summary>
+        internal static string EntryIdentity(object parameter)
+        {
+            if (parameter == null) return string.Empty;
+            var settings = parameter as SettingsNavigation;
+            if (settings != null) return "settings|" + (string.IsNullOrEmpty(settings.Section) ? "root" : settings.Section);
+            var streams = parameter as StreamsNavigation;
+            if (streams != null) return "streams|" + (streams.Type ?? string.Empty) + "|" + (streams.Id ?? string.Empty) + "|" + (streams.VideoId ?? string.Empty);
+            var details = parameter as DetailsNavigation;
+            if (details != null) return "details|" + (details.Type ?? string.Empty) + "|" + (details.Id ?? string.Empty);
+            var catalog = parameter as CatalogNavigation;
+            if (catalog != null) return "catalog|" + (catalog.TransportUrl ?? string.Empty) + "|" + (catalog.Type ?? string.Empty) + "|" + (catalog.Id ?? string.Empty);
+            var player = parameter as PlayerNavigation;
+            if (player != null)
+            {
+                var metaType = player.Meta != null ? player.Meta.Type ?? string.Empty : string.Empty;
+                var metaId = player.Meta != null ? player.Meta.Id ?? string.Empty : string.Empty;
+                var videoId = player.Video != null ? player.Video.Id ?? string.Empty : string.Empty;
+                return "player|" + metaType + "|" + metaId + "|" + videoId;
+            }
+            var placeholder = parameter as PlaceholderNavigation;
+            if (placeholder != null) return "placeholder|" + (placeholder.Title ?? string.Empty);
+            var query = parameter as string;
+            if (query != null) return "search|" + query;
+            return string.Empty;
+        }
 
         public NativeInputRouter(MainPage shell, Frame frame, NavigationService navigation)
         {
@@ -81,92 +141,233 @@ namespace Nuvio.Input
         }
 
         /// <summary>
-        /// Records the last-focused key for a page type (Back restore) and,
-        /// when rowKey is supplied, the last-focused key for that row within
-        /// the page (row-to-row landing). Overwrites any earlier key for that
-        /// page type / row. rowKey is null for non-row items.
+        /// Records the last-focused key for a navigation entry (Back restore)
+        /// and, when rowKey is supplied, the last-focused key for that row
+        /// within the entry (row-to-row landing). Overwrites any earlier key
+        /// for that entry / row. rowKey is null for non-row items.
         /// </summary>
-        internal void RecordArrivalFocusKey(Type pageType, string key, string rowKey = null)
+        internal void RecordArrivalFocusKey(string entryKey, string key, string rowKey = null)
         {
-            if (pageType == null || string.IsNullOrEmpty(key)) return;
-            _arrivalFocusKeys[pageType] = key;
+            if (string.IsNullOrEmpty(entryKey) || string.IsNullOrEmpty(key)) return;
+            _arrivalFocusKeys[entryKey] = key;
             if (!string.IsNullOrEmpty(rowKey))
             {
                 Dictionary<string, string> rows;
-                if (!_rowFocusKeys.TryGetValue(pageType, out rows))
+                if (!_rowFocusKeys.TryGetValue(entryKey, out rows))
                 {
                     rows = new Dictionary<string, string>();
-                    _rowFocusKeys[pageType] = rows;
+                    _rowFocusKeys[entryKey] = rows;
                 }
                 rows[rowKey] = key;
             }
         }
 
-        /// <summary>Looks up the page's last-focused key (Back arrival). False when none was recorded.</summary>
-        internal bool TryGetLastFocusKey(Type pageType, out string key)
+        /// <summary>Looks up the entry's last-focused key (Back arrival). False when none was recorded.</summary>
+        internal bool TryGetLastFocusKey(string entryKey, out string key)
         {
             key = null;
-            if (pageType == null) return false;
-            return _arrivalFocusKeys.TryGetValue(pageType, out key) && !string.IsNullOrEmpty(key);
+            if (string.IsNullOrEmpty(entryKey)) return false;
+            return _arrivalFocusKeys.TryGetValue(entryKey, out key) && !string.IsNullOrEmpty(key);
         }
 
-        /// <summary>Looks up the last-focused key for one row of a page. False when the row was never visited.</summary>
-        internal bool TryGetRowFocusKey(Type pageType, string rowKey, out string key)
+        /// <summary>Looks up the last-focused key for one row of an entry. False when the row was never visited.</summary>
+        internal bool TryGetRowFocusKey(string entryKey, string rowKey, out string key)
         {
             key = null;
-            if (pageType == null || string.IsNullOrEmpty(rowKey)) return false;
+            if (string.IsNullOrEmpty(entryKey) || string.IsNullOrEmpty(rowKey)) return false;
             Dictionary<string, string> rows;
-            if (!_rowFocusKeys.TryGetValue(pageType, out rows)) return false;
+            if (!_rowFocusKeys.TryGetValue(entryKey, out rows)) return false;
             return rows.TryGetValue(rowKey, out key) && !string.IsNullOrEmpty(key);
         }
 
         /// <summary>
-        /// Central arrival focus, called by the shell from ContentFrame_Navigated.
-        /// Fire-and-forget dispatcher tick chain (same pattern as the pages'
-        /// Dispatcher.RunAsync fire-and-forget restores): one tick tries the
-        /// arrival target — on Back, the registry key for this page type via
-        /// TryFocusKey, else TryFocusArrival — then ONE retry on the next tick
-        /// with the same logic, then the existing FindFirstFocusableElement net
-        /// as last resort. The retry/fallback are skipped when focus is
-        /// already inside the page content (the user moved already). The
-        /// sidebar expansion suppression guard is cleared exactly once, in a
-        /// finally, whatever the outcome.
+        /// Central arrival focus, called by the shell from
+        /// ContentFrame_Navigated (Fix 2, root cause C). Event-driven, not a
+        /// bounded tick chain: (a) the FIRST attempt runs synchronously, in
+        /// this call — Frame.Navigated fires once the content is available
+        /// from the frame (although it "may not have completed loading",
+        /// Microsoft Learn: Frame.Navigated), so a sync page whose controls
+        /// are already constructed can take focus here, before first paint;
+        /// (b) when the page is not IsContentReady yet (async pages: the
+        /// hero / streams / details data has not loaded), a one-shot
+        /// ContentReady subscription settles the moment the content arrives;
+        /// (c) a 500 ms watchdog retries up to 10 attempts (~5 s) and stops
+        /// on success, on first genuine user input, on page change, or on
+        /// expiry. The sidebar guard is cleared ONLY on success (focus
+        /// verifiably inside the page) or on watchdog expiry — never in a
+        /// finally "whatever the outcome". A null / non-FocusablePage
+        /// content clears the guard and logs (defensive; after the page
+        /// migration this must not happen). <paramref name="parameter"/> is
+        /// the navigation parameter, already folded into
+        /// <see cref="FocusablePage.EntryKey"/> by OnNavigatedTo; it is
+        /// accepted so the shell passes the Navigated args through unchanged.
         /// </summary>
-        internal void SettleArrivalFocus(Page page, bool isBack)
+        internal void SettleArrivalFocus(FocusablePage page, bool isBack, object parameter)
         {
+            StopSettle(clearGuard: false);
             if (page == null)
             {
+                Log.Write("SettleArrivalFocus: content is not a FocusablePage, clearing the sidebar guard");
                 _shell.ClearSidebarExpandSuppression();
                 return;
             }
-            var _ = _frame.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            _settlingPage = page;
+            _settleIsBack = isBack;
+            _settleAttempts = 0;
+            _settleStartedAt = DateTime.UtcNow;
+            Log.Write("Settle arrival: page=" + page.GetType().Name + ", entry=" + page.EntryKey + ", isBack=" + isBack);
+            // (a) Synchronous first attempt, in this call.
+            if (AttemptSettle("sync"))
             {
-                var retryScheduled = false;
+                CompleteSettle(success: true);
+                return;
+            }
+            // (b) Not ready yet: settle the moment the page says its content arrived.
+            if (!page.IsContentReady)
+            {
+                page.ContentReady += OnSettleContentReady;
+                // No await between the attempt and the subscribe above, so
+                // the event cannot have fired in between — but re-check
+                // anyway: a page that raised ContentReady during its own
+                // Loaded (before Navigated) reports IsContentReady already.
+                if (page.IsContentReady && AttemptSettle("content-ready"))
+                {
+                    CompleteSettle(success: true);
+                    return;
+                }
+            }
+            // (c) Watchdog: keep trying while async content loads.
+            _settleTimer = new DispatcherTimer();
+            _settleTimer.Interval = SettleWatchdogInterval;
+            _settleTimer.Tick += OnSettleWatchdogTick;
+            _settleTimer.Start();
+        }
+
+        private void OnSettleContentReady()
+        {
+            var page = _settlingPage;
+            if (page == null) return;
+            page.ContentReady -= OnSettleContentReady;
+            if (AttemptSettle("content-ready"))
+            {
+                CompleteSettle(success: true);
+            }
+        }
+
+        private void OnSettleWatchdogTick(object sender, object e)
+        {
+            var page = _settlingPage;
+            if (page == null)
+            {
+                StopWatchdog();
+                return;
+            }
+            // Page changed under us (a navigation the shell did not settle):
+            // stop without clearing the guard — the new page's settle owns it.
+            if (!ReferenceEquals(_frame.Content, page))
+            {
+                Log.Write("Settle watchdog: page changed, stopping without clearing the sidebar guard");
+                StopSettle(clearGuard: false);
+                return;
+            }
+            if (AttemptSettle("watchdog"))
+            {
+                CompleteSettle(success: true);
+                return;
+            }
+            if (_settleAttempts >= SettleMaxAttempts)
+            {
+                // Expiry: last resort once, then the guard MUST clear — a
+                // stuck guard would leave the strip unopenable.
+                Log.Write("Settle watchdog: expired after " + _settleAttempts + " attempts for entry=" + page.EntryKey + ", falling back to the first focusable element");
                 try
                 {
-                    if (TrySettleOnce(page, isBack)) return;
-                    if (IsFocusInsidePage(page)) return;
-                    retryScheduled = true;
-                    var __ = _frame.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                    {
-                        try
-                        {
-                            if (TrySettleOnce(page, isBack)) return;
-                            if (IsFocusInsidePage(page)) return;
-                            var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
-                            if (first != null) first.Focus(FocusState.Programmatic);
-                        }
-                        finally
-                        {
-                            _shell.ClearSidebarExpandSuppression();
-                        }
-                    });
+                    var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
+                    if (first != null) first.Focus(FocusState.Programmatic);
                 }
-                finally
+                catch (Exception)
                 {
-                    if (!retryScheduled) _shell.ClearSidebarExpandSuppression();
+                    // Fallback is best-effort; the guard still clears below.
                 }
-            });
+                CompleteSettle(success: false);
+            }
+        }
+
+        /// <summary>
+        /// One settle attempt. Focus already inside the page counts as
+        /// success WITHOUT moving anything (a late attempt must never yank
+        /// focus the user already placed); otherwise TrySettleOnce, then
+        /// verify focus really landed inside the page. Logs the attempt
+        /// number, entry key, result and the focused element's type after
+        /// the attempt (ids only — never URLs, keys or tokens).
+        /// </summary>
+        private bool AttemptSettle(string source)
+        {
+            var page = _settlingPage;
+            if (page == null) return false;
+            _settleAttempts++;
+            var settled = false;
+            try
+            {
+                if (IsFocusInsidePage(page)) settled = true;
+                else if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
+            }
+            catch (Exception)
+            {
+                settled = false;
+            }
+            var focused = FocusManager.GetFocusedElement();
+            Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null"));
+            return settled;
+        }
+
+        /// <summary>
+        /// Settle finished: stop the watchdog, drop the ContentReady
+        /// subscription, and clear the sidebar guard. Success and watchdog
+        /// expiry are the only paths that clear it (plus user takeover in
+        /// NoteUserInput); a page change leaves it to the new settle.
+        /// </summary>
+        private void CompleteSettle(bool success)
+        {
+            Log.Write("Settle " + (success ? "succeeded" : "expired") + " after " + _settleAttempts + " attempts; clearing the sidebar guard");
+            StopSettle(clearGuard: true);
+        }
+
+        private void StopSettle(bool clearGuard)
+        {
+            StopWatchdog();
+            var page = _settlingPage;
+            if (page != null) page.ContentReady -= OnSettleContentReady;
+            _settlingPage = null;
+            if (clearGuard) _shell.ClearSidebarExpandSuppression();
+        }
+
+        private void StopWatchdog()
+        {
+            var timer = _settleTimer;
+            _settleTimer = null;
+            if (timer == null) return;
+            timer.Tick -= OnSettleWatchdogTick;
+            timer.Stop();
+        }
+
+        /// <summary>
+        /// Called by the shell from its input callbacks when a settle is
+        /// pending: the user has taken over, so the settle stops trying to
+        /// place focus. Inputs inside the ignore window after the settle
+        /// started are the duplicate delivery of the press that caused the
+        /// navigation (XAML key event + 30 ms controller poll) and are
+        /// ignored — killing the settle for those would re-open root cause
+        /// (A). A genuine takeover also clears the guard: with no settle
+        /// running there would be nothing left to clear it, and the strip
+        /// would stay unopenable.
+        /// </summary>
+        internal void NoteUserInput()
+        {
+            if (_settlingPage == null) return;
+            if (DateTime.UtcNow - _settleStartedAt < SettleInputIgnoreWindow) return;
+            Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
+            StopSettle(clearGuard: true);
         }
 
         private bool TrySettleOnce(Page page, bool isBack)
@@ -177,8 +378,16 @@ namespace Nuvio.Input
                 if (arrival == null) return false;
                 if (isBack)
                 {
+                    var fp = page as FocusablePage;
+                    var entryKey = fp != null && !string.IsNullOrEmpty(fp.EntryKey)
+                        ? fp.EntryKey
+                        : page.GetType().FullName;
+                    if (string.IsNullOrEmpty(fp?.EntryKey))
+                    {
+                        Log.Write("Settle: page " + page.GetType().Name + " has no entry key (not a FocusablePage yet); Back restore falls back to the type key");
+                    }
                     string key;
-                    if (TryGetLastFocusKey(page.GetType(), out key))
+                    if (TryGetLastFocusKey(entryKey, out key))
                     {
                         if (arrival.TryFocusKey(key)) return true;
                     }
@@ -327,8 +536,18 @@ namespace Nuvio.Input
             var rowKey = rowInfo != null ? rowInfo.RowKeyForContainer(targetGrid) : null;
             if (string.IsNullOrEmpty(rowKey)) return false;
             var arrival = page as IArrivalFocus;
+            // Row memory is keyed by navigation entry, like arrival focus:
+            // a row visited under one entry must not leak into another.
+            var fp = page as FocusablePage;
+            var entryKey = fp != null && !string.IsNullOrEmpty(fp.EntryKey)
+                ? fp.EntryKey
+                : page.GetType().FullName;
+            if (fp == null)
+            {
+                Log.Write("TryMoveToAdjacentRow: page " + page.GetType().Name + " is not a FocusablePage yet; row memory falls back to the type key");
+            }
             string savedKey;
-            if (arrival != null && TryGetRowFocusKey(page.GetType(), rowKey, out savedKey))
+            if (arrival != null && TryGetRowFocusKey(entryKey, rowKey, out savedKey))
             {
                 if (arrival.TryFocusKey(savedKey)) return true;
                 // Saved poster is gone (item removed): fall through to index 0 below.
@@ -437,6 +656,11 @@ namespace Nuvio.Input
         {
             // A dialog open means the controller is paused and XAML handles back; this never runs then.
             // The current page already had its say via IPageInputHandler above.
+            // Arm the sidebar guard BEFORE GoBack: the old page detaches
+            // synchronously and the framework's focus fallback can land on
+            // a sidebar button while the guard is down (root cause A). The
+            // new page's settle clears it once arrival focus lands.
+            _shell.ArmSidebarExpandSuppression();
             if (_frame.CanGoBack)
             {
                 _frame.GoBack();
