@@ -131,6 +131,20 @@ namespace Nuvio
                 Log.Error("Setting the app language failed", ex);
             }
             InitializeComponent();
+            // Phase 1: at launch the framework parks initial focus on HomeButton
+            // (the first focusable element) while the frame is still empty and
+            // the hero loads from the network, so the sidebar buttons must not
+            // accept focus while the strip is collapsed. Re-enabled on expand
+            // (SetSidebarExpanded) and on a deliberate move (FocusSidebar).
+            // ProfileButton stays untouched: it is Collapsed, so it never
+            // takes focus in the first place.
+            if (FocusCoordinator.UseFocusCoordinator)
+            {
+                HomeButton.IsTabStop = false;
+                SearchButton.IsTabStop = false;
+                LibraryButton.IsTabStop = false;
+                SettingsButton.IsTabStop = false;
+            }
             // The direction follows the UI language actually rendered, not only the
             // stored tag (build 162: Arabic labels, yet the strip landed on the left).
             SetFlowDirection(AppSettings.EffectiveIsRightToLeft());
@@ -708,7 +722,46 @@ namespace Nuvio
                 : _activeRoot == "library" ? LibraryButton
                 : _activeRoot == "settings" ? SettingsButton
                 : HomeButton;
-            button.Focus(FocusState.Programmatic);
+            // A deliberate move onto the strip re-enables the button first:
+            // the buttons stop accepting focus while the strip is collapsed
+            // at launch (see the constructor), and Focus() on a control with
+            // IsTabStop=false returns false without moving focus.
+            button.IsTabStop = true;
+            if (!button.Focus(FocusState.Programmatic))
+            {
+                Log.Write("FocusSidebar failed to focus " + button.Name);
+            }
+        }
+
+        /// <summary>
+        /// Deliberate menu open that always lands on the first option (Home):
+        /// opens the strip FIRST, then focuses HomeButton, so the ring never
+        /// appears on a collapsed strip. Differs from FocusSidebar(), which
+        /// focuses the current page's button and is called only by the hero's
+        /// start-edge branch. Reached only through the coordinator (flag path,
+        /// MoveFocus intercepts a move toward the sidebar); no flag check
+        /// inside this method. Returns false when the sidebar is Hidden
+        /// (Details / Catalog / Streams / Player) so the caller falls through to
+        /// XYFocus as today; true otherwise.
+        /// </summary>
+        public bool FocusSidebarFirst()
+        {
+            if (_sidebarState == SidebarState.Hidden) return false;
+            // Same guard clear as FocusSidebar: a deliberate opening must not
+            // be swallowed by the back-navigation suppression (if still set).
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator) _coordinator.ClearNavigationGuard();
+            else ClearSidebarExpandSuppression();
+            // Open first: this re-enables the four buttons (see the
+            // constructor) and returns early when already expanded, in which
+            // case the buttons are enabled already — the explicit set below
+            // is harmless either way.
+            SetSidebarExpanded(true);
+            HomeButton.IsTabStop = true;
+            if (!HomeButton.Focus(FocusState.Programmatic))
+            {
+                Log.Write("FocusSidebarFirst failed to focus " + HomeButton.Name);
+            }
+            return true;
         }
 
         private static void SetSidebarActive(Button button, bool active)
@@ -928,6 +981,13 @@ namespace Nuvio
             {
                 if (_sidebarState == SidebarState.Hidden || _sidebarState == SidebarState.Expanded) return;
                 _sidebarState = SidebarState.Expanded;
+                // Re-enable the sidebar buttons on every real expansion
+                // (focus and hover both arrive here): they stop accepting
+                // focus while the strip is collapsed at launch.
+                HomeButton.IsTabStop = true;
+                SearchButton.IsTabStop = true;
+                LibraryButton.IsTabStop = true;
+                SettingsButton.IsTabStop = true;
                 // Always Verity tones while the strip is open (Mohammed's call):
                 // the strip's live blur samples the hero, and the white Verity
                 // logo is the bright band at the strip's start edge, so pin the
