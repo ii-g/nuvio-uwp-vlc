@@ -315,23 +315,21 @@ jobs:
           name: NuvioUWPVLC-x64
           path: smoke
 
-      - name: Trust sideload certificate
-        shell: pwsh
-        timeout-minutes: 2        
-        run: |
-          # Import-Certificate hangs on the Root store in non-interactive sessions
-          # (it waits on a security prompt), so use certutil instead.
-          certutil -user -addstore -f Root smoke\NuvioUWP.cer
-          certutil -user -addstore -f TrustedPeople smoke\NuvioUWP.cer
-
       - name: Install and launch
         id: launch
         shell: powershell
         run: |
+          # No cert import: adding a CA cert to the Trusted Root store always
+          # shows an interactive security prompt, which hangs forever in a
+          # non-interactive session (Import-Certificate in run 443, certutil
+          # in run 445). Registering the unpacked files needs no signature.
           $msix = Get-ChildItem smoke -Filter *.msix | Select-Object -First 1
+          Expand-Archive -Path $msix.FullName -DestinationPath smoke\loose -Force
+          Remove-Item smoke\loose\AppxSignature.p7x -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -Name AllowDevelopmentWithoutDevLicense -Value 1 -Type DWord -ErrorAction SilentlyContinue
           $deps = Get-ChildItem smoke\Dependencies -Filter *.appx
-          if ($deps) { Add-AppxPackage -Path $msix.FullName -DependencyPath $deps.FullName }
-          else { Add-AppxPackage -Path $msix.FullName }
+          foreach ($d in $deps) { Add-AppxPackage -Path $d.FullName }
+          Add-AppxPackage -Path smoke\loose\AppxManifest.xml -Register
           $pkg = Get-AppxPackage -Name b7f0f2ee-118a-4bad-88af-994615cd4212
           "PACKAGE_FAMILY_NAME=$($pkg.PackageFamilyName)" >> $env:GITHUB_ENV
           # Application Id "App" (Package.appxmanifest). A UWP app needs an
