@@ -334,14 +334,17 @@
              bottom = subtitleOffset% (raised to 13rem = 104 epx while the
              OSD is visible). Font size, colour and position are applied by
              the page from the ViewModel's subtitle style props. -->
-        <TextBlock x:Name="SubtitleTextBlock"
-                   Text="{Binding CurrentSubtitleText}"
-                   Visibility="{Binding CurrentSubtitleText, Converter={StaticResource StringToVisibilityConverter}}"
-                   FontSize="19" FontWeight="SemiBold" Foreground="White"
-                   TextAlignment="Center" TextWrapping="Wrap"
-                   HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
-                   IsHitTestVisible="False"
-                   shared:TextGlow.IsEnabled="True"/>
+        <Border x:Name="SubtitleBackgroundBorder"
+                Visibility="{Binding CurrentSubtitleText, Converter={StaticResource StringToVisibilityConverter}}"
+                HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="SubtitleTextBlock"
+                       Text="{Binding CurrentSubtitleText}"
+                       FontSize="19" FontWeight="SemiBold" Foreground="White"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       IsHitTestVisible="False"
+                       shared:TextGlow.IsEnabled="True"/>
+        </Border>
 
         <!-- (b) Loading overlay: web .player-loading, black, backdrop cover
              at 25% opacity, logo (max 26rem x 9rem = 208x72) or title
