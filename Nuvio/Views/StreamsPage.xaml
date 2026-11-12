@@ -1,12 +1,12 @@
 <!-- Streams page (Milestone 4): stream list for one title/episode.
      Ported from web/js/views/streams.js + web/css/app.css (.streams-*).
      Layout in epx (web rem x 8): info column 240, gap 24, layout padding
-     40 start / 32 end / 28 top (set in code-behind so RTL flips the sides),
-     chips 22 high, stream rows 72 / 1fr / auto with 9,10 padding.
+     content-start + visual anchor / 28 top (set in code-behind so RTL flips
+     the sides), chips 22 high, stream rows 72 / 1fr / auto with 9,10 padding.
      XYFocus keyboard navigation is off on purpose: the controller poll owns
      every move (see MainPage.OnPreviewKeyDown). Left on, the framework moves
      focus a second card per D-pad press on top of the router's move. -->
-<Page
+<views:FocusablePage
     x:Class="Nuvio.Views.StreamsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -14,11 +14,12 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:shared="using:Nuvio.Views.Shared"
     xmlns:local="using:Nuvio.Views"
+    xmlns:views="using:Nuvio.Views"
     mc:Ignorable="d"
     XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <views:FocusablePage.Resources>
         <!-- Filter chips: the web .chip (22 high, radius 11, font 8) on the
              same glass button template as the Details season chips. The
              selected chip's blue fill is set in code-behind. -->
@@ -217,7 +218,7 @@
             </Setter>
         </Style>
         <local:StreamRowOpacityConverter x:Key="StreamRowOpacityConverter"/>
-    </Page.Resources>
+    </views:FocusablePage.Resources>
 
     <Grid x:Name="RootGrid" XYFocusKeyboardNavigation="Disabled">
         <!-- Backdrop: the title's background, cross-faded between two layers
@@ -234,8 +235,8 @@
         </Grid>
 
         <!-- Web .streams-layout: info aside 240 + main column, gap 24.
-             Padding is set in code-behind (40 start / 32 end / 28 top) so RTL
-             flips the sides like padding-inline does on the web. -->
+             Padding is set in code-behind (content-start + visual anchor,
+             28 top) so RTL flips the sides like padding-inline does on the web. -->
         <Grid x:Name="LayoutGrid">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="240"/>
@@ -307,4 +308,4 @@
             </Grid>
         </Grid>
     </Grid>
-</Page>
+</views:FocusablePage>
