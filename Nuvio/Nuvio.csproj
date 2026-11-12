@@ -61,8 +61,10 @@
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
     <Compile Include="Bridge\AppBridge.cs" />
+    <Compile Include="Diagnostics\FocusTestHarness.cs" />
     <Compile Include="Diagnostics\Log.cs" />
     <Compile Include="Input\ControllerBridge.cs" />
+    <Compile Include="Input\FocusCoordinator.cs" />
     <Compile Include="Input\NativeInputRouter.cs" />
     <Compile Include="Playback\FfmpegPlayer.cs" />
     <Compile Include="Playback\HttpMediaInput.cs" />
