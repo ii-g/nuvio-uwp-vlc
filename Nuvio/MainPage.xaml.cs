@@ -545,11 +545,11 @@ namespace Nuvio
             // while no settle is pending — never by focus entering the
             // content (ContentFrame.GotFocus only collapses the strip).
             _suppressExpandUntilArrivalSettled = true;
-            // The details and catalog pages take the full screen: hide the
-            // sidebar strip while one is open, and restore it on any other
-            // page — back navigation included, since Frame.GoBack raises
-            // Navigated too.
-            if (e.Content is DetailsPage || e.Content is CatalogPage || e.Content is PlayerPage)
+            // The details, catalog, player and streams pages take the full
+            // screen: hide the sidebar strip while one is open, and restore
+            // it on any other page — back navigation included, since
+            // Frame.GoBack raises Navigated too.
+            if (e.Content is DetailsPage || e.Content is CatalogPage || e.Content is PlayerPage || e.Content is StreamsPage)
             {
                 HideSidebar();
             }
@@ -875,7 +875,7 @@ namespace Nuvio
 
         /// <summary>
         /// All sidebar hide/show transitions go through here. Hides the strip
-        /// while a full-screen page (details/catalog/player) is open. The strip
+        /// while a full-screen page (details/catalog/player/streams) is open. The strip
         /// is an overlay over the content frame (the frame spans both shell
         /// columns), so Visibility.Collapsed cannot move or resize the content —
         /// the home rows and hero keep their alignment when the strip comes back.
