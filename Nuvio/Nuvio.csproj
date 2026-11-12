@@ -107,8 +107,10 @@
     <Compile Include="Models\SubtitleItem.cs" />
     <Compile Include="Services\SubtitleService.cs" />
     <Compile Include="Services\PlayerService.cs" />
+    <Compile Include="Services\DebridService.cs" />
     <Compile Include="ViewModels\StreamsViewModel.cs" />
     <Compile Include="ViewModels\PlayerViewModel.cs" />
+    <Compile Include="ViewModels\SettingsViewModel.cs" />
     <Compile Include="Views\StreamsPage.xaml.cs">
       <DependentUpon>StreamsPage.xaml</DependentUpon>
     </Compile>
@@ -126,6 +128,9 @@
     </Compile>
     <Compile Include="Views\DetailsPage.xaml.cs">
       <DependentUpon>DetailsPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Views\SettingsPage.xaml.cs">
+      <DependentUpon>SettingsPage.xaml</DependentUpon>
     </Compile>
     <Compile Include="Views\Shared\BackdropFadeBrush.cs" />
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
@@ -185,6 +190,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Views\PlayerPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\SettingsPage.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
