@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nuvio.Bridge;
 using Nuvio.Core;
 using Nuvio.Diagnostics;
+using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
@@ -38,7 +39,7 @@ namespace Nuvio.Views
     /// (transportUrl|action) across re-renders. No custom input handling: the
     /// router owns the D-pad and back is the frame's GoBack.
     /// </summary>
-    internal sealed partial class SettingsPage : Page
+    internal sealed partial class SettingsPage : Page, IArrivalFocus
     {
         private readonly SettingsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
@@ -53,6 +54,7 @@ namespace Nuvio.Views
             _viewModel = new SettingsViewModel(shell.Stremio, shell.Debrid, shell.Settings, shell.Navigation);
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             Loaded += (s, e) => ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
+            GotFocus += OnGotFocus;
             _viewModel.AddonsChanged += OnViewModelAddonsChanged;
             _viewModel.DebridChanged += OnViewModelDebridChanged;
         }
@@ -74,18 +76,9 @@ namespace Nuvio.Views
                 ? param.Section.ToLowerInvariant()
                 : string.Empty;
             ShowSection();
-            // One dispatcher tick after layout, like DetailsPage: a direct
-            // Focus() here returns false because the rows are not focusable
-            // yet. Focus only when nothing inside this page already has it
-            // (the framework may have parked focus on a sidebar button).
-            var target = _firstFocusTarget;
-            var _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-            {
-                if (target == null) return;
-                var focused = FocusManager.GetFocusedElement() as DependencyObject;
-                if (focused != null && IsDescendantOf(focused, this)) return;
-                target.Focus(FocusState.Programmatic);
-            });
+            // Arrival focus (fresh or back) is owned by the router's
+            // SettleArrivalFocus, which calls TryFocusArrival / TryFocusKey on
+            // this page — nothing focuses here.
         }
 
         protected override void OnNavigatedFrom(Windows.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -94,6 +87,83 @@ namespace Nuvio.Views
             _viewModel.AddonsChanged -= OnViewModelAddonsChanged;
             _viewModel.DebridChanged -= OnViewModelDebridChanged;
             _viewModel.Close();
+        }
+
+        // ---------- Arrival focus (IArrivalFocus, router-owned) ----------
+
+        /// <summary>Fresh-arrival target: _firstFocusTarget (first root row,
+        /// Install Addon, or the first debrid row). Called by the router's
+        /// SettleArrivalFocus, which retries when this returns false (the rows
+        /// are not focusable until layout runs). Bails out when focus is
+        /// already inside the page, so a late settle never yanks focus away.</summary>
+        public bool TryFocusArrival()
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused != null && IsDescendantOf(focused, this)) return true;
+            var target = _firstFocusTarget;
+            return target != null && target.Focus(FocusState.Programmatic);
+        }
+
+        /// <summary>Back-arrival target: the root row or section control for a
+        /// recorded key. Returns false when the key is gone so the router falls
+        /// back to TryFocusArrival. Keys are the control's Tag verbatim: root
+        /// rows "root|&lt;id&gt;" (a bare row id is accepted too), addon actions
+        /// "&lt;manifestUrl&gt;|&lt;action&gt;" (the existing re-render key — a
+        /// manifest URL, not a stream URL or secret), debrid rows
+        /// "debrid|&lt;providerId&gt;" / "debrid|disconnect", and the addons
+        /// section chrome "addons|install" / "addons|reset".</summary>
+        public bool TryFocusKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            if (RootRows.Any(r => r.Id == key)) key = "root|" + key;
+            if (key.StartsWith("root|", StringComparison.Ordinal))
+            {
+                // Root rows only exist on the root list; in a section the key is gone.
+                if (_section != string.Empty) return false;
+                var rootButton = FindButtonByTag(RootPanel, key);
+                return rootButton != null && rootButton.Focus(FocusState.Programmatic);
+            }
+            if (_section == "addons")
+            {
+                var addonButton = FindButtonByTag(AddonsHost, key);
+                if (addonButton != null && addonButton.IsEnabled) return addonButton.Focus(FocusState.Programmatic);
+                if (key == "addons|install") return InstallAddonButton.Focus(FocusState.Programmatic);
+                if (key == "addons|reset") return ResetAddonsButton.Focus(FocusState.Programmatic);
+                return false;
+            }
+            if (_section == "debrid")
+            {
+                var debridButton = FindButtonByTag(DebridHost, key);
+                return debridButton != null && debridButton.Focus(FocusState.Programmatic);
+            }
+            return false;
+        }
+
+        private void OnGotFocus(object sender, RoutedEventArgs e)
+        {
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null) return;
+            for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                var button = node as Button;
+                if (button == null) continue;
+                var tag = button.Tag as string;
+                if (!string.IsNullOrEmpty(tag))
+                {
+                    // Root rows ("root|<id>"), addon actions ("<manifestUrl>|<action>")
+                    // and debrid rows ("debrid|<id>") all record under their Tag.
+                    MainPage.Current?.RecordArrivalFocusKey(GetType(), tag);
+                }
+                return;
+            }
+        }
+
+        /// <summary>Dialog restore (part C): back to the element that opened
+        /// the dialog, else the page's arrival target.</summary>
+        private void RestoreDialogInvoker(UIElement invoker)
+        {
+            if (invoker != null && invoker.Focus(FocusState.Programmatic)) return;
+            TryFocusArrival();
         }
 
         private string S(string key, string fallback)
@@ -129,6 +199,9 @@ namespace Nuvio.Views
                 AddonsPanel.Visibility = Visibility.Visible;
                 RenderAddons();
                 _firstFocusTarget = InstallAddonButton;
+                // Section-chrome keys for Back-arrival restore (see TryFocusKey).
+                InstallAddonButton.Tag = "addons|install";
+                ResetAddonsButton.Tag = "addons|reset";
             }
             else if (_section == "debrid")
             {
@@ -731,6 +804,9 @@ namespace Nuvio.Views
                 if (primary != null) primary.Focus(FocusState.Programmatic);
             };
             var shell = MainPage.Current;
+            // Part C: remember the invoker so focus returns to it when the
+            // dialog closes instead of being lost.
+            var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             ContentDialogResult result;
             try
@@ -740,6 +816,7 @@ namespace Nuvio.Views
             finally
             {
                 shell.DialogOpen = false;
+                RestoreDialogInvoker(invoker);
             }
             return result == ContentDialogResult.Primary;
         }
