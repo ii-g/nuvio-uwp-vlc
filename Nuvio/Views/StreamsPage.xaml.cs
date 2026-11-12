@@ -384,7 +384,8 @@ namespace Nuvio.Views
         /// the dialog, else the page's arrival target.</summary>
         private void RestoreDialogInvoker(UIElement invoker)
         {
-            if (invoker != null && invoker.Focus(FocusState.Programmatic)) return;
+            var control = invoker as Control;
+            if (control != null && control.Focus(FocusState.Programmatic)) return;
             TryFocusArrival();
         }
 
