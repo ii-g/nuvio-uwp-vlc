@@ -46,10 +46,14 @@ namespace Nuvio
         private SidebarState _sidebarState = SidebarState.Collapsed;
         /// <summary>
         /// Coordinator-owned guard: while set, focus landing on a sidebar button
-        /// after navigation must not expand the strip. Set in
-        /// ContentFrame_Navigated, cleared ONLY by SettleArrivalFocus's finally
-        /// or genuine user input (controller/key via ClearSidebarExpandSuppression,
-        /// or FocusSidebar). Never cleared by focus entering the content.
+        /// after navigation must not expand the strip. Armed BEFORE a
+        /// navigation starts (NavigationService.Navigate choke-point and
+        /// NativeInputRouter.HandleBack), so the framework's synchronous
+        /// focus fallback can never land on a sidebar button while the
+        /// guard is down. Cleared ONLY by the router's settle succeeding,
+        /// by watchdog expiry, by user takeover (NoteUserInput), by genuine
+        /// user input while no settle is pending, or by FocusSidebar.
+        /// Never cleared by focus entering the content.
         /// </summary>
         private bool _suppressExpandUntilArrivalSettled;
         private Storyboard _sidebarStoryboard;
@@ -87,10 +91,10 @@ namespace Nuvio
         /// would change the frosted menu under the user's hands.</summary>
         public bool IsSidebarExpanded => _sidebarState == SidebarState.Expanded;
 
-        /// <summary>Records a page's last-focused key for Back restore, and when rowKey is supplied the last-focused key for that row (forwards to the router's central registry).</summary>
-        internal void RecordArrivalFocusKey(Type pageType, string key, string rowKey = null)
+        /// <summary>Records a page's last-focused key for Back restore under its navigation-entry key, and when rowKey is supplied the last-focused key for that row (forwards to the router's central registry).</summary>
+        internal void RecordArrivalFocusKey(string entryKey, string key, string rowKey = null)
         {
-            if (_router != null) _router.RecordArrivalFocusKey(pageType, key, rowKey);
+            if (_router != null) _router.RecordArrivalFocusKey(entryKey, key, rowKey);
         }
 
         public MainPage()
@@ -249,12 +253,17 @@ namespace Nuvio
             _controller = new ControllerBridge((action, repeat) =>
             {
                 _userInputSeen = true;
-                // A real controller press clears the navigation suppression:
-                // a deliberate D-pad move onto the strip must still expand
-                // it. A navigation that follows (B -> GoBack) re-arms the
-                // guard in ContentFrame_Navigated before any artifact focus
-                // can land on a sidebar button.
-                ClearSidebarExpandSuppression();
+                // Settling-aware guard rule (Fix 2, root cause A): a real
+                // controller press clears the navigation suppression ONLY
+                // when no arrival settle is pending. Clearing it blindly
+                // here would clear the guard for the very press (B) that
+                // starts a back navigation, before HandleBack re-arms it —
+                // the old code's race. While a settle is pending the press
+                // is a takeover instead: the router stops settling (and
+                // clears the guard itself, since no settle would be left
+                // to clear it).
+                if (_router != null && _router.IsSettling) _router.NoteUserInput();
+                else ClearSidebarExpandSuppression();
                 _router.Handle(action, repeat);
             });
 
@@ -375,7 +384,7 @@ namespace Nuvio
                 var restored = control != null && control.Focus(FocusState.Programmatic);
                 if (!restored && _router != null)
                 {
-                    _router.SettleArrivalFocus(ContentFrame.Content as Page, false);
+                    _router.SettleArrivalFocus(ContentFrame.Content as FocusablePage, false, null);
                 }
             }
             catch (Exception ex)
@@ -418,10 +427,17 @@ namespace Nuvio
             // Any key reaching here is real user input: it arms focus-driven sidebar
             // expansion (the launch activation focus must not open the strip).
             _userInputSeen = true;
-            // Same reason as the controller callback: a deliberate key move onto
-            // the strip must expand it. A navigation that follows re-arms the
-            // guard in ContentFrame_Navigated before any artifact focus lands.
-            ClearSidebarExpandSuppression();
+            // Settling-aware guard rule (Fix 2, root cause A): same as the
+            // controller callback — clear only when no arrival settle is
+            // pending, else hand the press to the router as a takeover.
+            // The old comment here claimed a following navigation re-arms
+            // the guard "before any artifact focus can land"; that was
+            // false — the guard was only re-armed in ContentFrame_Navigated,
+            // after the old page detached, so the framework's synchronous
+            // fallback could land on a sidebar button while the guard was
+            // down. Navigation now arms the guard BEFORE it starts.
+            if (_router != null && _router.IsSettling) _router.NoteUserInput();
+            else ClearSidebarExpandSuppression();
             // ControllerBridge handles the controller. Stop XAML from also using its buttons to move
             // focus around — except Gamepad A, which XAML uses to activate the focused control
             // natively, and while a dialog is open, where ContentDialog handles keys natively.
@@ -521,15 +537,13 @@ namespace Nuvio
         private void ContentFrame_Navigated(object sender, NavigationEventArgs e)
         {
             Log.Write("Navigated to " + (e.Content != null ? e.Content.GetType().Name : "null"));
-            // Every navigation re-arms the suppression: any navigation can drop
-            // focus onto a sidebar button as a fallback (the framework's restore
-            // cannot find a detached page's focused container), and its GotFocus
-            // would open the strip before the destination's own focus restore
-            // moves focus back into the content. The guard is cleared only by
-            // SettleArrivalFocus's finally (when arrival settles) or on genuine
-            // user intent — a key, a controller press, or FocusSidebar.
-            // Focus entering the content does NOT clear it: ContentFrame.GotFocus
-            // only collapses the strip.
+            // The guard was already armed BEFORE this navigation started
+            // (NavigationService.Navigate / HandleBack); re-assert it here
+            // as a belt-and-braces for navigations that bypass the
+            // choke-point. It is cleared only by the settle succeeding, by
+            // watchdog expiry, by user takeover, or by genuine user input
+            // while no settle is pending — never by focus entering the
+            // content (ContentFrame.GotFocus only collapses the strip).
             _suppressExpandUntilArrivalSettled = true;
             // The details and catalog pages take the full screen: hide the
             // sidebar strip while one is open, and restore it on any other
@@ -566,10 +580,14 @@ namespace Nuvio
                 root = placeholder.SidebarRoot;
             }
             SetActiveSidebarButton(root);
-            // Central arrival focus: one dispatcher tick, one retry, then the
-            // first-focusable fallback; clears the expansion guard in its
-            // finally whatever the outcome.
-            if (_router != null) _router.SettleArrivalFocus(e.Content as Page, e.NavigationMode == NavigationMode.Back);
+            // Central arrival focus (Fix 2): the settle's synchronous first
+            // attempt runs inside this call, before first paint; async pages
+            // settle via ContentReady / the watchdog. The navigation
+            // parameter travels with the call so the settle can log the
+            // entry it is settling. A non-FocusablePage content logs and
+            // clears the guard (defensive; after the page migration this
+            // must not happen).
+            if (_router != null) _router.SettleArrivalFocus(e.Content as FocusablePage, e.NavigationMode == NavigationMode.Back, e.Parameter);
         }
 
         private void ContentFrame_NavigationFailed(object sender, NavigationFailedEventArgs e)
@@ -685,11 +703,23 @@ namespace Nuvio
         }
 
         /// <summary>
+        /// Arms the navigation expansion suppression. Called BEFORE a
+        /// navigation starts — by the NavigationService.Navigate
+        /// choke-point and by the router's HandleBack — never after.
+        /// </summary>
+        internal void ArmSidebarExpandSuppression()
+        {
+            _suppressExpandUntilArrivalSettled = true;
+        }
+
+        /// <summary>
         /// Clears the navigation expansion suppression (see
-        /// ContentFrame_Navigated). Called ONLY on genuine user input (a key or
-        /// a controller press, or FocusSidebar) and by the router's
-        /// SettleArrivalFocus finally. Per-page focus restores no longer call
-        /// this — the router owns the guard until arrival settles.
+        /// ContentFrame_Navigated). Called ONLY on genuine user input while
+        /// no arrival settle is pending (controller/key callbacks check
+        /// NativeInputRouter.IsSettling first), by FocusSidebar, by the
+        /// router's settle on success / watchdog expiry / user takeover.
+        /// Per-page focus restores no longer call this — the router owns
+        /// the guard until arrival settles.
         /// </summary>
         internal void ClearSidebarExpandSuppression()
         {
