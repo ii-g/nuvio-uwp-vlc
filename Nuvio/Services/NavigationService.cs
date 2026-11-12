@@ -19,6 +19,12 @@ namespace Nuvio.Services
         public string SidebarRoot { get; set; }
     }
 
+    /// <summary>Navigation parameter for the Settings page (M6). Section: "addons" | "debrid" | null.</summary>
+    internal sealed class SettingsNavigation
+    {
+        public string Section { get; set; }
+    }
+
     /// <summary>Navigation parameter for the Details page (M3).</summary>
     internal sealed class DetailsNavigation
     {
@@ -99,7 +105,7 @@ namespace Nuvio.Services
                     NavigatePlaceholder("Library", "Library lands in Milestone 5.", "Milestone 5", "library");
                     break;
                 case "settings":
-                    NavigatePlaceholder("Settings", "Settings lands in Milestone 6.", "Milestone 6", "settings");
+                    NavigateSettings(null);
                     break;
                 default:
                     NavigateHome();
@@ -113,6 +119,14 @@ namespace Nuvio.Services
             _frame.BackStack.Clear();
             _frame.Navigate(typeof(SearchPage), query);
             AppEvents.RaiseRouteChanged("search");
+        }
+
+        /// <summary>Sidebar root: the real Settings page (M6). Section "addons" | "debrid" | null.</summary>
+        public void NavigateSettings(string section)
+        {
+            _frame.BackStack.Clear();
+            _frame.Navigate(typeof(SettingsPage), new SettingsNavigation { Section = section });
+            AppEvents.RaiseRouteChanged("settings");
         }
 
         /// <summary>"View All" from a Home row (M2): a push, so back returns to Home.</summary>
