@@ -287,4 +287,199 @@
   <data name="Writer" xml:space="preserve">
     <value>الكاتب</value>
   </data>
+  <data name="All" xml:space="preserve">
+    <value>الكل</value>
+  </data>
+  <data name="StreamsLoadingFrom" xml:space="preserve">
+    <value>جارٍ التحميل من {0}</value>
+  </data>
+  <data name="StreamsHiddenTorrentOne" xml:space="preserve">
+    <value>نتيجة تورنت واحدة مخفية: اتصل بخدمة Debrid من الإعدادات، أو أعددها في المصدر، لتشغيلها هنا.</value>
+  </data>
+  <data name="StreamsHiddenTorrents" xml:space="preserve">
+    <value>{0} نتيجة تورنت مخفية: اتصل بخدمة Debrid من الإعدادات، أو أعددها في المصدر، لتشغيلها هنا.</value>
+  </data>
+  <data name="StreamsFailedToRespond" xml:space="preserve">
+    <value>تعذّر الرد من {0}.</value>
+  </data>
+  <data name="StreamsNoStreamsFound" xml:space="preserve">
+    <value>لم يتم العثور على روابط تشغيل</value>
+  </data>
+  <data name="StreamsNoStreamsMessage" xml:space="preserve">
+    <value>لم تُرجع أي من مصادرك رابطاً قابلاً للتشغيل لهذا العنوان. مصادر Debrid (Torrentio وComet وAIOStreams مع Real-Debrid أو TorBox أو AllDebrid...) تعطي روابط مباشرة تعمل هنا.</value>
+  </data>
+  <data name="StreamsNoStreamAddons" xml:space="preserve">
+    <value>لا توجد مصادر تشغيل</value>
+  </data>
+  <data name="StreamsNoAddonsMessage" xml:space="preserve">
+    <value>ثبّت مصدراً يوفّر روابط تشغيل، مثل Torrentio أو AIOStreams مع إعداد خدمة Debrid.</value>
+  </data>
+  <data name="StreamsCached" xml:space="preserve">
+    <value>مخزّنة</value>
+  </data>
+  <data name="StreamsTorrent" xml:space="preserve">
+    <value>تورنت</value>
+  </data>
+  <data name="StreamsNotPlayable" xml:space="preserve">
+    <value>غير قابل للتشغيل</value>
+  </data>
+  <data name="StreamsTorrentToast" xml:space="preserve">
+    <value>لا يمكن تشغيل التورنت على هذا الجهاز. اتصل بخدمة Debrid من الإعدادات، أو استخدمها ضمن المصدر.</value>
+  </data>
+  <data name="StreamsUnplayableToast" xml:space="preserve">
+    <value>لا يمكن تشغيل هذا الرابط هنا.</value>
+  </data>
+  <data name="PlayerOpeningStream" xml:space="preserve">
+    <value>جارٍ فتح الرابط…</value>
+  </data>
+  <data name="PlayerReconnecting" xml:space="preserve">
+    <value>جارٍ إعادة الاتصال…</value>
+  </data>
+  <data name="PlayerBuffering" xml:space="preserve">
+    <value>Buffering… {0}%</value>
+  </data>
+  <data name="PlayerResumingFrom" xml:space="preserve">
+    <value>Resuming from {0}</value>
+  </data>
+  <data name="PlayerSwitchedToVlc" xml:space="preserve">
+    <value>Switched to VLC playback.</value>
+  </data>
+  <data name="PlayerSourceFailed" xml:space="preserve">
+    <value>This source failed. Trying the next available source.</value>
+  </data>
+  <data name="PlayerStalledReconnecting" xml:space="preserve">
+    <value>Stream stalled. Reconnecting…</value>
+  </data>
+  <data name="PlayerStalledTryNext" xml:space="preserve">
+    <value>The stream stalled. Trying the next available source.</value>
+  </data>
+  <data name="PlayerNoResponse" xml:space="preserve">
+    <value>The player did not respond. Check the stream link or network, then retry or choose another source.</value>
+  </data>
+  <data name="PlayerStreamCouldNotBePlayed" xml:space="preserve">
+    <value>تعذّر تشغيل هذا الرابط.</value>
+  </data>
+  <data name="PlayerTriedSources" xml:space="preserve">
+    <value>Tried {0} sources without success.</value>
+  </data>
+  <data name="PlayerLinkNoLongerWorks" xml:space="preserve">
+    <value>لم يعد هذا الرابط يعمل. اختر مصدراً آخر.</value>
+  </data>
+  <data name="PlayerSubtitlesCouldNotLoad" xml:space="preserve">
+    <value>Couldn't load those subtitles</value>
+  </data>
+  <data name="PlayerNoNextEpisode" xml:space="preserve">
+    <value>لا توجد حلقة تالية بعد</value>
+  </data>
+  <data name="PlayerNoAudioTracks" xml:space="preserve">
+    <value>لم يتم العثور على مسارات صوتية بعد</value>
+  </data>
+  <data name="PlayerEpisodeListFailed" xml:space="preserve">
+    <value>Couldn't load the episode list</value>
+  </data>
+  <data name="PlayerFindingSource" xml:space="preserve">
+    <value>جارٍ البحث عن مصدر…</value>
+  </data>
+  <data name="PlayerSubtitleDelayToast" xml:space="preserve">
+    <value>Subtitle delay {0}s</value>
+  </data>
+  <data name="PlayerNextEpisodeLabel" xml:space="preserve">
+    <value>Next Episode · {0}s</value>
+  </data>
+  <data name="PlayerOff" xml:space="preserve">
+    <value>إيقاف</value>
+  </data>
+  <data name="PlayerInVideo" xml:space="preserve">
+    <value>من الفيديو</value>
+  </data>
+  <data name="PlayerFromAddons" xml:space="preserve">
+    <value>من الإضافات</value>
+  </data>
+  <data name="PlayerOptions" xml:space="preserve">
+    <value>الخيارات</value>
+  </data>
+  <data name="PlayerSubtitleDelayMenu" xml:space="preserve">
+    <value>تأخير الترجمة</value>
+  </data>
+  <data name="PlayerDelayReset" xml:space="preserve">
+    <value>إعادة ضبط</value>
+  </data>
+  <data name="PlayerDelayBackToNoDelay" xml:space="preserve">
+    <value>إلغاء التأخير</value>
+  </data>
+  <data name="PlayerDelayLater" xml:space="preserve">
+    <value>تأخير الترجمة</value>
+  </data>
+  <data name="PlayerDelayEarlier" xml:space="preserve">
+    <value>تقديم الترجمة</value>
+  </data>
+  <data name="PlayerNotReleased" xml:space="preserve">
+    <value>لم يصدر بعد</value>
+  </data>
+  <data name="PlayerNormalSpeed" xml:space="preserve">
+    <value>عادي</value>
+  </data>
+  <data name="PlayerFit" xml:space="preserve">
+    <value>ملاءمة الشاشة</value>
+  </data>
+  <data name="PlayerFillCrop" xml:space="preserve">
+    <value>ملء الشاشة (قص)</value>
+  </data>
+  <data name="PlayerStretch" xml:space="preserve">
+    <value>تمديد</value>
+  </data>
+  <data name="PlayerSubtitles" xml:space="preserve">
+    <value>الترجمة</value>
+  </data>
+  <data name="PlayerAudio" xml:space="preserve">
+    <value>Audio</value>
+  </data>
+  <data name="PlayerSpeed" xml:space="preserve">
+    <value>السرعة</value>
+  </data>
+  <data name="PlayerAspectRatio" xml:space="preserve">
+    <value>نسبة العرض إلى الارتفاع</value>
+  </data>
+  <data name="PlayerSources" xml:space="preserve">
+    <value>المصادر</value>
+  </data>
+  <data name="PlayerEpisodes" xml:space="preserve">
+    <value>الحلقات</value>
+  </data>
+  <data name="PlayerNextEpisode" xml:space="preserve">
+    <value>الحلقة التالية</value>
+  </data>
+  <data name="PlayerPlaybackSpeed" xml:space="preserve">
+    <value>سرعة التشغيل</value>
+  </data>
+  <data name="PlayerBack" xml:space="preserve">
+    <value>رجوع</value>
+  </data>
+  <data name="PlayerBack10" xml:space="preserve">
+    <value>رجوع 10 ثوانٍ</value>
+  </data>
+  <data name="PlayerForward10" xml:space="preserve">
+    <value>تقديم 10 ثوانٍ</value>
+  </data>
+  <data name="PlayerPlaybackPosition" xml:space="preserve">
+    <value>موضع التشغيل</value>
+  </data>
+  <data name="PlayerPlayPause" xml:space="preserve">
+    <value>Play or pause</value>
+  </data>
+  <data name="PlayerPlayNow" xml:space="preserve">
+    <value>شغّل الآن</value>
+  </data>
+  <data name="PlayerUnableToPlay" xml:space="preserve">
+    <value>تعذّر تشغيل هذا الرابط</value>
+  </data>
+  <data name="PlayerTryNextSource" xml:space="preserve">
+    <value>جرّب المصدر التالي</value>
+  </data>
+  <data name="PlayerRetry" xml:space="preserve">
+    <value>إعادة المحاولة</value>
+  </data>
+  <data name="PlayerChooseAnotherSource" xml:space="preserve">
+    <value>اختر مصدراً آخر</value>
+  </data>
 </root>
