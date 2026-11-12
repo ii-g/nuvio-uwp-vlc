@@ -307,7 +307,7 @@ jobs:
   smoke:
     name: Smoke test (Release)
     needs: package
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v6
