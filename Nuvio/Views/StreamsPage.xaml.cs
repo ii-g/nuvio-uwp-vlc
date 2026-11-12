@@ -37,7 +37,7 @@ namespace Nuvio.Views
     /// unless the filter changed. No custom input handling: the router owns the
     /// D-pad and back is the frame's GoBack.
     /// </summary>
-    internal sealed partial class StreamsPage : Page, IArrivalFocus
+    internal sealed partial class StreamsPage : FocusablePage
     {
         private readonly StreamsViewModel _viewModel;
         private readonly ResourceLoader _strings = ResourceLoader.GetForViewIndependentUse("Resources");
@@ -70,10 +70,10 @@ namespace Nuvio.Views
         private void ApplyFlowDirection(bool rtl)
         {
             FlowDirection = rtl ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
-            // Page padding comes from the shared ContentPagePadding (68 start
-            // / 32 end / 28 top) — do not hardcode it here. The old web
-            // .streams-layout 5rem/40 start value does not apply in the native
-            // shell (its sidebar is 48 + 20 bleed, not the web's width).
+            // Page padding comes from the shared ContentPagePadding
+            // (content-start + visual anchor, 28 top) — do not hardcode it here.
+            // The old web .streams-layout 5rem/40 start value does not apply in
+            // the native shell (its sidebar is 48 + 20 bleed, not the web's width).
             LayoutGrid.Padding = FlowDirectionToThicknessConverter.ContentPagePadding(rtl);
         }
 
@@ -124,6 +124,9 @@ namespace Nuvio.Views
         private void OnEntriesChanged(object sender, EventArgs e)
         {
             RenderAll(resetScroll: false);
+            // First render (chips/list rendered): the arrival target exists
+            // now. Once-only, so later re-renders are no-ops here.
+            RaiseContentReady();
         }
 
         // ---------- Render ----------
@@ -334,7 +337,7 @@ namespace Nuvio.Views
         /// when this returns false (chips/rows are not focusable until the
         /// first render). Bails out when focus is already inside the page, so
         /// a late settle never yanks focus away.</summary>
-        public bool TryFocusArrival()
+        public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused != null && IsDescendantOf(focused, this)) return true;
@@ -349,7 +352,7 @@ namespace Nuvio.Views
         /// the addon manifest URL the ViewModel uses as the filter id) or
         /// "entry:" plus the row's Order (the ViewModel's stable per-load sort
         /// key, never a stream URL).</summary>
-        public bool TryFocusKey(string key)
+        public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key)) return false;
             if (key.StartsWith("chip:", StringComparison.Ordinal))
@@ -367,26 +370,24 @@ namespace Nuvio.Views
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
         {
+            // Keys are recorded with their "chip:" / "entry:" prefix, which
+            // TryFocusKey requires. The base GotFocus hook also records the
+            // focused chip Button's raw Tag ("all" or a manifest URL) under
+            // the same entry first (base subscribes before this page), but
+            // this prefixed record overwrites it — the raw Tag alone would
+            // not resolve in TryFocusKey. Stream rows are ListViewItems, not
+            // Buttons, so only this copy can record "entry:" keys.
             var chipKey = FocusedChipKey();
             if (!string.IsNullOrEmpty(chipKey))
             {
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), "chip:" + chipKey);
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "chip:" + chipKey);
                 return;
             }
             var order = FocusedEntryOrder();
             if (order.HasValue)
             {
-                MainPage.Current?.RecordArrivalFocusKey(GetType(), "entry:" + order.Value.ToString());
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "entry:" + order.Value.ToString());
             }
-        }
-
-        /// <summary>Dialog restore (part C): back to the element that opened
-        /// the dialog, else the page's arrival target.</summary>
-        private void RestoreDialogInvoker(UIElement invoker)
-        {
-            var control = invoker as Control;
-            if (control != null && control.Focus(FocusState.Programmatic)) return;
-            TryFocusArrival();
         }
 
         private static ScrollViewer FindScrollViewer(DependencyObject root)
