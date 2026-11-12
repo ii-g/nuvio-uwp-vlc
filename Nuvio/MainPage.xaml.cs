@@ -41,9 +41,17 @@ namespace Nuvio
         private bool _videoViewRequested;
         private bool _videoViewStarting;
         private bool _dialogOpen;
-        private bool _sidebarExpanded;
-        private bool _sidebarHidden;
-        private bool _suppressSidebarExpand;
+        /// <summary>Single sidebar state machine: Hidden (full-screen pages), Collapsed (icons only), Expanded (136 epx, labels visible).</summary>
+        internal enum SidebarState { Hidden, Collapsed, Expanded }
+        private SidebarState _sidebarState = SidebarState.Collapsed;
+        /// <summary>
+        /// Coordinator-owned guard: while set, focus landing on a sidebar button
+        /// after navigation must not expand the strip. Set in
+        /// ContentFrame_Navigated, cleared ONLY by SettleArrivalFocus's finally
+        /// or genuine user input (controller/key via ClearSidebarExpandSuppression,
+        /// or FocusSidebar). Never cleared by focus entering the content.
+        /// </summary>
+        private bool _suppressExpandUntilArrivalSettled;
         private Storyboard _sidebarStoryboard;
         private bool _userInputSeen;
         private string _activeRoot;
@@ -77,7 +85,13 @@ namespace Nuvio
         /// HomePage freezes the hero auto-rotate while this is true: the strip's live
         /// blur samples the hero backdrop, so a timer flip while the menu is open
         /// would change the frosted menu under the user's hands.</summary>
-        public bool IsSidebarExpanded => _sidebarExpanded;
+        public bool IsSidebarExpanded => _sidebarState == SidebarState.Expanded;
+
+        /// <summary>Records a page's last-focused key for Back restore, and when rowKey is supplied the last-focused key for that row (forwards to the router's central registry).</summary>
+        internal void RecordArrivalFocusKey(Type pageType, string key, string rowKey = null)
+        {
+            if (_router != null) _router.RecordArrivalFocusKey(pageType, key, rowKey);
+        }
 
         public MainPage()
         {
@@ -110,14 +124,16 @@ namespace Nuvio
             // Focus-driven expansion is gated on user input (ExpandSidebarOnFocus): at
             // launch the framework parks initial focus on HomeButton before any input,
             // and that activation focus must not open the strip — the strip starts
-            // collapsed. Pointer hover expands regardless (it is a user action).
+            // collapsed. Pointer hover goes through the same gated path (it is a user
+            // action, but it must not open the strip while arrival focus is still
+            // settling after a navigation).
             HomeButton.GotFocus += SidebarButton_GotFocus;
             SearchButton.GotFocus += SidebarButton_GotFocus;
             LibraryButton.GotFocus += SidebarButton_GotFocus;
             SettingsButton.GotFocus += SidebarButton_GotFocus;
             ProfileButton.GotFocus += SidebarButton_GotFocus;
-            ContentFrame.GotFocus += (s, e) => { ClearSidebarExpandSuppression(); CollapseSidebar(); };
-            SidebarBorder.PointerEntered += (s, e) => ExpandSidebar();
+            ContentFrame.GotFocus += (s, e) => { CollapseSidebar(); };
+            SidebarBorder.PointerEntered += (s, e) => ExpandSidebarOnFocus();
             SidebarBorder.PointerExited += (s, e) => { if (!IsFocusInSidebar()) CollapseSidebar(); };
         }
 
@@ -340,6 +356,9 @@ namespace Nuvio
                 ShowOnScreenKeyboard();
             };
 
+            // Record the invoker before opening so focus can go back to it when
+            // the dialog closes (or to the page's arrival target when it cannot).
+            var invoker = FocusManager.GetFocusedElement() as DependencyObject;
             DialogOpen = true;
             ContentDialogResult result;
             try
@@ -349,6 +368,19 @@ namespace Nuvio
             finally
             {
                 DialogOpen = false;
+            }
+            try
+            {
+                var control = invoker as Control;
+                var restored = control != null && control.Focus(FocusState.Programmatic);
+                if (!restored && _router != null)
+                {
+                    _router.SettleArrivalFocus(ContentFrame.Content as Page, false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Restoring focus after the text dialog failed", ex);
             }
             if (result != ContentDialogResult.Primary && !submitted)
             {
@@ -493,10 +525,12 @@ namespace Nuvio
             // focus onto a sidebar button as a fallback (the framework's restore
             // cannot find a detached page's focused container), and its GotFocus
             // would open the strip before the destination's own focus restore
-            // moves focus back into the content. The guard is cleared only on
-            // genuine user intent — a key, a controller press, focus entering
-            // the content, or FocusSidebar — or by the destination's restore.
-            _suppressSidebarExpand = true;
+            // moves focus back into the content. The guard is cleared only by
+            // SettleArrivalFocus's finally (when arrival settles) or on genuine
+            // user intent — a key, a controller press, or FocusSidebar.
+            // Focus entering the content does NOT clear it: ContentFrame.GotFocus
+            // only collapses the strip.
+            _suppressExpandUntilArrivalSettled = true;
             // The details and catalog pages take the full screen: hide the
             // sidebar strip while one is open, and restore it on any other
             // page — back navigation included, since Frame.GoBack raises
@@ -505,7 +539,7 @@ namespace Nuvio
             {
                 HideSidebar();
             }
-            else if (_sidebarHidden)
+            else if (_sidebarState == SidebarState.Hidden)
             {
                 ShowSidebar();
             }
@@ -518,6 +552,10 @@ namespace Nuvio
             {
                 root = "search";
             }
+            else if (e.Content is SettingsPage)
+            {
+                root = "settings";
+            }
             else if (e.Content is CatalogPage)
             {
                 // Catalogs are not a sidebar root: no button is highlighted.
@@ -528,6 +566,10 @@ namespace Nuvio
                 root = placeholder.SidebarRoot;
             }
             SetActiveSidebarButton(root);
+            // Central arrival focus: one dispatcher tick, one retry, then the
+            // first-focusable fallback; clears the expansion guard in its
+            // finally whatever the outcome.
+            if (_router != null) _router.SettleArrivalFocus(e.Content as Page, e.NavigationMode == NavigationMode.Back);
         }
 
         private void ContentFrame_NavigationFailed(object sender, NavigationFailedEventArgs e)
@@ -554,10 +596,10 @@ namespace Nuvio
         /// </summary>
         public void FocusSidebar()
         {
-            if (_sidebarHidden) return;
+            if (_sidebarState == SidebarState.Hidden) return;
             // A deliberate move onto the strip: the back-navigation suppression
             // (if still set) must not swallow a real opening of the menu.
-            _suppressSidebarExpand = false;
+            ClearSidebarExpandSuppression();
             var button = _activeRoot == "search" ? SearchButton
                 : _activeRoot == "library" ? LibraryButton
                 : _activeRoot == "settings" ? SettingsButton
@@ -627,14 +669,14 @@ namespace Nuvio
         /// <summary>Focus-driven expansion, gated on real user input. At launch the
         /// framework parks initial focus on HomeButton before any input arrives; that
         /// activation focus must not open the strip, or the app starts expanded (build
-        /// 216). The first controller poll or key arms the gate; pointer hover calls
-        /// ExpandSidebar directly and is unaffected. HomePage.FocusFirst is the other
+        /// 216). The first controller poll or key arms the gate; pointer hover goes
+        /// through this same gate. HomePage.FocusFirst is the other
         /// half: once the hero loads it moves focus into the content, which collapses
         /// the strip through ContentFrame.GotFocus.</summary>
         private void ExpandSidebarOnFocus()
         {
             if (!_userInputSeen) return;
-            if (_suppressSidebarExpand)
+            if (_suppressExpandUntilArrivalSettled)
             {
                 Log.Write("Sidebar expand suppressed after navigation (focus fallback)");
                 return;
@@ -642,13 +684,16 @@ namespace Nuvio
             ExpandSidebar();
         }
 
-        /// <summary>Clears the navigation expansion suppression (see
-        /// ContentFrame_Navigated). Called by a page when its focus restore runs,
-        /// when focus enters the content by any other route, and on genuine user
-        /// input (a key or a controller press).</summary>
+        /// <summary>
+        /// Clears the navigation expansion suppression (see
+        /// ContentFrame_Navigated). Called ONLY on genuine user input (a key or
+        /// a controller press, or FocusSidebar) and by the router's
+        /// SettleArrivalFocus finally. Per-page focus restores no longer call
+        /// this — the router owns the guard until arrival settles.
+        /// </summary>
         internal void ClearSidebarExpandSuppression()
         {
-            _suppressSidebarExpand = false;
+            _suppressExpandUntilArrivalSettled = false;
         }
 
         /// <summary>
@@ -760,67 +805,92 @@ namespace Nuvio
             transform.ScaleY = 1;
         }
 
+        /// <summary>All sidebar expand/collapse transitions go through here.</summary>
+        private void SetSidebarExpanded(bool expanded)
+        {
+            if (expanded)
+            {
+                if (_sidebarState == SidebarState.Hidden || _sidebarState == SidebarState.Expanded) return;
+                _sidebarState = SidebarState.Expanded;
+                // Always Verity tones while the strip is open (Mohammed's call):
+                // the strip's live blur samples the hero, and the white Verity
+                // logo is the bright band at the strip's start edge, so pin the
+                // carousel to the Verity slide on expand — whatever slide is
+                // current. The hero auto-rotate is already frozen while expanded,
+                // so the slide stays on Verity until the strip collapses. Only
+                // the Home page has a hero; other pages leave the tones as they
+                // are. Visible side effect, disclosed: the hero title/logo/
+                // description/dots jump to Verity as the menu opens.
+                var home = ContentFrame.Content as HomePage;
+                if (home != null) home.PinHeroToReferenceSlide();
+                AnimateSidebar(136, true);
+            }
+            else
+            {
+                if (_sidebarState != SidebarState.Expanded) return;
+                _sidebarState = SidebarState.Collapsed;
+                AnimateSidebar(48, false);
+            }
+        }
+
         private void ExpandSidebar()
         {
-            if (_sidebarHidden) return;
-            if (_sidebarExpanded) return;
-            _sidebarExpanded = true;
-            // Always Verity tones while the strip is open (Mohammed's call):
-            // the strip's live blur samples the hero, and the white Verity
-            // logo is the bright band at the strip's start edge, so pin the
-            // carousel to the Verity slide on expand — whatever slide is
-            // current. The hero auto-rotate is already frozen while expanded,
-            // so the slide stays on Verity until the strip collapses. Only
-            // the Home page has a hero; other pages leave the tones as they
-            // are. Visible side effect, disclosed: the hero title/logo/
-            // description/dots jump to Verity as the menu opens.
-            var home = ContentFrame.Content as HomePage;
-            if (home != null) home.PinHeroToReferenceSlide();
-            AnimateSidebar(136, true);
+            SetSidebarExpanded(true);
         }
 
         private void CollapseSidebar()
         {
-            if (!_sidebarExpanded) return;
-            _sidebarExpanded = false;
-            AnimateSidebar(48, false);
+            SetSidebarExpanded(false);
         }
 
         /// <summary>
-        /// Hides the sidebar strip while the details page is open. The strip is an
-        /// overlay over the content frame (the frame spans both shell columns), so
-        /// Visibility.Collapsed cannot move or resize the content — the home rows
-        /// and hero keep their alignment when the strip comes back. Collapsed
-        /// elements leave the focus order too, so no hidden button can ever take
-        /// focus. If the strip was expanded, it snaps to the collapsed end state
-        /// first (48 epx, labels hidden), so the restore lands in the normal state.
+        /// All sidebar hide/show transitions go through here. Hides the strip
+        /// while a full-screen page (details/catalog/player) is open. The strip
+        /// is an overlay over the content frame (the frame spans both shell
+        /// columns), so Visibility.Collapsed cannot move or resize the content —
+        /// the home rows and hero keep their alignment when the strip comes back.
+        /// Collapsed elements leave the focus order too, so no hidden button can
+        /// ever take focus. If the strip was expanded, it snaps to the collapsed
+        /// end state first (48 epx, labels hidden), so the restore lands in the
+        /// normal state.
         /// </summary>
+        private void SetSidebarHidden(bool hidden)
+        {
+            if (hidden)
+            {
+                if (_sidebarState == SidebarState.Hidden) return;
+                _sidebarState = SidebarState.Hidden;
+                if (_sidebarStoryboard != null)
+                {
+                    _sidebarStoryboard.Stop();
+                    _sidebarStoryboard = null;
+                }
+                SidebarBorder.Width = 48;
+                foreach (var label in new UIElement[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel, SidebarLogoWordmark })
+                {
+                    label.Opacity = 0;
+                }
+                SidebarLogoIcon.Opacity = 1;
+                SidebarLogoWordmark.Visibility = Visibility.Collapsed;
+                SidebarLogoIcon.Visibility = Visibility.Visible;
+                SidebarBorder.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                if (_sidebarState != SidebarState.Hidden) return;
+                _sidebarState = SidebarState.Collapsed;
+                SidebarBorder.Visibility = Visibility.Visible;
+            }
+        }
+
         private void HideSidebar()
         {
-            if (_sidebarHidden) return;
-            _sidebarHidden = true;
-            if (_sidebarStoryboard != null)
-            {
-                _sidebarStoryboard.Stop();
-                _sidebarStoryboard = null;
-            }
-            _sidebarExpanded = false;
-            SidebarBorder.Width = 48;
-            foreach (var label in new UIElement[] { HomeLabel, SearchLabel, LibraryLabel, SettingsLabel, ProfileLabel, SidebarLogoWordmark })
-            {
-                label.Opacity = 0;
-            }
-            SidebarLogoIcon.Opacity = 1;
-            SidebarLogoWordmark.Visibility = Visibility.Collapsed;
-            SidebarLogoIcon.Visibility = Visibility.Visible;
-            SidebarBorder.Visibility = Visibility.Collapsed;
+            SetSidebarHidden(true);
         }
 
         private void ShowSidebar()
         {
-            if (!_sidebarHidden) return;
-            _sidebarHidden = false;
-            SidebarBorder.Visibility = Visibility.Visible;
+            SetSidebarHidden(false);
         }
 
         private void AnimateSidebar(double targetWidth, bool labelsVisible)
