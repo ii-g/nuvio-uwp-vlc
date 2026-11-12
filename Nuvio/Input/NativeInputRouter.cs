@@ -110,16 +110,17 @@ namespace Nuvio.Input
         internal bool IsSettling { get { return _settlingPage != null; } }
 
         /// <summary>
-        /// Phase 1 Focus Manager coordinator, linked by MainPage after both
-        /// are constructed (the coordinator's moveFocus / handleBack
-        /// delegates are this router's MoveFocus / HandleBack, so the link
-        /// cannot be passed in the constructor). Null until linked. When
-        /// set and FocusCoordinator.UseFocusCoordinator is true, Handle
-        /// delegates to the coordinator and SettleArrivalFocus routes
-        /// Settings pages to it; the legacy paths below stay as the
-        /// rollback path. Never null-checked into a different behaviour
-        /// when the flag is off: every flag check below falls through to
-        /// the legacy body exactly as before.
+        /// Phase 2 Focus Manager coordinator, linked by MainPage after both
+        /// are constructed (the coordinator takes the router's HandleBack
+        /// as its back delegate; row/edge moves live in the coordinator
+        /// itself now, so the link cannot be passed in the constructor).
+        /// Null until linked. When set and
+        /// FocusCoordinator.UseFocusCoordinator is true, Handle delegates
+        /// to the coordinator and SettleArrivalFocus routes Settings,
+        /// Home, Search and Catalog pages to it; the legacy paths below
+        /// stay as the rollback path. Never null-checked into a different
+        /// behaviour when the flag is off: every flag check below falls
+        /// through to the legacy body exactly as before.
         /// </summary>
         internal FocusCoordinator Coordinator { get; set; }
 
@@ -228,16 +229,17 @@ namespace Nuvio.Input
         /// </summary>
         internal void SettleArrivalFocus(FocusablePage page, bool isBack, object parameter)
         {
-            // Phase 1: Settings is the ONLY migrated page — its settle is
-            // coordinator-owned. A coordinator settle from a previous
-            // navigation is cancelled first when a legacy settle takes over
-            // (and vice versa: RequestArrival stops its own settle), so
-            // only one settle ever runs. Every other page keeps the legacy
-            // settle below, unchanged. With the flag off this block is
-            // skipped entirely and the legacy body runs exactly as before.
+            // Phase 2: Settings, Home, Search and Catalog are migrated —
+            // their settle is coordinator-owned. A coordinator settle from
+            // a previous navigation is cancelled first when a legacy settle
+            // takes over (and vice versa: RequestArrival stops its own
+            // settle), so only one settle ever runs. Every other page keeps
+            // the legacy settle below, unchanged. With the flag off this
+            // block is skipped entirely and the legacy body runs exactly
+            // as before.
             if (Coordinator != null && FocusCoordinator.UseFocusCoordinator)
             {
-                if (page is SettingsPage)
+                if (page is SettingsPage || page is HomePage || page is SearchPage || page is CatalogPage)
                 {
                     StopSettle(clearGuard: false);
                     Coordinator.RequestArrival(page, isBack);
@@ -562,9 +564,11 @@ namespace Nuvio.Input
             }
         }
 
-        // Internal (not private) so MainPage can hand these to the
-        // FocusCoordinator as its moveFocus / handleBack delegates.
-        // Accessibility change only; no logic change.
+        // Internal (not private) so the legacy path stays reachable from
+        // the shell: with the flag off the router's own Handle calls this
+        // directly. The coordinator no longer takes it as a delegate
+        // (Phase 2: it owns row/edge moves itself and takes only
+        // HandleBack from here). Accessibility change only; no logic change.
         internal void MoveFocus(FocusNavigationDirection direction)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
