@@ -5,18 +5,19 @@
      in code-behind so focus can be restored by key across re-renders.
      XYFocus keyboard navigation is off on purpose: the controller poll owns
      every move (see MainPage.OnPreviewKeyDown). -->
-<Page
+<views:FocusablePage
     x:Class="Nuvio.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:shared="using:Nuvio.Views.Shared"
+    xmlns:views="using:Nuvio.Views"
     mc:Ignorable="d"
     XYFocusKeyboardNavigation="Disabled"
     Background="Transparent">
 
-    <Page.Resources>
+    <views:FocusablePage.Resources>
         <!-- Primary button (Install Addon): the web .btn primary (28 high,
              radius 14, font 9) on the same glass template as the Details hero
              buttons and the Streams primary button. -->
@@ -176,10 +177,11 @@
                 </Setter.Value>
             </Setter>
         </Style>
-    </Page.Resources>
+    </views:FocusablePage.Resources>
 
-    <!-- Page padding is set in code-behind (40 start / 32 end / 28 top) so RTL
-         flips the sides, like StreamsPage. -->
+    <!-- Page padding is set in code-behind (content-start + visual anchor,
+         28 top, from the shared ContentPagePadding) so RTL flips the sides,
+         like StreamsPage. -->
     <ScrollViewer VerticalScrollBarVisibility="Hidden" XYFocusKeyboardNavigation="Disabled">
         <StackPanel x:Name="ContentStack" Spacing="0">
             <TextBlock x:Name="PageTitle" Foreground="White" FontSize="21" FontWeight="ExtraBold" TextWrapping="Wrap" shared:TextGlow.IsEnabled="True"/>
@@ -211,4 +213,4 @@
             </StackPanel>
         </StackPanel>
     </ScrollViewer>
-</Page>
+</views:FocusablePage>
