@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Nuvio.Core;
+using Nuvio.Diagnostics;
 using Nuvio.Models;
 using Nuvio.Views;
 using Windows.UI.Xaml.Controls;
@@ -135,7 +136,12 @@ namespace Nuvio.Services
 
         public void OpenTitle(Meta meta)
         {
-            if (meta == null) return;
+            if (meta == null)
+            {
+                Log.Write("OpenTitle called with null meta - ignoring");
+                return;
+            }
+            Log.Write("OpenTitle navigating to details for " + meta.Type + "/" + meta.Id);
             _frame.Navigate(typeof(DetailsPage), new DetailsNavigation
             {
                 Type = meta.Type ?? "movie",
@@ -148,8 +154,12 @@ namespace Nuvio.Services
         /// <summary>Opens the real Streams page for a movie (video null) or an episode (M4).</summary>
         public void PlayVideo(Meta meta, Video video, bool restart = false)
         {
-            if (meta == null) return;
-            _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
+            if (meta == null)
+            {
+                Log.Write("PlayVideo called with null meta - ignoring");
+                return;
+            }
+            var navigated = _frame.Navigate(typeof(StreamsPage), new StreamsNavigation
             {
                 Type = meta.Type ?? "movie",
                 Id = meta.Id,
@@ -158,6 +168,7 @@ namespace Nuvio.Services
                 Video = video,
                 Restart = restart,
             });
+            Log.Write("PlayVideo navigating to streams for " + meta.Type + "/" + meta.Id + ", navigated=" + navigated);
             AppEvents.RaiseRouteChanged("streams");
         }
 
