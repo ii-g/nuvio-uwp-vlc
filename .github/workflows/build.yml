@@ -40,6 +40,17 @@ jobs:
             echo "::error::Banned identifier found — deleted frame code came back. See matches above."
             exit 1
           fi
+          # APIs that do not exist in UWP (verified against Microsoft Learn
+          # after builds 422/423 failed on them): Compositor.CreateDrawingSurface
+          # and CanvasComposition.CreateDrawingSurface (use
+          # CompositionGraphicsDevice.CreateDrawingSurface instead), and
+          # OpacityMask (WPF only, not UWP). GetContainerVisual is NOT banned:
+          # TextGlow.cs legitimately has a TryGetContainerVisual helper.
+          bad_api='([Cc]Compositor\.CreateDrawingSurface|CanvasComposition\.CreateDrawingSurface|OpacityMask)'
+          if grep -rE --include='*.cs' --include='*.xaml' --include='*.csproj' --include='*.js' --include='*.xml' "$bad_api" Nuvio web; then
+            echo "::error::Banned API found — this API does not exist in UWP. See matches above."
+            exit 1
+          fi
           echo 'Guard clean: no banned identifiers in Nuvio/ or web/.'
 
   commit-rules:
@@ -372,6 +383,23 @@ jobs:
         shell: pwsh
         run: |
           Start-Sleep -Seconds 20
+          # Best-effort screenshot of the loaded main page: proves the UI
+          # rendered (not a black screen). Never fails the build — a warning
+          # only — because screen capture depends on the runner's session.
+          try {
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
+            $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+            $gfx.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+            $bmp.Save("smoke\screenshot.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            $gfx.Dispose()
+            $bmp.Dispose()
+            Write-Host 'Screenshot saved to smoke\screenshot.png.'
+          } catch {
+            "::warning::Screenshot capture failed ($($_.Exception.Message)). Continuing without it."
+          }
           $log = "$env:LOCALAPPDATA\Packages\$env:PACKAGE_FAMILY_NAME\LocalState\nuvio-vlc.log"
           if (-not (Get-Process -Name Nuvio -ErrorAction SilentlyContinue)) {
             throw 'Smoke test failed: the Nuvio process is gone 30s after launch (crashed on startup).'
@@ -390,3 +418,10 @@ jobs:
           }
           Get-Content $log -Tail 20
           'Smoke test passed: process alive after 30s, no fatal error in the log.'
+      - name: Upload smoke screenshot
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Smoke-screenshot
+          path: smoke/screenshot.png
+          if-no-files-found: warn
