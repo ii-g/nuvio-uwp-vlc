@@ -35,7 +35,7 @@ namespace Nuvio.Views
         internal event Action ContentReady;
 
         /// <summary>True once RaiseContentReady has run (or the page was ready at navigate time).</summary>
-        internal bool IsContentReady { get; protected set; }
+        internal bool IsContentReady { get; private set; }
 
         private bool _contentReadyRaised;
         private object _navigationParameter;
