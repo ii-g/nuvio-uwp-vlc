@@ -473,9 +473,9 @@ Install the build, then run each step and check the ring position:
    moves nothing: no element can take focus yet, and the settle is not
    cancelled).
 3. Settings: right from the Debrid row — the strip opens and focus lands
-   on Home (first option), not on Settings.
+   on Settings (superseded: was Home under the old "first option" rule).
 4. Search: right from the bottom chips — the strip opens and focus lands
-   on Home, not on Settings.
+   on Search (superseded: was Home under the old "first option" rule).
 5. Home hero: right from Play — the strip opens and focus lands on Home,
    as before.
 6. Press a sidebar button — navigates, the strip collapses, focus stays
@@ -497,6 +497,33 @@ Install the build, then run each step and check the ring position:
   candidate is not a `UIElement` (e.g. a `Hyperlink`). In our pages the
   candidates are buttons and cards, so there is no practical effect —
   but if a focusable `Hyperlink` ever appears, revisit the peek call.
+
+## Fix — sidebar opens on the current page's button (2026-11-13, supersedes the "first option" rule above)
+
+User request: opening the sidebar must land on the button for the page
+currently shown (Settings from Settings, Search from Search), not always
+on Home. The three-part fix above deliberately landed on Home; that rule
+is now superseded.
+
+Root cause: `FocusSidebarFirst()` hardcoded `HomeButton`, while
+`FocusSidebar()` (hero branch) already resolved the current page's button
+from `_activeRoot` — the two openings had drifted apart. Fix: a shared
+helper `SidebarButtonForCurrentRoot()` in `Nuvio/MainPage.xaml.cs`
+(`_activeRoot == "search" ? SearchButton : "library" ? LibraryButton :
+"settings" ? SettingsButton : HomeButton`, unknown/null root falls back
+to HomeButton) used by both methods; `FocusCoordinator.MoveFocus` is
+unchanged (comment only). The root comes from `ContentFrame_Navigated` /
+`SetActiveSidebarButton`, so `PlaceholderPage` resolves through its
+`SidebarRoot` ("library" / "settings") — a page-type-only lookup could
+not distinguish those two. Hidden-sidebar pages (Details / Catalog /
+Streams / Player) still return `false` from `FocusSidebarFirst()` and
+fall through to XYFocus.
+
+Device test list (amends items 3–4 of the three-part fix list above):
+Settings right from the Debrid row lands on Settings; Search right from
+the bottom chips lands on Search; Home hero right from Play still lands
+on Home. `FOCUS.md` §2 item 8 and §5 "Sidebar menu" updated from "first
+option" to "current page's button".
 
 ## Fix round — bare-container focus at launch (build 564 gate failure)
 
@@ -705,3 +732,75 @@ Files changed (pages track):
 - The Home Continue-menu cancel path is still device-unverified in
   the coordinator-owned form (it was exercised only in the local
   form before); test list item 1 covers it.
+
+## Fix round — root back-stack + Home row memory + sidebar current-page button (2026-11-13)
+
+User report: focus memory "saves across pages" (video: B on Home
+re-opened the Account placeholder, looping Home ↔ Account). The audit
+found the leak is not the focus registry at all — it is the back stack
+— plus a real Home row-memory leak, and the user added a third request
+(sidebar opens on the current page's button). All three fixed in one
+local round, no push yet.
+
+### 1. Root back-stack (NavigationService.cs)
+
+Root navigations cleared `BackStack` *before* `Navigate`, but
+`Frame.Navigate` itself pushes the current page (Microsoft Learn:
+"When you navigate to a page with `Frame.Navigate`, a `PageStackEntry`
+for the current page is added to the `Frame.BackStack` collection"),
+so one stale entry always survived and B looped between two pages
+instead of reaching the empty-stack branch. Fix: central `Navigate`
+gained `bool clearBackStack = false`; the four roots
+(`NavigateHome` / `NavigateSearch` / `NavigateSettingsRoot` /
+`NavigatePlaceholder`) pass `true` and the stack is cleared *after* a
+successful navigation only (`if (navigated && clearBackStack)` — a
+refused/failed navigation must not wipe history). Pushes
+(`NavigateSettings(section)`, `NavigateCatalog`, `OpenTitle`,
+`PlayVideo`) pass nothing and keep their semantics; `ForwardStack`
+is untouched anywhere. One known window remains: during `Navigated`
+the stale entry is still present (`CanGoBack == true` for a moment);
+no reader runs there today (`ContentFrame_Navigated` reads only
+`e.Content`/`e.Parameter`, `HandleBack` runs on user input), so it is
+unobservable — a future `CanGoBack` reader inside `Navigated` would
+need `NavigateToType` + `IsNavigationStackEnabled = false` instead.
+
+### 2. Home row memory (FocusCoordinator.cs + NativeInputRouter.cs + MainPage.xaml.cs)
+
+`NavigateHome` always passes `null`, so every Home visit shares one
+entry key (`Nuvio.Views.HomePage|`) and `TryMoveToAdjacentRow` read
+that entry's row map with no back-path gate — a fresh visit landed on
+a previous visit's poster. Fix: `ClearRowFocusKeys(entryKey)` (public
+in the coordinator, `internal` in the router) drops one entry's row
+map only; `ContentFrame_Navigated` calls it on both registries for
+fresh arrivals (`NavigationMode != Back`) before the settle. Back
+arrivals keep the map, so Back still restores the saved poster, and
+within-visit row memory rebuilds from `GotFocus` records. The clear
+lives on the `Navigated` boundary, not inside
+`SettleArrivalFocus`/`RequestArrival`, because the text-dialog
+restore re-settle (`MainPage.xaml.cs:480`) calls those with
+`isBack=false` mid-visit. Only `HomePage` implements `IRowFocusInfo`,
+so Search/Catalog are unaffected (their row maps are empty no-ops).
+Arrival keys are untouched — `TrySettleOnce` already gates arrival
+restore on `isBack`.
+
+### 3. Sidebar current-page button (MainPage.xaml.cs + FocusCoordinator.cs comment)
+
+Supersedes the "first option" rule from the three-part fix above
+(see its own section). `FocusSidebarFirst()` hardcoded `HomeButton`
+while `FocusSidebar()` (hero branch) already resolved the current
+page's button from `_activeRoot`. Fix: shared helper
+`SidebarButtonForCurrentRoot()` used by both
+(`search` → `SearchButton`, `library` → `LibraryButton`, `settings`
+→ `SettingsButton`, else `HomeButton`); the root comes from
+`ContentFrame_Navigated`/`SetActiveSidebarButton`, so
+`PlaceholderPage` resolves through its `SidebarRoot`. Hidden-sidebar
+pages still return `false` and fall through to XYFocus.
+
+Device test list: Home → Search (menu) → B lands on Home (not
+Search); Details → Settings (root) → B lands on Home (not Details);
+Settings → B lands on Home; Home → B shows the toast, second B
+within 2500 ms exits; fresh Home visit: down to a row lands on its
+first poster, Back to Home then Up/Down restores the saved poster,
+and within one fresh visit down-then-up returns to the same poster;
+Settings right from the Debrid row lands on Settings; Search right
+from the bottom chips lands on Search.
