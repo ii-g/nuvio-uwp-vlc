@@ -136,6 +136,7 @@
     <Compile Include="Views\SettingsPage.xaml.cs">
       <DependentUpon>SettingsPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\Shared\AnimatedFocusBorder.cs" />
     <Compile Include="Views\Shared\BackdropFadeBrush.cs" />
     <Compile Include="Views\Shared\FocusScrollHelper.cs" />
     <Compile Include="Views\Shared\SidebarBackdropBlurBrush.cs" />
