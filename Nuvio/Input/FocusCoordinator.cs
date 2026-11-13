@@ -168,6 +168,14 @@ namespace Nuvio.Input
         // and is restored when that dialog closes.
         private readonly Stack<Control> _dialogInvokers = new Stack<Control>();
 
+        // OSD park state (Phase 4): the last OSD element before the OSD
+        // hid. One slot is enough — the OSD exists only on PlayerPage,
+        // and a new hide overwrites it. The slot is cleared on show
+        // (consumed or skipped) and validated before any restore, so a
+        // stale reference (user left the player while parked) can never
+        // focus a detached element. Non-null means parked.
+        private Control _lastOsdElement;
+
         /// <summary>
         /// Stores references only — no subscriptions, no timers, no focus
         /// moves, so constructing the coordinator changes no app behaviour
@@ -1164,6 +1172,87 @@ namespace Nuvio.Input
 
         /// <summary>True while a dialog is open; the controller is paused (see HandleInput).</summary>
         public bool IsDialogOpen { get { return _dialogInvokers.Count > 0; } }
+
+        /// <summary>
+        /// Phase 4: park OSD focus when the player OSD hides. The page
+        /// passes the OSD element that had focus (null when focus was
+        /// outside the OSD or nowhere — then nothing is parked: a visible
+        /// NextCard/ErrorBox button keeps focus). The element is
+        /// remembered and focus is parked on Back via the page's
+        /// TryFocusKey("back") contract, so the hidden OSD never holds
+        /// focus on an invisible button. No-op when a dialog is open
+        /// (the dialog owns focus) or the element is not a real target.
+        /// When the park key fails, focus is left as-is and the element
+        /// is still remembered (the show restore is a no-op then).
+        /// </summary>
+        public void NotifyOsdHidden(Control osdElement)
+        {
+            if (osdElement == null || !FocusablePage.IsRealFocusTarget(osdElement)) return;
+            if (IsDialogOpen)
+            {
+                Log.Write("OSD hidden; park skipped: dialog open");
+                return;
+            }
+            _lastOsdElement = osdElement;
+            var page = _frame.Content as IArrivalFocus;
+            if (page != null && page.TryFocusKey("back"))
+            {
+                Log.Write("OSD hidden; parked focus on Back; remembered " + DescribeOsdTarget(osdElement));
+            }
+            else
+            {
+                Log.Write("OSD hidden; park on Back failed; remembered " + DescribeOsdTarget(osdElement) + " (focus left as-is)");
+            }
+        }
+
+        /// <summary>
+        /// Phase 4: restore OSD focus when the player OSD shows again.
+        /// Restores focus to the element remembered at hide time when it
+        /// is still a real, valid target in the live tree under the
+        /// current page; otherwise leaves focus on the parked Back button
+        /// so the page's "play" focus hint moves it to Play. Skipped
+        /// entirely when a dialog is open (the dialog owns focus) or an
+        /// arrival settle is running — the slot is cleared in both cases,
+        /// since the dialog/settle owns focus from then on. Synchronous:
+        /// it runs inside the ControlsVisible property change, before the
+        /// ViewModel raises its focus hint, so the hint's never-yank rule
+        /// keeps the restored element.
+        /// </summary>
+        public void NotifyOsdShown()
+        {
+            var target = _lastOsdElement;
+            _lastOsdElement = null;
+            if (target == null) return;
+            if (IsDialogOpen)
+            {
+                Log.Write("OSD shown; restore skipped: dialog open");
+                return;
+            }
+            if (_settlingPage != null)
+            {
+                Log.Write("OSD shown; restore skipped: arrival settle is running");
+                return;
+            }
+            if (FocusablePage.IsRealFocusTarget(target) && IsFocusValid(target) && IsDescendantOfCurrentPage(target))
+            {
+                if (target.Focus(FocusState.Programmatic))
+                {
+                    Log.Write("OSD shown; focus restored to " + DescribeOsdTarget(target));
+                    return;
+                }
+                Log.Write("OSD shown; restore Focus() failed; leaving focus on parked Back");
+                return;
+            }
+            Log.Write("OSD shown; remembered element is not a valid target in the current page; leaving focus on parked Back");
+        }
+
+        /// <summary>OSD element name for the log (every OSD button is a Button, so the type alone says nothing).</summary>
+        private static string DescribeOsdTarget(Control target)
+        {
+            var element = target as FrameworkElement;
+            if (element != null && !string.IsNullOrEmpty(element.Name)) return element.Name;
+            return target != null ? target.GetType().Name : "null";
+        }
 
         /// <summary>
         /// One-tick-later dialog restore (Phase 3 — the only restore path
