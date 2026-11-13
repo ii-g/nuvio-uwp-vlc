@@ -1,25 +1,29 @@
-// AnimatedFocusBorder — proof of concept (Phase 2a).
+// AnimatedFocusBorder — focus-following beam.
 //
-// One shared beam effect on the FIRST card of the first Home row only.
-// Rendering proof only: it proves a beam can be drawn and moved by the
-// compositor on Xbox. It owns no focus logic — it never reads focus state,
-// never calls Focus(), and never touches FocusCoordinator, NativeInputRouter
-// or any page.
+// One shared beam effect that circles the element with keyboard focus,
+// wherever it is (hero buttons, cards, sidebar buttons). It is a visual
+// observer only: it reads focus state (FocusManager.GetFocusedElement)
+// and subscribes to FocusManager.GotFocus/LostFocus so it can retarget
+// promptly, but it never moves focus — it never calls Focus(), and never
+// touches FocusCoordinator, NativeInputRouter or any page. The white
+// focus ring is untouched and keeps working on its own.
 //
 // Why segments instead of one rotating ring image:
 // A rigid transform cannot move a long beam along a rectangular perimeter.
 // Rotating one ring image by 90 degrees maps the 88-wide top edge onto a
 // vertical line 22 DIP outside the card's right edge, so the beam would
 // detach from the card and sweep across it like a spinning frame. Instead
-// each beam is eight short straight segments (16 DIP long, spaced 12 DIP
-// apart, so a beam spans ~96 DIP = 22.5% of a poster's perimeter). Every
-// segment is a tiny SpriteVisual sharing ONE surface (a horizontal white
-// bar with a stepped glow baked in) and follows the rounded-rectangle
-// perimeter with two infinite linear keyframe animations (Offset and
-// rotation), both 5 seconds, driven entirely by the compositor. No timer,
-// no render loop, no per-frame UI-thread work; the surface is drawn once
-// and never redrawn, and the keyframes are rebuilt only when the target
-// card changes size. Moving the card only moves the shared container
+// each beam is eleven short straight segments (16 DIP long, spaced 12 DIP
+// apart, so a beam spans ~132 DIP = 22.5% of a 176x114 card's perimeter,
+// the size the beam was tuned against). Every segment is a tiny
+// SpriteVisual sharing ONE surface (a horizontal white bar with a stepped
+// glow baked in) and follows the rounded-rectangle perimeter with two
+// infinite linear keyframe animations (Offset and rotation), both 5
+// seconds, driven entirely by the compositor. No timer, no render loop,
+// no per-frame UI-thread work; the surface is drawn once (at 2x
+// supersample, so the thin core stays smooth when segments rotate) and
+// never redrawn, and the keyframes are rebuilt only when the target
+// changes size. Moving the target only moves the shared container
 // visual's Offset.
 //
 // Kill switch: set IsEnabled to false and the beam hides; the white ring
@@ -33,6 +37,7 @@ using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.UI.Composition;
 using Nuvio.Diagnostics;
+using Nuvio.Views;
 using Windows.Foundation;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.Display;
@@ -41,6 +46,7 @@ using Windows.UI.Composition;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Hosting;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 
 namespace Nuvio.Views.Shared
@@ -55,26 +61,35 @@ namespace Nuvio.Views.Shared
         private const double CycleSeconds = 5.0;
         // Beam starts, from the reference: beam 1 spans 2.5% -> 25% and beam 2
         // spans 52.5% -> 75% of the perimeter, measured from top-centre clockwise.
-        // Eight segments spaced 12 DIP apart span 96 DIP = 22.5% of the perimeter,
-        // so each beam ends where the reference puts it.
+        // Eleven segments spaced 12 DIP apart span 132 DIP, so on the 176x114
+        // card the beam was tuned against each beam ends where the reference
+        // puts it (22.5% of that card's ~568 DIP perimeter).
         private const double Beam1StartFraction = 0.025;
         private const double Beam2StartFraction = 0.525;
-        // The stroke is centred on the card edge, so the beam root covers the card
-        // rect expanded by this much per side (2 DIP half-stroke + 1 DIP safety).
+        // The stroke is centred on the card edge, so the beam root covers the
+        // target rect expanded by this much per side. The value cancels out
+        // (the path is built +Expansion and the root is offset -Expansion),
+        // so the centreline stays exactly on the target's edge whatever the
+        // value; it only needs to stay positive.
         private const double ExpansionDip = 3.0;
         // One segment: a 16 DIP bar on a 24x20 DIP surface (4 DIP margin each side,
-        // 8 DIP above/below for the glow). Eight segments spaced 12 DIP apart span
-        // 96 DIP = 22.5% of a poster's ~428 DIP perimeter.
+        // 8 DIP above/below for the glow). Eleven segments spaced 12 DIP apart span
+        // 132 DIP = 22.5% of a 176x114 card's ~568 DIP perimeter.
         private const double SegmentSurfaceWidthDip = 24.0;
         private const double SegmentSurfaceHeightDip = 20.0;
         private const double SegmentBarLengthDip = 16.0;
         private const double SegmentSpacingDip = 12.0;
-        private const int SegmentsPerBeam = 8;
+        private const int SegmentsPerBeam = 11;
         private const int KeyframeCount = 64;
+        // The surface is drawn at (RawPixelsPerViewPixel x SupersampleFactor) px
+        // per DIP and downsampled by the brush onto the 24x20 DIP visual, so the
+        // thin core stays smooth when segments rotate (a 1x surface showed
+        // stair-stepped edges on device, build 605 video).
+        private const double SupersampleFactor = 2.0;
 
-        private Frame _frame;
         private Canvas _host;
         private UIElement _target;
+        private DependencyObject _shellRoot;
         private Compositor _compositor;
         private CompositionGraphicsDevice _graphicsDevice;
         private CompositionDrawingSurface _beamSurface;
@@ -84,19 +99,19 @@ namespace Nuvio.Views.Shared
         private double _lastRectWidth = -1;
         private double _lastRectHeight = -1;
         private bool _layoutSubscribed;
+        private bool _focusSubscribed;
         private bool _animationsStarted;
         private bool _attachLogged;
         private bool _syncFailureLogged;
         private bool _surfaceDrawn;
         private bool _surfaceStepLogged;
 
-        /// <summary>Attaches the beam to the first realized card of the first GridView on the frame's current page. Retries on the next layout pass until a card exists. Never attaches to more than one element.</summary>
-        public bool TryAttachFirstCard(Frame frame, Canvas host)
+        /// <summary>Attaches the beam to the window's focused element and follows focus from then on. Hides when nothing has focus, when focus is on a bare container, or when focus is inside a dialog/popup tree. Never moves focus.</summary>
+        public bool TryAttach(Canvas host)
         {
             if (!IsEnabled) return false;
             try
             {
-                _frame = frame;
                 _host = host;
                 // Subscribe before creating the surface: if creation throws,
                 // the next layout pass still retries through SyncTarget
@@ -106,8 +121,15 @@ namespace Nuvio.Views.Shared
                     _host.LayoutUpdated += OnHostLayoutUpdated;
                     _layoutSubscribed = true;
                 }
+                if (!_focusSubscribed)
+                {
+                    FocusManager.GotFocus += (sender, args) => { SyncTarget(); };
+                    FocusManager.LostFocus += (sender, args) => { SyncTarget(); };
+                    _focusSubscribed = true;
+                }
                 EnsureCompositorAndSurface();
                 AttachBeamRoot();
+                _shellRoot = FindVisualRoot(_host);
                 return SyncTarget();
             }
             catch (Exception ex)
@@ -137,14 +159,38 @@ namespace Nuvio.Views.Shared
                     EnsureCompositorAndSurface();
                     AttachBeamRoot();
                 }
-                if (_target == null || !(_target is FrameworkElement loadedTarget && loadedTarget.IsLoaded))
+                // The shell root is found in TryAttach, but a retry after a
+                // failed attach reaches here with it still null.
+                if (_shellRoot == null && _host != null) _shellRoot = FindVisualRoot(_host);
+                // Re-read the current focus on every sync: the target may
+                // have moved (focus events), been unloaded (page navigation
+                // destroys pages), or never existed yet (before the settle).
+                // The beam follows focus honestly — it never picks a target
+                // itself, and there is no fallback to any card.
+                DependencyObject focused = FocusManager.GetFocusedElement() as DependencyObject;
+                UIElement focusedElement = focused as UIElement;
+                if (!ReferenceEquals(_target, focusedElement))
                 {
-                    HideBeam();
-                    _target = FindFirstCard();
-                    if (_target == null) return false;
+                    if (!IsBeamTarget(focused))
+                    {
+                        _target = null;
+                        HideBeam();
+                        return false;
+                    }
+                    _target = focusedElement;
                     _lastRectWidth = -1;
                     _lastRectHeight = -1;
                     _attachLogged = false;
+                }
+                if (_target == null)
+                {
+                    HideBeam();
+                    return false;
+                }
+                if (!(_target is FrameworkElement loadedTarget && loadedTarget.IsLoaded))
+                {
+                    HideBeam();
+                    return false;
                 }
                 Rect rect = GetTargetRect(_target);
                 if (rect.Width <= 0 || rect.Height <= 0)
@@ -163,7 +209,7 @@ namespace Nuvio.Views.Shared
                 if (!_attachLogged)
                 {
                     _attachLogged = true;
-                    Log.Write("AnimatedFocusBorder: attached to first card rect " + (int)rect.X + "," + (int)rect.Y + " " + (int)rect.Width + "x" + (int)rect.Height + " DIP");
+                    Log.Write("AnimatedFocusBorder: attached to " + DescribeTarget(_target) + " rect " + (int)rect.X + "," + (int)rect.Y + " " + (int)rect.Width + "x" + (int)rect.Height + " DIP");
                 }
                 _syncFailureLogged = false;
                 return true;
@@ -206,21 +252,23 @@ namespace Nuvio.Views.Shared
             _graphicsDevice.RenderingDeviceReplaced += OnRenderingDeviceReplaced;
             step = "RawPixelsPerViewPixel";
             double scale = DisplayInformation.GetForCurrentView().RawPixelsPerViewPixel;
-            int pixelWidth = Math.Max(1, (int)Math.Round(SegmentSurfaceWidthDip * scale));
-            int pixelHeight = Math.Max(1, (int)Math.Round(SegmentSurfaceHeightDip * scale));
+            int pixelWidth = Math.Max(1, (int)Math.Round(SegmentSurfaceWidthDip * scale * SupersampleFactor));
+            int pixelHeight = Math.Max(1, (int)Math.Round(SegmentSurfaceHeightDip * scale * SupersampleFactor));
             step = "CreateDrawingSurface";
             _beamSurface = _graphicsDevice.CreateDrawingSurface(new Size(pixelWidth, pixelHeight), DirectXPixelFormat.B8G8R8A8UIntNormalized, DirectXAlphaMode.Premultiplied);
-            Log.Write("AnimatedFocusBorder: beam surface created " + pixelWidth + "x" + pixelHeight + " px (scale " + scale + ")");
+            Log.Write("AnimatedFocusBorder: beam surface created " + pixelWidth + "x" + pixelHeight + " px (scale " + scale + ", supersample " + SupersampleFactor + ")");
             }
             if (!_surfaceDrawn)
             {
-            // Draw with the plain no-rect session (DPI 96, so DIPs == pixels):
-            // the rect+DPI overload failed with E_INVALIDARG on the first Xbox
-            // attempt, and this is the form the Win2D samples use. Geometry is
-            // scaled to pixels explicitly (bar: 12 DIP faint, 8 DIP mid,
-            // 4 DIP bright core, so no shadow object is needed per segment).
+            // Draw with the plain no-rect session: the rect+DPI overload
+            // failed with E_INVALIDARG on the first Xbox attempt, and this
+            // is the form the Win2D samples use. Geometry is scaled to
+            // pixels explicitly (drawScale = display scale x supersample,
+            // so the surface is drawn at 2x and downsampled by the brush
+            // onto the 24x20 DIP visual). Bar: 7 DIP faint, 5 DIP mid,
+            // 4 DIP bright core, so no shadow object is needed per segment.
             step = "CreateDrawingSession";
-            double drawScale = DisplayInformation.GetForCurrentView().RawPixelsPerViewPixel;
+            double drawScale = DisplayInformation.GetForCurrentView().RawPixelsPerViewPixel * SupersampleFactor;
             using (CanvasDrawingSession ds = CanvasComposition.CreateDrawingSession(_beamSurface))
             {
                 ds.Clear(Colors.Transparent);
@@ -228,8 +276,8 @@ namespace Nuvio.Views.Shared
                 float barX1 = (float)((SegmentSurfaceWidthDip + SegmentBarLengthDip) / 2.0 * drawScale);
                 float barY = (float)(SegmentSurfaceHeightDip / 2.0 * drawScale);
                 var strokeStyle = new CanvasStrokeStyle();
-                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(26, 255, 255, 255), (float)(12.0 * drawScale), strokeStyle);
-                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(56, 255, 255, 255), (float)(8.0 * drawScale), strokeStyle);
+                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(26, 255, 255, 255), (float)(7.0 * drawScale), strokeStyle);
+                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(56, 255, 255, 255), (float)(5.0 * drawScale), strokeStyle);
                 ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Colors.White, (float)(4.0 * drawScale), strokeStyle);
             }
             step = "CreateSurfaceBrush";
@@ -299,32 +347,53 @@ namespace Nuvio.Views.Shared
             }
         }
 
-        private UIElement FindFirstCard()
+        /// <summary>True when the focused element is one the beam may circle: a real focus target (same rule as FocusablePage.IsRealFocusTarget), a FrameworkElement (the rect comes from ActualWidth/ActualHeight), and inside the shell visual tree.</summary>
+        private bool IsBeamTarget(DependencyObject focused)
         {
-            Page page = _frame == null ? null : _frame.Content as Page;
-            if (page == null) return null;
-            // Pre-order walk, document order: the first GridView (in the tree) with
-            // a realized first item wins. A GridView with no realized item is
-            // skipped, and the walk continues into its children.
-            var stack = new Stack<DependencyObject>();
-            stack.Push(page);
-            while (stack.Count > 0)
+            if (focused == null) return false;
+            // A plain ItemsControl (not a ListViewBase) is focusable in UWP
+            // but draws no ring, so the beam must not circle it either.
+            if (!FocusablePage.IsRealFocusTarget(focused)) return false;
+            if (!(focused is FrameworkElement)) return false;
+            // Dialogs and popups live in their own visual tree (PopupRoot),
+            // so walking up from a dialog element never reaches the shell
+            // root. The beam stays on the shell content only — and that
+            // includes the sidebar buttons, which are in the shell tree.
+            return IsInShellTree(focused);
+        }
+
+        private bool IsInShellTree(DependencyObject element)
+        {
+            if (_shellRoot == null) return false;
+            DependencyObject node = element;
+            while (node != null)
             {
-                DependencyObject node = stack.Pop();
-                GridView gridView = node as GridView;
-                if (gridView != null)
-                {
-                    DependencyObject container = gridView.ContainerFromIndex(0);
-                    UIElement item = container as UIElement;
-                    if (item != null) return item;
-                }
-                int count = VisualTreeHelper.GetChildrenCount(node);
-                for (int i = count - 1; i >= 0; i--)
-                {
-                    stack.Push(VisualTreeHelper.GetChild(node, i));
-                }
+                if (ReferenceEquals(node, _shellRoot)) return true;
+                node = VisualTreeHelper.GetParent(node);
             }
-            return null;
+            return false;
+        }
+
+        private static DependencyObject FindVisualRoot(DependencyObject element)
+        {
+            if (element == null) return null;
+            DependencyObject root = element;
+            DependencyObject parent = VisualTreeHelper.GetParent(element);
+            while (parent != null)
+            {
+                root = parent;
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return root;
+        }
+
+        private static string DescribeTarget(UIElement target)
+        {
+            string type = target.GetType().Name;
+            FrameworkElement fe = target as FrameworkElement;
+            if (fe != null && !string.IsNullOrEmpty(fe.Name)) return type + " '" + fe.Name + "'";
+            if (fe != null && fe.Tag is string tag && !string.IsNullOrEmpty(tag)) return type + " '" + tag + "'";
+            return type;
         }
 
         private Rect GetTargetRect(UIElement element)
@@ -333,11 +402,11 @@ namespace Nuvio.Views.Shared
             return element.TransformToVisual(_host).TransformBounds(new Rect(0, 0, frameworkElement.ActualWidth, frameworkElement.ActualHeight));
         }
 
-        private void RebuildAnimations(double cardWidth, double cardHeight)
+        private void RebuildAnimations(double targetWidth, double targetHeight)
         {
             try
             {
-                RoundedRectPath path = BuildRoundedRectPath(cardWidth, cardHeight);
+                RoundedRectPath path = BuildRoundedRectPath(targetWidth, targetHeight);
                 double perimeter = path.Perimeter;
                 if (perimeter <= 0) return;
 
@@ -349,7 +418,7 @@ namespace Nuvio.Views.Shared
                     int j = s % SegmentsPerBeam;
                     double beamStart = (beam == 0 ? Beam1StartFraction : Beam2StartFraction) * perimeter;
                     double baseDistance = beamStart + (j + 0.5) * SegmentSpacingDip;
-                    // Tail segment (j = 0) is dim, head segment (j = 7) is full white.
+                    // Tail segment (j = 0) is dim, head segment (j = 10) is full white.
                     segment.Opacity = (float)(0.12 + 0.88 * j / (SegmentsPerBeam - 1));
                     segment.IsVisible = true;
 
@@ -395,7 +464,7 @@ namespace Nuvio.Views.Shared
                 if (!_animationsStarted)
                 {
                     _animationsStarted = true;
-                    Log.Write("AnimatedFocusBorder: beam animations started (16 segments, 5.0s cycle)");
+                    Log.Write("AnimatedFocusBorder: beam animations started (" + _segments.Length + " segments, 5.0s cycle)");
                 }
             }
             catch (Exception ex)
@@ -415,16 +484,16 @@ namespace Nuvio.Views.Shared
             public double Perimeter;
         }
 
-        private RoundedRectPath BuildRoundedRectPath(double cardWidth, double cardHeight)
+        private RoundedRectPath BuildRoundedRectPath(double targetWidth, double targetHeight)
         {
             // Ring centreline rect in beam-root coordinates: the stroke is centred
-            // on the card edge, so the centreline runs exactly along the card's bounds.
+            // on the target edge, so the centreline runs exactly along the target's bounds.
             double x0 = ExpansionDip;
             double y0 = ExpansionDip;
-            double x1 = ExpansionDip + cardWidth;
-            double y1 = ExpansionDip + cardHeight;
+            double x1 = ExpansionDip + targetWidth;
+            double y1 = ExpansionDip + targetHeight;
             double r = CornerRadiusDip;
-            double cx = ExpansionDip + cardWidth / 2.0;
+            double cx = ExpansionDip + targetWidth / 2.0;
 
             var points = new List<Vector2>();
             // Top edge, right half: top-centre -> top-right corner start.
