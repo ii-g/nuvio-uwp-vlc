@@ -970,3 +970,187 @@ first poster, Back to Home then Up/Down restores the saved poster,
 and within one fresh visit down-then-up returns to the same poster;
 Settings right from the Debrid row lands on Settings; Search right
 from the bottom chips lands on Search.
+
+## Phase 5 — test package + FOCUS.md + guard/race spec (2026-11-14)
+
+Final phase of the Focus Manager programme. No behaviour change except
+two log strings (see below). Everything here is local commits on
+`codex/native-ui`; the `build.yml` changes in this section are a
+ready-to-apply spec only — that file is edited through the GitHub web
+editor in a later step, never in a code change.
+
+### 1. What changed (commits, dependency order)
+
+- `d3f6b42` "Expand focus test harness to full package" —
+  `Nuvio/Diagnostics/FocusTestHarness.cs`: 1 scripted test → 46 automated
+  tests in a registry (`BuildTests`), each writing one
+  `TEST <name> PASS|FAIL|SKIP <detail>` line to `nuvio-vlc.log`, plus
+  `TEST suite START …` / `TEST suite DONE passed=N failed=M skipped=S ms=N`.
+  Tests are grouped: 2 gate self-checks, 9 Phase 1 (Settings), 13 Phase 2
+  (Home/Search/Catalog), 10 Phase 3 (dialogs + Streams), 8 Phase 4 (OSD),
+  3 flag-off sanity. The 2 remaining package tests are manual gate checks
+  (no in-app suite can observe its own non-execution — see FOCUS.md §7).
+  Input goes only through the pinned `MainPage.SimulateFocusInput` seam
+  (the ControllerBridge poll path). Dialogs are closed with the dialog's
+  own `Hide()` and options chosen with `ButtonAutomationPeer.Invoke()`
+  (both verified on Microsoft Learn: `VisualTreeHelper.GetOpenPopups`,
+  `ButtonAutomationPeer.Invoke`, UniversalApiContract v1.0, 10.0.10240.0+)
+  because the seam cannot drive a dialog — `HandleInput` gates all dispatch
+  while one is open, and the native system-back cannot be raised
+  synthetically. The restore/navigation after the close is the real
+  production path in both cases.
+- `e27946c` "Distinguish null focus from bare container in settle log lines" —
+  `Nuvio/Input/FocusCoordinator.cs`, text only, no behaviour: the two
+  settle log lines that said "bare container" also fired when focus was
+  null (`AttemptSettle` and `NoteUserInput` — `IsRealFocusTarget(null)` is
+  false, same as a bare container). Both now log null focus as null.
+- `d8e038b` "Add focus guard checker for Focus call sites" —
+  `tools/check-focus-guard.py` (new). See §2.
+- `ffd2792` "Finalize FOCUS.md for the Focus Manager contract" —
+  `FOCUS.md` (new file, was an untracked draft). Corrections applied
+  against the implementation: dialogs are a stack of invokers
+  (`Stack<Control> _dialogInvokers`), not a single slot; registry eviction
+  is FIFO (200 entries / 20 search queries), not LRU; the router migrates
+  Settings/Home/Search/Catalog only; the re-render fallback order is
+  key → nearest sibling → arrival → first element in the frame; the §7
+  gate is the `focustest` launch token or flag file (not a Settings row);
+  the §5 OSD rules now carry the full hint vocabulary, the Opacity=0
+  mechanism, the NextCard/ErrorBox exception, and the dialog/settle
+  guards; the sidebar rule states the current rule (current page's
+  button — the early "always first option" rule is recorded as superseded);
+  `FocusScrollHelper` is recorded as absorbed in Phase 2.
+- This section (FOCUS-MIGRATION.md) — the guard/race spec in §2/§3 below.
+
+### 2. CI guard spec — ready to apply to `.github/workflows/build.yml`
+
+Apply through the GitHub web editor (never in a code change). After the
+edit, validate the file parses (`yaml.safe_load`) and append the change
+to the sync record manually. The `guard` job today (`build.yml:27`) has
+two patterns only: banned identifiers (`:38`) and banned APIs (`:49`).
+There is no `concurrency:` key anywhere in the file.
+
+**(a) Focus guard — new step in the `guard` job, after the
+"Fail if banned identifiers return" step.** Runs the checker committed
+above; it exits 0 on the audited head (74 sites, all allowlisted, F0
+clean) and 1 on any violation. Exact YAML (6 spaces for `- name:`,
+8 for `run:` — the step is a single command, no block):
+
+```yaml
+      - name: Focus guard
+        run: python3 tools/check-focus-guard.py
+```
+
+Rules the checker enforces (see its header for the full allowlist):
+- **F0:** no `.Focus(` at all under `Nuvio/ViewModels`, `Nuvio/Playback`,
+  `Nuvio/Services`, `Nuvio/Diagnostics` (zero hits on the audited head).
+- **F1:** every other `.Focus(` site must be an allowlisted
+  (file, method, receiver) triple. The allowlist is the complete inventory
+  of the audited head — 74 sites, 72 distinct triples — keyed by method
+  and receiver, never by line number (they drift). The 4 documented
+  deferred sites are: `DetailsPage.ShowEpisodeMenuAsync` / `control`
+  (audited :520, dialog-restore tick), `HomePage.FocusContinueNeighbour` /
+  `container` (audited :1220, neighbour tick),
+  `PlayerPage.OnViewModelPropertyChanged` / `NextPlayButton` (audited :259),
+  `TryNextButton` (audited :270) and `RetryButton` (audited :271)
+  (ViewModel-driven Next/error auto-focus). A new site fails CI until it
+  is added to the allowlist deliberately, with review.
+
+**(b) Alignment guard — extend the same new step into a block, or add a
+second step; exact YAML for the block form (10 spaces for script lines,
+12 for the `if` bodies):**
+
+```yaml
+      - name: Focus and alignment guards
+        run: |
+          python3 tools/check-focus-guard.py
+          if grep -rn '\.Padding = new Thickness' --include='*Page.xaml.cs' Nuvio | grep -v 'SubtitleBackgroundBorder\.Padding'; then
+            echo "::error::New code-behind Padding assignment on a page — use the shared anchor helper instead."
+            exit 1
+          fi
+          if grep -rn 'new Thickness([^)]*\(88\|156\|74\)' --include='*.cs' Nuvio | grep -v 'Nuvio/Views/HomePage.xaml.cs'; then
+            echo "::error::Hardcoded row/hero inset Thickness outside HomePage — use the anchor helpers."
+            exit 1
+          fi
+```
+
+Baselines verified on the audited head: the first grep finds exactly
+2 hits, both `SubtitleBackgroundBorder.Padding` in `PlayerPage.xaml.cs`
+(:375, :383) — the only legitimate code-behind padding assignments.
+The second grep finds zero hits: the 88/156/74 inset values reach the
+layout computed via `VisualAnchorInset`/`RowStartAnchorInset` in
+`HomePage.xaml.cs` only, never as `Thickness` literals. Both greps are
+tripwires for future hardcoded values, not descriptions of live code.
+
+### 3. Rolling-draft race fix — ready to apply to `.github/workflows/build.yml`
+
+**Problem:** two overlapping runs race the rolling draft — whichever
+finishes last uploads over the newer build (observed: 597 over 598;
+614 left the draft on 610). **Fix chosen: check `github.sha` is still
+the branch head before upload — not `concurrency:`.** `concurrency` is
+a workflow/job-level key only (there is none in the file); putting it
+on the `package` job would serialize the whole job including the Debug
+matrix leg. The head check is precise: only a stale upload is skipped,
+fresh runs are untouched, and a failed API read warns instead of
+failing the build.
+
+**Exact insertion point:** in the "Publish rolling draft release" step
+(`build.yml:290`, `shell: pwsh`), after line 308
+(`$notes -join "`n" | Set-Content rolling-notes.md -Encoding utf8`)
+and before line 309 (`gh release view native-latest *> $null`).
+Base indent is 10 spaces, nested lines 12 (matching the existing
+`if ($LASTEXITCODE …) {` blocks). Exact lines to insert:
+
+```yaml
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:GITHUB_REF_NAME" --jq '.sha' 2>$null
+          if ($head -and $head -ne $env:GITHUB_SHA) {
+            Write-Host "Stale run: branch head is $head, this run is $env:GITHUB_SHA; skipping rolling-draft upload."
+            exit 0
+          }
+          if (-not $head) { Write-Host "::warning::Could not read the branch head; uploading anyway." }
+```
+
+Semantics: a stale run exits 0 before any `gh release` call — the step
+succeeds, the job stays green, the draft keeps the newer build. An API
+failure leaves `$head` empty, logs a warning, and uploads anyway (a
+failed read must never fail a good build). `GITHUB_REF_NAME` is the
+branch name here because the step's `if:` already excludes tags and
+pull requests.
+
+### 4. Gate decision (recorded)
+
+The harness stays inert behind its gate in Release — launch token
+`focustest` or a flag file named exactly `focustest` in LocalState.
+It is NOT switched to `#if DEBUG`: the package must be runnable on the
+release msix on the Xbox, where there is no DEBUG build to install.
+
+### 5. Deliberately left out
+
+- **`NotifyContentChanged` in `HomePage.OnContinueRefreshed`** — left out.
+  The page already restores itself there; wiring the coordinator call
+  would double the restore (coordinator restore + page restore racing).
+- **One-shot suppression of the Continue-remove jump** — left out. The
+  jump is the coordinator restore followed by `FocusContinueNeighbour`
+  re-focusing the neighbour; suppressing it needs shared state between
+  the two, not a one-line fix. It is a follow-up, not Phase 5 scope.
+- **`NoteUserInput` log line** — NOT left out: fixed in this phase
+  (`e27946c`, text only — null focus is now logged as null, not as a
+  bare container, in both `AttemptSettle` and `NoteUserInput`).
+
+### 6. Known limits (honest)
+
+- No physical Gamepad simulation is possible (`Gamepad.Gamepads` is
+  hardware read-only): the suite drives the post-poll response path, so
+  poll-level behaviour (repeat cadence, thumbstick thresholds, missed
+  edges) stays untested.
+- No headless UI tests run in CI: the suite needs a live visual tree, UI
+  thread, and window. CI checks compile + guards; the Xbox runs the
+  package.
+- Two tests are documented SKIP with a manual device check instead of a
+  fixture the suite cannot construct: the Debrid invalid-key dialog
+  (needs a torrent stream resolved against an invalid Debrid key) and the
+  Next-card park rule (needs playback near the end of an episode).
+- The suite cannot close a dialog through the input seam (see §1); dialog
+  tests close with `Hide()` / `ButtonAutomationPeer.Invoke()`.
+- `settled=true` / `focusName=` log lines the suite reads are the
+  coordinator's own settle lines, not a test hook; if their wording
+  changes, `home-launch-coordinator-settle` must be updated with them.
