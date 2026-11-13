@@ -101,10 +101,13 @@ namespace Nuvio.Services
         /// sidebar button while the guard is down; (b) refuses targets
         /// that are not FocusablePage — the router's settle and the
         /// entry-keyed registry depend on the base class; (c) performs
-        /// the navigation. Back-stack handling stays with the caller:
-        /// roots clear it, pushes do not.
+        /// the navigation. Back-stack handling: roots pass
+        /// clearBackStack and the stack is cleared AFTER a successful
+        /// navigation (Frame.Navigate pushes the current page first,
+        /// so clearing before it leaves one stale entry); pushes do
+        /// not clear.
         /// </summary>
-        private bool Navigate(Type pageType, object parameter)
+        private bool Navigate(Type pageType, object parameter, bool clearBackStack = false)
         {
             // Phase 1: arm through the coordinator when it owns the guard.
             // The shell method stays the low-level bit setter and never
@@ -116,13 +119,16 @@ namespace Nuvio.Services
                 Log.Write("Navigation refused: " + pageType.Name + " is not a FocusablePage");
                 return false;
             }
-            return _frame.Navigate(pageType, parameter);
+            bool navigated = _frame.Navigate(pageType, parameter);
+            // Clear only after a successful navigation, and only for
+            // roots: a refused/failed navigation must not wipe history.
+            if (navigated && clearBackStack) _frame.BackStack.Clear();
+            return navigated;
         }
 
         public void NavigateHome()
         {
-            _frame.BackStack.Clear();
-            Navigate(typeof(HomePage), null);
+            Navigate(typeof(HomePage), null, clearBackStack: true);
             AppEvents.RaiseRouteChanged("home");
         }
 
@@ -152,21 +158,19 @@ namespace Nuvio.Services
         /// <summary>Sidebar root: the real Search page (M2). Query null = fresh search (recent searches).</summary>
         public void NavigateSearch(string query)
         {
-            _frame.BackStack.Clear();
-            Navigate(typeof(SearchPage), query);
+            Navigate(typeof(SearchPage), query, clearBackStack: true);
             AppEvents.RaiseRouteChanged("search");
         }
 
         /// <summary>
         /// Sidebar root: the real Settings page (M6) at its root list.
-        /// Root semantics: clears the back stack, then navigates with a
-        /// null section. Section navigation uses NavigateSettings(section),
-        /// which pushes — see below.
+        /// Root semantics: navigates with a null section and clears
+        /// the back stack afterwards (see Navigate). Section navigation
+        /// uses NavigateSettings(section), which pushes — see below.
         /// </summary>
         public void NavigateSettingsRoot()
         {
-            _frame.BackStack.Clear();
-            Navigate(typeof(SettingsPage), new SettingsNavigation { Section = null });
+            Navigate(typeof(SettingsPage), new SettingsNavigation { Section = null }, clearBackStack: true);
             AppEvents.RaiseRouteChanged("settings");
         }
 
@@ -194,14 +198,13 @@ namespace Nuvio.Services
 
         public void NavigatePlaceholder(string title, string message, string milestone, string sidebarRoot = null)
         {
-            _frame.BackStack.Clear();
             Navigate(typeof(PlaceholderPage), new PlaceholderNavigation
             {
                 Title = title,
                 Message = message,
                 Milestone = milestone,
                 SidebarRoot = sidebarRoot,
-            });
+            }, clearBackStack: true);
             AppEvents.RaiseRouteChanged("placeholder");
         }
 
