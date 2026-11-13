@@ -1150,9 +1150,12 @@ namespace Nuvio.Views
             dialog.Content = panel;
             dialog.Opened += (s, e) => detailsButton.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
-            // Dialog restore (part C): remember the card that opened the menu,
-            // and its row index, so focus can come back to it — or to a
-            // neighbour when the card is dismissed below.
+            // Dialog restore: the coordinator owns the return to the card
+            // that opened the menu when the flag is on (DialogOpen = false
+            // in the finally below triggers it); the invoker capture below
+            // is the flag-off path only (RestoreDialogInvoker no-ops when
+            // the flag is on). The row index stays local either way: it
+            // locates the neighbour when the card is dismissed below.
             var invoker = FocusManager.GetFocusedElement() as DependencyObject;
             var invokerIndex = -1;
             for (var i = 0; i < ContinueGridView.Items.Count; i++)
@@ -1183,11 +1186,12 @@ namespace Nuvio.Views
             }
             else
             {
-                // Cancelled: back to the card that opened the menu. The base
-                // FocusablePage.RestoreDialogInvoker does this synchronously
-                // (Control cast first, arrival-target fallback); the dialog
-                // has already closed by the time ShowAsync returns, so no
-                // deferred dispatcher tick is needed here.
+                // Cancelled: back to the card that opened the menu.
+                // RestoreDialogInvoker is the flag-off path (a no-op when
+                // the flag is on — the coordinator restores on DialogOpen
+                // = false in the finally above); the dialog has already
+                // closed by the time ShowAsync returns, so no deferred
+                // dispatcher tick is needed here.
                 RestoreDialogInvoker(invoker as UIElement);
             }
         }
