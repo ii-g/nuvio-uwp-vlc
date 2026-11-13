@@ -371,12 +371,16 @@ namespace Nuvio.Input
             try
             {
                 if (IsFocusInsidePage(page)) settled = true;
-                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)
+                    && FocusablePage.IsRealFocusTarget(FocusManager.GetFocusedElement() as DependencyObject))
                 {
                     // The user deliberately moved focus off the settle's
                     // starting element (e.g. Up/Down in the strip inside
                     // the 200 ms ignore window): treat as takeover instead
-                    // of yanking focus back to the arrival target.
+                    // of yanking focus back to the arrival target. A bare
+                    // ItemsControl the framework parked on is not a
+                    // deliberate move — it falls through to TrySettleOnce
+                    // below instead.
                     Log.Write("Settle takeover: focus moved by the user; stopping without placing arrival focus");
                     StopSettle(clearGuard: true);
                 }
@@ -497,6 +501,10 @@ namespace Nuvio.Input
         private static bool IsFocusInsidePage(Page page)
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            // A bare ItemsControl the framework parked on is inside the
+            // page but is not a real target (no ring, no interaction):
+            // it must not count as arrival.
+            if (!FocusablePage.IsRealFocusTarget(focused)) return false;
             for (var node = focused; node != null; node = VisualTreeHelper.GetParent(node))
             {
                 if (ReferenceEquals(node, page)) return true;
