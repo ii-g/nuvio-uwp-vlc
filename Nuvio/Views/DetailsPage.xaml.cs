@@ -480,8 +480,11 @@ namespace Nuvio.Views
             dialog.Content = panel;
             dialog.Opened += (s, e) => playButton.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
-            // Dialog restore (part C): remember the episode card that opened
-            // the menu, so focus can come back to it when the menu closes.
+            // Dialog restore: the coordinator owns it when the flag is on
+            // (it captures the invoker when DialogOpen is set below, and
+            // restores focus to it when DialogOpen clears); the capture
+            // below is the flag-off path only (the deferred restore in the
+            // else below is skipped when the flag is on).
             var invoker = FocusManager.GetFocusedElement() as DependencyObject;
             shell.DialogOpen = true;
             try
@@ -501,9 +504,13 @@ namespace Nuvio.Views
             else
             {
                 // Cancelled, or a mark-watched choice (the episode stays):
-                // back to the card that opened the menu. Deferred one
+                // back to the card that opened the menu. Flag off only:
+                // with the flag on the coordinator owns the restore
+                // (DialogOpen = false triggers it) and this local tick
+                // would race it, so it is skipped. Deferred one
                 // dispatcher tick so the dialog teardown finishes first.
-                if (invoker != null)
+                var coordinatorOwnsRestore = MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator;
+                if (invoker != null && !coordinatorOwnsRestore)
                 {
                     var _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                     {
