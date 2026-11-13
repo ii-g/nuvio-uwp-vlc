@@ -176,7 +176,7 @@
                                 <TextBlock Text="{Binding HeroType}" FontSize="9" Foreground="#B8FFFFFF" shared:TextGlow.IsEnabled="True"/>
                             </Grid>
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding HeroGenres}" Margin="0,9,0,0">
+                        <ItemsControl IsTabStop="False" ItemsSource="{Binding HeroGenres}" Margin="0,9,0,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="3"/>
@@ -228,7 +228,7 @@
                 </StackPanel>
 
                 <!-- One row per catalog -->
-                <ItemsControl ItemsSource="{Binding CatalogRows}">
+                <ItemsControl IsTabStop="False" ItemsSource="{Binding CatalogRows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Margin="0,0,0,13">
