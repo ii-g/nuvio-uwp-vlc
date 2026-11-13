@@ -780,8 +780,11 @@ namespace Nuvio.Views
                 if (primary != null) primary.Focus(FocusState.Programmatic);
             };
             var shell = MainPage.Current;
-            // Part C: remember the invoker so focus returns to it when the
-            // dialog closes instead of being lost.
+            // Dialog restore: the coordinator owns it when the flag is on
+            // (it captures the invoker when DialogOpen is set below, and
+            // restores focus to it when DialogOpen clears); the capture
+            // below is the flag-off path only (RestoreDialogInvoker no-ops
+            // when the flag is on).
             var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             ContentDialogResult result;
