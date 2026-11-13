@@ -132,7 +132,7 @@ namespace Nuvio.Views.Shared
                     EnsureCompositorAndSurface();
                     AttachBeamRoot();
                 }
-                if (_target == null || !_target.IsLoaded)
+                if (_target == null || !(_target is FrameworkElement loadedTarget && loadedTarget.IsLoaded))
                 {
                     HideBeam();
                     _target = FindFirstCard();
