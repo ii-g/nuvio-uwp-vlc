@@ -87,6 +87,8 @@ namespace Nuvio.Views.Shared
         private bool _animationsStarted;
         private bool _attachLogged;
         private bool _syncFailureLogged;
+        private bool _surfaceDrawn;
+        private bool _surfaceStepLogged;
 
         /// <summary>Attaches the beam to the first realized card of the first GridView on the frame's current page. Retries on the next layout pass until a card exists. Never attaches to more than one element.</summary>
         public bool TryAttachFirstCard(Frame frame, Canvas host)
@@ -130,7 +132,7 @@ namespace Nuvio.Views.Shared
             }
             try
             {
-                if (_beamRoot == null)
+                if (_beamRoot == null || !_surfaceDrawn)
                 {
                     EnsureCompositorAndSurface();
                     AttachBeamRoot();
@@ -185,11 +187,16 @@ namespace Nuvio.Views.Shared
 
         private void EnsureCompositorAndSurface()
         {
-            if (_beamSurface != null) return;
+            // The surface may exist while the draw never ran (CreateDrawingSession
+            // threw E_INVALIDARG on the first Xbox attempt): retry the draw until
+            // it succeeds instead of attaching an invisible beam.
+            if (_beamSurface != null && _surfaceDrawn && _beamBrush != null) return;
             // Diagnostic: name the failing step — the first device log only
             // carried the generic E_INVALIDARG message.
             string step = "GetElementVisual";
             try
+            {
+            if (_beamSurface == null)
             {
             _compositor = ElementCompositionPreview.GetElementVisual(_host).Compositor;
             step = "GetSharedDevice";
@@ -203,32 +210,46 @@ namespace Nuvio.Views.Shared
             int pixelHeight = Math.Max(1, (int)Math.Round(SegmentSurfaceHeightDip * scale));
             step = "CreateDrawingSurface";
             _beamSurface = _graphicsDevice.CreateDrawingSurface(new Size(pixelWidth, pixelHeight), DirectXPixelFormat.B8G8R8A8UIntNormalized, DirectXAlphaMode.Premultiplied);
-            // Draw once, in DIPs: a horizontal bar with a stepped glow baked in
-            // (12 DIP faint, 8 DIP mid, 4 DIP bright core) so no shadow object
-            // is needed per segment.
-            float dpi = (float)(96.0 * scale);
-            float barX0 = (float)((SegmentSurfaceWidthDip - SegmentBarLengthDip) / 2.0);
-            float barX1 = (float)(SegmentSurfaceWidthDip - (SegmentSurfaceWidthDip - SegmentBarLengthDip) / 2.0);
-            float barY = (float)(SegmentSurfaceHeightDip / 2.0);
-            var strokeStyle = new CanvasStrokeStyle();
-            // The session rect is in DIPs at the session DPI and must match the
-            // surface size: pixels = DIPs x dpi / 96. (Pixel dimensions here
-            // would double-count the scale on a 200% Xbox display.)
-            step = "CreateDrawingSession";
-            using (CanvasDrawingSession ds = CanvasComposition.CreateDrawingSession(_beamSurface, new Rect(0, 0, SegmentSurfaceWidthDip, SegmentSurfaceHeightDip), dpi))
+            Log.Write("AnimatedFocusBorder: beam surface created " + pixelWidth + "x" + pixelHeight + " px (scale " + scale + ")");
+            }
+            if (!_surfaceDrawn)
             {
-                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(26, 255, 255, 255), 12.0f, strokeStyle);
-                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(56, 255, 255, 255), 8.0f, strokeStyle);
-                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Colors.White, 4.0f, strokeStyle);
+            // Draw with the plain no-rect session (DPI 96, so DIPs == pixels):
+            // the rect+DPI overload failed with E_INVALIDARG on the first Xbox
+            // attempt, and this is the form the Win2D samples use. Geometry is
+            // scaled to pixels explicitly (bar: 12 DIP faint, 8 DIP mid,
+            // 4 DIP bright core, so no shadow object is needed per segment).
+            step = "CreateDrawingSession";
+            double drawScale = DisplayInformation.GetForCurrentView().RawPixelsPerViewPixel;
+            using (CanvasDrawingSession ds = CanvasComposition.CreateDrawingSession(_beamSurface))
+            {
+                ds.Clear(Colors.Transparent);
+                float barX0 = (float)((SegmentSurfaceWidthDip - SegmentBarLengthDip) / 2.0 * drawScale);
+                float barX1 = (float)((SegmentSurfaceWidthDip + SegmentBarLengthDip) / 2.0 * drawScale);
+                float barY = (float)(SegmentSurfaceHeightDip / 2.0 * drawScale);
+                var strokeStyle = new CanvasStrokeStyle();
+                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(26, 255, 255, 255), (float)(12.0 * drawScale), strokeStyle);
+                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(56, 255, 255, 255), (float)(8.0 * drawScale), strokeStyle);
+                ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Colors.White, (float)(4.0 * drawScale), strokeStyle);
             }
             step = "CreateSurfaceBrush";
             _beamBrush = _compositor.CreateSurfaceBrush(_beamSurface);
             _beamBrush.Stretch = CompositionStretch.Fill;
-            Log.Write("AnimatedFocusBorder: beam surface created " + pixelWidth + "x" + pixelHeight + " px (scale " + scale + ")");
+            foreach (SpriteVisual segment in _segments)
+            {
+                if (segment != null) segment.Brush = _beamBrush;
+            }
+            _surfaceDrawn = true;
+            _surfaceStepLogged = false;
+            }
             }
             catch (Exception ex)
             {
-                Log.Write("AnimatedFocusBorder: surface step '" + step + "' failed: " + ex.Message + " (hr=0x" + ex.HResult.ToString("X8") + ")");
+                if (!_surfaceStepLogged)
+                {
+                    _surfaceStepLogged = true;
+                    Log.Write("AnimatedFocusBorder: surface step '" + step + "' failed: " + ex.Message + " (hr=0x" + ex.HResult.ToString("X8") + ")");
+                }
                 throw;
             }
         }
@@ -259,6 +280,7 @@ namespace Nuvio.Views.Shared
                 Log.Write("AnimatedFocusBorder: rendering device replaced; recreating surface");
                 _beamSurface = null;
                 _beamBrush = null;
+                _surfaceDrawn = false;
                 EnsureCompositorAndSurface();
                 if (_beamRoot != null)
                 {
