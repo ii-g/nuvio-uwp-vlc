@@ -251,7 +251,11 @@ namespace Nuvio.Input
             if (page == null)
             {
                 Log.Write("SettleArrivalFocus: content is not a FocusablePage, clearing the sidebar guard");
-                _shell.ClearSidebarExpandSuppression();
+                // Phase 3: same guard ownership as StopSettle — through
+                // the coordinator when it owns the guard, else the shell
+                // bit directly.
+                if (Coordinator != null && FocusCoordinator.UseFocusCoordinator) Coordinator.ClearNavigationGuard();
+                else _shell.ClearSidebarExpandSuppression();
                 return;
             }
             _settlingPage = page;
@@ -423,7 +427,16 @@ namespace Nuvio.Input
             if (page != null) page.ContentReady -= OnSettleContentReady;
             _settlingPage = null;
             _settleInitialFocus = null;
-            if (clearGuard) _shell.ClearSidebarExpandSuppression();
+            if (clearGuard)
+            {
+                // Phase 3: with the flag on the coordinator owns the
+                // guard — clear through it (it clears the shell bit too
+                // and stops the enforcement timer when no coordinator
+                // settle runs). With the flag off the shell bit is
+                // cleared directly, as before.
+                if (Coordinator != null && FocusCoordinator.UseFocusCoordinator) Coordinator.ClearNavigationGuard();
+                else _shell.ClearSidebarExpandSuppression();
+            }
         }
 
         private void UnsubscribeSettleLayout()
@@ -464,6 +477,15 @@ namespace Nuvio.Input
             // loaded yet) leaves the settle running, so the arrival target
             // still lands when the page is ready.
             if (ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)) return;
+            // A bare container is not a real target (Phase 2 fix): the
+            // framework parks focus on an ItemsControl while content loads,
+            // and that is not the user taking over — leave the settle
+            // running so the arrival target still lands.
+            if (!FocusablePage.IsRealFocusTarget(FocusManager.GetFocusedElement() as DependencyObject))
+            {
+                Log.Write("Settle takeover ignored: focus is on a bare container, not a real target; settle continues");
+                return;
+            }
             Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
             StopSettle(clearGuard: true);
         }
