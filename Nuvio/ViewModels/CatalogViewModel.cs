@@ -65,6 +65,8 @@ namespace Nuvio.ViewModels
         private bool _isEmptyState;
         private string _emptyTitle;
         private string _emptyMessage;
+        /// <summary>Page-wide poster shape, normalised ('poster' | 'landscape' | 'square').</summary>
+        private string _shape = "poster";
 
         public CatalogViewModel(StremioService stremio, ProgressService progress, NavigationService navigation, CatalogNavigation navigationParameter)
         {
@@ -92,6 +94,63 @@ namespace Nuvio.ViewModels
         {
             get { return _subtitle; }
             private set { SetProperty(ref _subtitle, value); }
+        }
+
+        /// <summary>The page-wide poster shape ('poster' | 'landscape' | 'square'),
+        /// normalised to lower case. The page applies it to the card template, the
+        /// focus-ring host and the column count. The catalog's items all share one
+        /// shape (same rule as ViewAllShape in HomeViewModel), so one shape fits
+        /// the whole grid — never a mix inside it.</summary>
+        public string Shape
+        {
+            get { return _shape; }
+            private set
+            {
+                if (SetProperty(ref _shape, value)) RaisePropertyChanged(nameof(Columns));
+            }
+        }
+
+        /// <summary>Grid columns for the current shape (20 epx gap, 954 epx viewport):
+        /// poster 9 (9x108-20=952), landscape 5 (5x180-20=880), square 7 (7x124-20=848).</summary>
+        public int Columns
+        {
+            get
+            {
+                if (_shape == "landscape") return 5;
+                if (_shape == "square") return 7;
+                return 9;
+            }
+        }
+
+        /// <summary>Normalises a raw posterShape value: 'landscape' / 'square' pass
+        /// through lower-cased, anything else (including unknown values) is a poster.
+        /// Returns null only for an empty value, so callers can tell "absent" apart
+        /// from "present but unknown".</summary>
+        private static string NormalizeShape(string shape)
+        {
+            if (string.IsNullOrEmpty(shape)) return null;
+            shape = shape.ToLowerInvariant();
+            if (shape == "landscape" || shape == "square") return shape;
+            return "poster";
+        }
+
+        /// <summary>Resolves the page shape from the first non-empty PosterShape among
+        /// the loaded cards. The manifest may omit posterShape, so the manifest shape
+        /// alone would render a landscape catalog as posters; the items win (same
+        /// rule as ViewAllShape in HomeViewModel). Only the first page of a
+        /// generation resolves: later pages must not re-template the grid mid-scroll.
+        /// No non-empty shape leaves the manifest shape (or the poster default) in place.</summary>
+        private void ResolveShapeFromItems()
+        {
+            foreach (var card in Items)
+            {
+                var shape = NormalizeShape(card.PosterShape);
+                if (shape != null)
+                {
+                    Shape = shape;
+                    return;
+                }
+            }
         }
 
         public bool IsUnavailable
@@ -168,6 +227,13 @@ namespace Nuvio.ViewModels
                 {
                     Title = fullTitle;
                     Subtitle = StremioService.AddonName(_addon);
+                    // Provisional shape from the manifest, applied before the first
+                    // items load so the grid starts in the right shape. If the
+                    // manifest omits posterShape, ResolveShapeFromItems derives it
+                    // from the first page instead; if the items disagree with the
+                    // manifest, the items win there.
+                    var manifestShape = NormalizeShape(_catalog.PosterShape);
+                    if (manifestShape != null) Shape = manifestShape;
                     Genres.Clear();
                     if (!isRequired) Genres.Add(new GenreChip(null, S("GenreAll", "All"), _genre == null));
                     foreach (var g in genres) Genres.Add(new GenreChip(g, g, g == _genre));
@@ -260,6 +326,7 @@ namespace Nuvio.ViewModels
                 await RunOnUi(() =>
                 {
                     foreach (var card in cards) Items.Add(card);
+                    if (firstPage) ResolveShapeFromItems();
                     if (Items.Count == 0)
                     {
                         IsEmpty = true;
