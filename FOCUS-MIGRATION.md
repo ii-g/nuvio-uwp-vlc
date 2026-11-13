@@ -570,3 +570,138 @@ on a card".
   effect today: its only caller `NotifyContentChanged` has no
   callers yet. When callers are wired (Phase 3), reuse
   `IsRealFocusTarget` there.
+
+## Phase 3 — coordinator-owned dialog restore + first NotifyContentChanged caller (2026-11-13)
+
+Two tracks, one phase. The coordinator track (dialog stack + one-tick
+restore-on-close) lives in `FocusCoordinator.cs` / `MainPage.xaml.cs` /
+`NativeInputRouter.cs`; the pages track below only rewires the pages to
+it. The coordinator side was verified by reading: `NotifyDialogOpened`
+pushes the invoker (null when focus was not on a Control) onto
+`_dialogInvokers`; `NotifyDialogClosed` pops one and, only when the
+stack empties, schedules the restore one dispatcher tick later
+(`CoreDispatcher.RunAsync`, Normal). That restore skips when another
+dialog opened, when an arrival settle is running, or when focus is
+already on a real, valid target inside the current page; otherwise it
+focuses the popped invoker when it is a real, valid target in the live
+tree under the current page, else the page arrival target — never a
+bare container.
+
+Files changed (pages track):
+
+- `Nuvio/Views/FocusablePage.cs` — `RestoreDialogInvoker` stays, and
+  is now the flag-off compatibility path: when the coordinator is
+  available and the flag is on it returns `true` at once without
+  moving focus (the coordinator owns the restore then — a local move
+  would race its one-tick restore); when the flag is off it runs the
+  legacy behaviour verbatim (focus the Control, else
+  `TryFocusArrival`). No usings added: `Nuvio.Input` was already
+  imported and `MainPage` resolves through the enclosing `Nuvio`
+  namespace. `RestoreDialogInvoker` was NOT deleted — deleting it
+  would have left the flag-off path with no dialog restore at all,
+  because `DialogOpen` only routes to the coordinator when the flag
+  is on.
+- `Nuvio/Views/HomePage.xaml.cs` — `ShowContinueMenuAsync` keeps the
+  invoker capture and the `RestoreDialogInvoker` call in the cancel
+  branch (flag-off path; a no-op when the flag is on). `invokerIndex`
+  and `FocusContinueNeighbour` for the "remove" choice are untouched,
+  as are the details/restart choices.
+- `Nuvio/Views/PlayerPage.xaml.cs` — `ShowMenuDialogAsync` keeps the
+  invoker capture and the `RestoreDialogInvoker` call in the finally
+  (after `DialogOpen = false`, so the coordinator's tick is already
+  scheduled when the flag is on); `MenuOpen = false` untouched.
+- `Nuvio/Views/SettingsPage.xaml.cs` — `ShowConfirmAsync` keeps the
+  invoker capture and the `RestoreDialogInvoker` call in the finally.
+- `Nuvio/Views/StreamsPage.xaml.cs` — `ShowDebridSettingsDialogAsync`
+  keeps the invoker capture and the `RestoreDialogInvoker` call in
+  the finally. `OnEntriesChanged` is the first `NotifyContentChanged`
+  caller (see below).
+- `Nuvio/Views/DetailsPage.xaml.cs` — `ShowEpisodeMenuAsync` keeps
+  the invoker capture; the deferred one-tick restore block in the
+  else branch is kept verbatim but wrapped in a flag-off condition
+  (`invoker != null && !coordinatorOwnsRestore`, where
+  `coordinatorOwnsRestore` is the standard
+  `MainPage.Current?.Coordinator != null &&
+  FocusCoordinator.UseFocusCoordinator` check): with the flag on it
+  is skipped entirely (the coordinator restores), with the flag off
+  it runs exactly as before, including the in-page focus check.
+  toggleWatched / previous / season handling untouched, and the
+  "play" branch still navigates with no restore.
+
+`NotifyContentChanged` wiring — one site wired, five skipped:
+
+- Wired: `StreamsPage.OnEntriesChanged` — after `RenderAll`, before
+  `RaiseContentReady`. `RenderAll` re-focuses the chip/row it can
+  still find but ignores the `FocusChip` / `FocusEntry` bool returns,
+  so when the focused chip/row vanished from the rebuilt list focus
+  stays on a detached element with no fallback. The call is guarded
+  by the standard flag check (CatalogPage / SearchPage pattern) and
+  is a no-op when focus is still valid, so it only repairs real loss
+  and cannot fight the settle: on first render it runs before
+  `RaiseContentReady`, and its arrival fallback is the same target
+  the settle would pick ("all" chip).
+- Skipped: `SettingsPage.OnViewModelAddonsChanged` — `RenderAddons`
+  restores focus itself with an `InstallAddonButton` fallback when
+  the focused addon's button is gone, and `RenderDebrid` falls back
+  to its first button the same way; focus is never lost there.
+- Skipped: `HomePage` after `LoadAsync`, `DetailsPage.OnLoadCompleted`,
+  `CatalogPage` after `LoadAsync` — first render in each case, and
+  `RaiseContentReady` immediately after hands arrival to the router's
+  settle, which owns it fully; a `NotifyContentChanged` call would
+  only duplicate the settle's arrival focus.
+- Skipped: `SearchPage.OnSearchCompleted` — when `_focusFirstResult`
+  is set the deliberate `FocusFirstResult()` move follows immediately
+  (a repair call would fight it); otherwise focus sits on the search
+  box, outside the rebuilt rows, so nothing is lost.
+- No other site wired. Note the follow-up below: `HomePage`
+  `OnContinueRefreshed` has the same dropped-focus gap as Streams
+  had (it re-focuses the Continue card only when the card still
+  exists, with no fallback when it is gone).
+
+### Device test list (real controller, flag on)
+
+1. Dialogs, cancel/close each one and confirm the ring lands back on
+   the element that opened it: Home Continue menu (cancel), Details
+   episode menu (cancel + each mark-watched choice), Player subtitle
+   menu, Player delay menu, Settings confirm dialog, Streams debrid
+   invalid-key dialog (both buttons).
+2. Dialog choice that navigates (Home "details" / "restart", Details
+   "play", Streams "open debrid settings"): arrival on the new page
+   is the settle's, no stuck focus, no double move.
+3. Nested dialogs (a dialog opened from a dialog, where the UI
+   allows it): the outer invoker is restored only when the outer
+   dialog closes, not the inner one.
+4. Streams content change: focus a stream row, change the filter so
+   that row disappears — the ring must land on a neighbour / the
+   "all" chip, never vanish.
+5. Guard: no regression — cold launch still lands on the hero Play
+   button, D-pad during hero load does not stick.
+6. Flag off (same build, flag flipped): all six dialogs restore
+   exactly as before (synchronous local restore / Details deferred
+   tick), and Streams re-renders behave as before — the flag-off
+   path is byte-identical behaviour to the pre-Phase-3 build.
+
+### Known Phase 3 limitations (carried forward)
+
+- `RestoreDialogInvoker` stays as the flag-off compatibility path by
+  design (see above): it cannot be deleted until the flag itself is
+  retired. The coordinator's class doc (`FocusCoordinator.cs`) still
+  describes the pages as keeping "their own synchronous
+  `RestoreDialogInvoker` calls as the first path" with the
+  coordinator tick as "backstop" — now inverted: when the flag is on
+  the page call is the no-op and the coordinator tick is the only
+  path. That comment needs a one-line sync when the coordinator file
+  is next touched.
+- `HomePage.OnContinueRefreshed` re-focuses the Continue card only
+  when the card still exists; when the refreshed list drops it,
+  focus stays on the detached container. Same gap Streams had;
+  candidate for the next `NotifyContentChanged` caller.
+- `IsFocusValid` in the coordinator still does not exclude a bare
+  container (visible + enabled + in the live tree = valid). Now
+  matters in principle — `NotifyContentChanged` has its first caller
+  — but no path parks focus on a bare container (all nine are
+  `IsTabStop=false`, nothing focuses them), so reuse of
+  `IsRealFocusTarget` there is still a hardening item, not a fix.
+- The Home Continue-menu cancel path is still device-unverified in
+  the coordinator-owned form (it was exercised only in the local
+  form before); test list item 1 covers it.
