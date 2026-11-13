@@ -80,6 +80,18 @@ namespace Nuvio.ViewModels
             private set { SetProperty(ref _isLoaded, value); }
         }
 
+        /// <summary>Shape for the View All card: the first non-empty PosterShape among the
+        /// row's cards. The manifest may omit posterShape, so the row shape alone would
+        /// render the View All card as a poster in a landscape row.</summary>
+        private static string ViewAllShape(IReadOnlyList<CatalogCardItem> cards, string rowShape)
+        {
+            foreach (var card in cards)
+            {
+                if (!string.IsNullOrEmpty(card.PosterShape)) return card.PosterShape.ToLowerInvariant();
+            }
+            return rowShape;
+        }
+
         /// <summary>Loads the row's items (hideUnreleased filter, slice to 30). Returns true if it has items.</summary>
         public async Task<bool> LoadAsync()
         {
@@ -106,7 +118,7 @@ namespace Nuvio.ViewModels
                 {
                     Items.Clear();
                     foreach (var card in cards) Items.Add(card);
-                    if (cards.Count > 0) Items.Add(CatalogCardItem.ViewAll(Shape));
+                    if (cards.Count > 0) Items.Add(CatalogCardItem.ViewAll(ViewAllShape(cards, Shape)));
                     IsLoaded = true;
                 }).ConfigureAwait(false);
                 return cards.Count > 0;
