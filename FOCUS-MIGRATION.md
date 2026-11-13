@@ -756,6 +756,149 @@ and the `Compile` entry removed from `Nuvio.csproj`. The plain white
 focus ring is untouched and is the only focus frame again. The beam's
 code stays recoverable from git history (heads d224cda–611a997).
 
+## Phase 4 — player OSD focus rules (2026-11-14)
+
+### Audit findings (read-only, verified against the code)
+
+- OSD auto-hide: `PlayerViewModel.HideControls` (`PlayerViewModel.cs:1048-1052`)
+  sets `ControlsVisible = false` on a 4 s timer (`HideControlsMs = 4000`,
+  `:99`; `ScheduleHide` `:1055-1059`; tick `:1061-1065`), guarded by
+  `MenuOpen || PlayState != "playing" || !Ready` — so a hide can never
+  fire while a dialog is open. `PlayerPage.UpdateOsdVisibility`
+  (`PlayerPage.xaml.cs:252-260`) then sets `OsdRoot.Opacity = 0` and
+  `IsHitTestVisible = false`; the OSD is never `Collapsed`, and **no code
+  moved focus on hide** — focus stayed on a now-invisible button.
+- Show paths all funnel through `ShowControls` / `Poke`
+  (`PlayerViewModel.cs:1040-1070`): `ControlsVisible = true` is set
+  **before** `RaiseFocus(hint)`, so a synchronous restore inside the
+  `ControlsVisible` property change runs before the page's focus hint.
+  The "play" hint (`PlayerPage.xaml.cs:170-178`) never yanks focus off
+  another OSD button — it focuses Play only when focus is null, on Back,
+  or outside the OSD.
+- `PlayerPage.TryFocusKey` ignored its key entirely and always fell
+  through to `TryFocusArrival` (Back). No OSD key could ever be recorded
+  anyway: every OSD button's `Tag` is a single Segoe MDL2 glyph (or
+  null), and `FocusablePage.OnGotFocusRecordArrival`
+  (`FocusablePage.cs:149-175`) skips single-character tags — so the
+  coordinator must hold a `Control` reference (like the dialog invoker),
+  not a registry key.
+- The player is not a migrated page: the router routes only
+  Settings/Home/Search/Catalog to `Coordinator.RequestArrival` and calls
+  `Coordinator.CancelArrival()` for everything else, including the
+  player (`NativeInputRouter.cs:247-256`) — so the coordinator never
+  settles the player and the OSD rule must not depend on a settle.
+- `IsFocusValid` cannot detect a hidden OSD: it checks `Visibility`,
+  `IsEnabled` and the live tree, but not `Opacity`
+  (`FocusCoordinator.cs:1375-1396`) — an opacity-0 OSD button still
+  counts as valid. The OSD signal therefore has to be explicit
+  (`ControlsVisible`), not derived from focus validity.
+- Dialogs: the 7 player menus share `ShowMenuDialogAsync`
+  (`PlayerPage.xaml.cs:608-690`), which sets `MainPage.DialogOpen`
+  (coordinator stack, Phase 3) and `MenuOpen = true` (blocks hide).
+  Dialog close restores to the invoker, which may be an OSD button.
+
+### The rule
+
+- **Hide:** when `ControlsVisible` flips false and focus is on an OSD
+  element, the coordinator remembers that element and parks focus on
+  Back via the page's `TryFocusKey("back")` contract. When focus is on
+  a visible NextCard/ErrorBox button (outside `OsdRoot`, still visible
+  while the OSD is hidden) or nowhere, nothing is parked and focus is
+  left alone.
+- **Show:** when `ControlsVisible` flips true, the coordinator restores
+  focus to the remembered element when it is still a real, valid target
+  in the live tree under the current page; otherwise focus stays on the
+  parked Back button, so the "play" hint moves it to Play.
+- **Dialog/settle guard:** hide-park is skipped while a dialog is open;
+  show-restore is skipped while a dialog is open or an arrival settle
+  is running (the slot is cleared in both cases — the dialog/settle
+  owns focus from then on). The OSD rule never touches the dialog
+  stack: reusing it would pause all controller input while the OSD is
+  hidden (`HandleInput` gates on `IsDialogOpen`), contradicting the
+  page's hidden-state input handling (`PlayerPage.xaml.cs:424-447`).
+- **`TryFocusKey` contradiction resolved:** `PlayerPage.TryFocusKey`
+  now resolves keys in the page's own focus-hint vocabulary —
+  `back`/`play`/`seek`/`rewind`/`forward`/`subtitles`/`audio`/`speed`/
+  `aspect`/`sources`/`episodes`/`next` (the Next-episode card's Play
+  button, matching `OnFocusRequested`)/`error` (TryNext when visible,
+  else Retry) — with a `Visibility` guard per button, and unknown keys
+  still fall through to arrival (Back).
+
+### Files
+
+- `Nuvio/Input/FocusCoordinator.cs` — OSD park slot (`_lastOsdElement`,
+  one slot: the OSD exists only on the player), `NotifyOsdHidden(Control)`
+  (remember + park via `TryFocusKey("back")`),
+  `NotifyOsdShown()` (validated restore, else leave on Back),
+  `DescribeOsdTarget` (button `Name` for the log). Beside the dialog
+  pair, reusing its validation pattern (`IsRealFocusTarget` +
+  `IsFocusValid` + `IsDescendantOfCurrentPage`).
+- `Nuvio/Views/PlayerPage.xaml.cs` — `TryFocusKey` key map +
+  `FocusButton` helper; `NotifyOsdVisibilityChanged` (flag-gated, same
+  pattern as StreamsPage's `NotifyContentChanged` call) hooked into
+  `OnViewModelPropertyChanged` on `ControlsVisible` flips only
+  (`Ready` flips do not notify). The hook passes the focused element
+  only when it is a descendant of `OsdRoot`.
+- `FOCUS-MIGRATION.md` — this section.
+
+### Flag-off behaviour
+
+With `UseFocusCoordinator = false` the page hook returns before any
+coordinator call, so the old behaviour (focus stays on the hidden
+button) returns exactly. The `TryFocusKey` change is behaviour-
+preserving for every existing caller: no OSD key is ever recorded
+(single-character tags are skipped), the legacy settle therefore
+always falls through to `TryFocusArrival` exactly as before, and the
+only new key (`"back"`) is sent by the coordinator, which is never
+called with the flag off. No button behaviour changed: X still toggles
+pause (there is no stop), and the `"playpause"` case is untouched dead
+code.
+
+### Known limitations (carried forward)
+
+- A stale slot: leaving the player while parked keeps a detached
+  `Control` reference until the next hide overwrites it. It is
+  validated at use and can never be focused; no proactive clearing
+  was added to the settle paths (deliberate — the dialog invoker
+  pattern validates the same way).
+- Show with an explicit non-"play" hint (`"seek"` from LT/RT or
+  left/right while hidden): the restore runs first, then the hint
+  focuses the seek bar — final state correct, one wasted synchronous
+  `Focus()` call, no visible flicker (same call stack, one frame).
+- Y while the OSD is hidden opens the subtitles dialog with the
+  parked Back as invoker; close restores to Back, and the next input
+  re-shows the OSD and restores the remembered element. The dialog
+  restore owns that path.
+- Phase 3 doc correction: `IsFocusValid` **does** exclude bare
+  containers (`FocusCoordinator.cs:1380`); the Phase 3 limitation
+  text ("IsFocusValid not excluding bare containers") is stale — the
+  bare-container fix round added the check after Phase 3.
+- No local C# compiler in the VM — compilation is checked by CI.
+  Device test not run yet (list below).
+
+### Device test list (real controller, flag on)
+
+1. Play a video, wait 4 s without input: OSD hides; log shows
+   `OSD hidden; parked focus on Back; remembered <button>`.
+2. Move focus to Speed (or Subtitles/Audio), wait 4 s: OSD hides,
+   then press any direction: OSD shows and focus is back on the same
+   button (not Play). Log shows `OSD shown; focus restored to <name>`.
+3. While hidden, press Back once: OSD hides already — press Back
+   again: leaves the player (first Back while visible hides, second
+   exits — unchanged).
+4. Focus the seek bar, wait 4 s, press Right: OSD shows on the seek
+   bar (explicit hint wins over the restore).
+5. Near the end of an episode, let the Next card appear, then wait
+   4 s: focus stays on the Next card's Play button (not parked);
+   press Back: card cancels, OSD shows, focus on the remembered OSD
+   button.
+6. While hidden, press Y: subtitles dialog opens; choose or cancel:
+   focus returns to Back; press any direction: OSD shows, focus on
+   the remembered button.
+7. Pause (X) while hidden: OSD shows, focus on the remembered button.
+8. Flag-off sanity (same build, flag flipped): OSD hide leaves focus
+   on the hidden button exactly as before (old behaviour).
+
 ## Fix round — root back-stack + Home row memory + sidebar current-page button (2026-11-13)
 
 User report: focus memory "saves across pages" (video: B on Home
