@@ -205,6 +205,13 @@ namespace Nuvio.Input
             return rows.TryGetValue(rowKey, out key) && !string.IsNullOrEmpty(key);
         }
 
+        /// <summary>Forgets the per-row memory of one entry (fresh-arrival invalidation). The entry's arrival key is untouched, so Back restore still works; only the row map is dropped, so the next row-to-row move in a fresh visit falls back to the row's first poster and the map rebuilds from GotFocus records during this visit.</summary>
+        internal void ClearRowFocusKeys(string entryKey)
+        {
+            if (string.IsNullOrEmpty(entryKey)) return;
+            _rowFocusKeys.Remove(entryKey);
+        }
+
         /// <summary>
         /// Central arrival focus, called by the shell from
         /// ContentFrame_Navigated (Fix 2, root cause C). Event-driven, not a
