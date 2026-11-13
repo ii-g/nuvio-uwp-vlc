@@ -81,10 +81,15 @@
              from the screen edge). The grid runs to the bottom screen edge
              (Margin bottom 0, top tightened to 10): there is no container
              edge below the last row and no container border on either side.
-             Cards are back to 88x132 and MaximumRowsOrColumns=9: a cell is
-             88 + the 20 epx gap = 108, and 9 columns need 9x108-20=952,
-             which fills the 954 viewport with 2 epx to spare. The old
-             10-column 70x105 grid (10x77-7=763 in a 772 viewport) is gone. -->
+             Cards follow the page's resolved shape (CatalogViewModel.Shape):
+             poster 88x132 with 9 columns (a cell is 88 + the 20 epx gap =
+             108, and 9 columns need 9x108-20=952, which fills the 954
+             viewport with 2 epx to spare), landscape 160x90 with 5 columns
+             (5x180-20=880), square 104x104 with 7 columns (7x124-20=848).
+             The XAML below holds the poster default; the code-behind applies
+             the resolved shape (template, item style, MaximumRowsOrColumns)
+             when the ViewModel reports it. The old 10-column 70x105 grid
+             (10x77-7=763 in a 772 viewport) is gone. -->
         <GridView x:Name="CatalogGridView" Grid.Row="2" ItemsSource="{Binding Items}" ItemTemplate="{StaticResource CatalogPosterCardTemplate}" ItemContainerStyle="{StaticResource CatalogGridViewItemStyle}" IsItemClickEnabled="True" SelectionMode="None" ItemClick="CatalogGridView_ItemClick" Visibility="{Binding IsEmptyState, Converter={StaticResource InverseBooleanToVisibilityConverter}}" Padding="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=catalogRowHeader}" Margin="0,10,0,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden" ScrollViewer.HorizontalScrollMode="Disabled" ScrollViewer.VerticalScrollMode="Auto" ScrollViewer.BringIntoViewOnFocusChange="False">
             <GridView.ItemsPanel>
                 <ItemsPanelTemplate>
