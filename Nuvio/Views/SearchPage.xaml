@@ -113,7 +113,7 @@
                         <!-- Recent searches -->
                         <StackPanel Visibility="{Binding IsRecentVisible, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,16,0,0" HorizontalAlignment="Center">
                             <TextBlock x:Uid="RecentSearchesTitle" Text="Recent Searches" FontSize="12" FontWeight="Bold" TextAlignment="Center" HorizontalAlignment="Center"/>
-                            <ItemsControl ItemsSource="{Binding RecentSearches}" Margin="0,7,0,0" HorizontalAlignment="Center">
+                            <ItemsControl IsTabStop="False" ItemsSource="{Binding RecentSearches}" Margin="0,7,0,0" HorizontalAlignment="Center">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal"/>
@@ -136,7 +136,7 @@
                 <Grid x:Name="ResultsContainer">
                 <StackPanel>
                 <!-- One row per search catalog -->
-                <ItemsControl ItemsSource="{Binding Rows}" Margin="0,8,0,0">
+                <ItemsControl IsTabStop="False" ItemsSource="{Binding Rows}" Margin="0,8,0,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Margin="0,0,0,13">
