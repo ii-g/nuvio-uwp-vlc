@@ -116,13 +116,19 @@ namespace Nuvio.Views
         }
 
         /// <summary>
-        /// THE single dialog-restore implementation (replaces the per-page
-        /// duplicates): back to the element that opened the dialog when it
-        /// can still take focus (Control cast first — Focus lives on
-        /// Control, not UIElement), else the page's arrival target.
+        /// Dialog restore — flag-off compatibility path (the coordinator
+        /// owns the restore when the flag is on). With the flag on, the
+        /// coordinator captures the invoker on DialogOpen and restores it
+        /// one tick after DialogOpen clears, so this returns true at once
+        /// without moving focus (a local move here would race it). With
+        /// the flag off, the legacy behaviour verbatim: back to the
+        /// element that opened the dialog when it can still take focus
+        /// (Control cast first — Focus lives on Control, not UIElement),
+        /// else the page's arrival target.
         /// </summary>
         protected bool RestoreDialogInvoker(UIElement invoker)
         {
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator) return true;
             var control = invoker as Control;
             if (control != null && control.Focus(FocusState.Programmatic)) return true;
             return TryFocusArrival();
