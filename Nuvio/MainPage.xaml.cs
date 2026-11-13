@@ -693,6 +693,16 @@ namespace Nuvio
             // entry it is settling. A non-FocusablePage content logs and
             // clears the guard (defensive; after the page migration this
             // must not happen).
+            // Fresh arrival (not Back): the previous visit's per-row memory is stale — drop this entry's row map so row-to-row moves land on each row's first poster, then rebuild from this visit's GotFocus records. Back arrivals keep the map, so row landings restore the saved poster. Must live here, on the Navigated boundary — not inside SettleArrivalFocus/RequestArrival, which the dialog-restore re-settle (line 480) also calls with isBack=false mid-visit.
+            if (e.NavigationMode != NavigationMode.Back)
+            {
+                var navigatedPage = e.Content as FocusablePage;
+                if (navigatedPage != null && !string.IsNullOrEmpty(navigatedPage.EntryKey))
+                {
+                    if (_router != null) _router.ClearRowFocusKeys(navigatedPage.EntryKey);
+                    if (_coordinator != null) _coordinator.ClearRowFocusKeys(navigatedPage.EntryKey);
+                }
+            }
             if (_router != null) _router.SettleArrivalFocus(e.Content as FocusablePage, e.NavigationMode == NavigationMode.Back, e.Parameter);
         }
 
@@ -708,6 +718,25 @@ namespace Nuvio
             SetSidebarActive(SearchButton, root == "search");
             SetSidebarActive(LibraryButton, root == "library");
             SetSidebarActive(SettingsButton, root == "settings");
+        }
+
+        /// <summary>
+        /// The sidebar button for the page currently shown in the content
+        /// frame, from the root recorded by ContentFrame_Navigated
+        /// (SetActiveSidebarButton): HomePage -> HomeButton, SearchPage ->
+        /// SearchButton, SettingsPage -> SettingsButton, PlaceholderPage ->
+        /// the button for its SidebarRoot ("library" -> LibraryButton,
+        /// "settings" -> SettingsButton). Unknown / null root (Catalog and
+        /// the hidden-sidebar pages, which set no root) falls back to
+        /// HomeButton. Shared by FocusSidebar() and FocusSidebarFirst() so
+        /// the two openings can never drift apart again.
+        /// </summary>
+        private Button SidebarButtonForCurrentRoot()
+        {
+            return _activeRoot == "search" ? SearchButton
+                : _activeRoot == "library" ? LibraryButton
+                : _activeRoot == "settings" ? SettingsButton
+                : HomeButton;
         }
 
         /// <summary>
@@ -728,10 +757,7 @@ namespace Nuvio
             // low-level bit setter and never delegates back.
             if (_coordinator != null && FocusCoordinator.UseFocusCoordinator) _coordinator.ClearNavigationGuard();
             else ClearSidebarExpandSuppression();
-            var button = _activeRoot == "search" ? SearchButton
-                : _activeRoot == "library" ? LibraryButton
-                : _activeRoot == "settings" ? SettingsButton
-                : HomeButton;
+            var button = SidebarButtonForCurrentRoot();
             // A deliberate move onto the strip re-enables the button first:
             // the buttons stop accepting focus while the strip is collapsed
             // at launch (see the constructor), and Focus() on a control with
@@ -744,15 +770,19 @@ namespace Nuvio
         }
 
         /// <summary>
-        /// Deliberate menu open that always lands on the first option (Home):
-        /// opens the strip FIRST, then focuses HomeButton, so the ring never
-        /// appears on a collapsed strip. Differs from FocusSidebar(), which
-        /// focuses the current page's button and is called only by the hero's
-        /// start-edge branch. Reached only through the coordinator (flag path,
-        /// MoveFocus intercepts a move toward the sidebar); no flag check
-        /// inside this method. Returns false when the sidebar is Hidden
-        /// (Details / Catalog / Streams / Player) so the caller falls through to
-        /// XYFocus as today; true otherwise.
+        /// Deliberate menu open that lands on the button for the current
+        /// page (SidebarButtonForCurrentRoot — Settings from Settings,
+        /// Search from Search, Home when the page is unknown): opens the
+        /// strip FIRST, then focuses that button, so the ring never appears
+        /// on a collapsed strip. ("First" is the open-first order, not the
+        /// first option: the old always-Home landing was superseded by the
+        /// current-page rule.) Same target as FocusSidebar(), which is
+        /// called only by the hero's start-edge branch. Reached only
+        /// through the coordinator (flag path, MoveFocus intercepts a move
+        /// toward the sidebar); no flag check inside this method. Returns
+        /// false when the sidebar is Hidden (Details / Catalog / Streams /
+        /// Player) so the caller falls through to XYFocus as today; true
+        /// otherwise.
         /// </summary>
         public bool FocusSidebarFirst()
         {
@@ -766,10 +796,11 @@ namespace Nuvio
             // case the buttons are enabled already — the explicit set below
             // is harmless either way.
             SetSidebarExpanded(true);
-            HomeButton.IsTabStop = true;
-            if (!HomeButton.Focus(FocusState.Programmatic))
+            var button = SidebarButtonForCurrentRoot();
+            button.IsTabStop = true;
+            if (!button.Focus(FocusState.Programmatic))
             {
-                Log.Write("FocusSidebarFirst failed to focus " + HomeButton.Name);
+                Log.Write("FocusSidebarFirst failed to focus " + button.Name);
             }
             return true;
         }
