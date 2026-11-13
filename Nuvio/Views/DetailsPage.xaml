@@ -412,7 +412,7 @@
                                     <TextBlock Text="{Binding TypeText}" FontSize="9" Foreground="#B8FFFFFF" shared:TextGlow.IsEnabled="True"/>
                                 </Grid>
                             </StackPanel>
-                            <ItemsControl ItemsSource="{Binding Genres}" Margin="0,9,0,0">
+                            <ItemsControl IsTabStop="False" ItemsSource="{Binding Genres}" Margin="0,9,0,0">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Orientation="Horizontal" Spacing="3"/>
@@ -458,7 +458,7 @@
 
                     <!-- Credits -->
                     <StackPanel Visibility="{Binding HasCredits, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=detailsRowHeader}">
-                        <ItemsControl ItemsSource="{Binding Credits}">
+                        <ItemsControl IsTabStop="False" ItemsSource="{Binding Credits}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,6">
