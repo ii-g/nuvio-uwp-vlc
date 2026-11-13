@@ -336,11 +336,13 @@ namespace Nuvio.Views
         /// stream row. Called by the router's SettleArrivalFocus, which retries
         /// when this returns false (chips/rows are not focusable until the
         /// first render). Bails out when focus is already inside the page, so
-        /// a late settle never yanks focus away.</summary>
+        /// a late settle never yanks focus away (a bare ItemsControl the
+        /// framework parked on is not a real target, so the bail-out does
+        /// not fire for it).</summary>
         public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
-            if (focused != null && IsDescendantOf(focused, this)) return true;
+            if (focused != null && IsDescendantOf(focused, this) && IsRealFocusTarget(focused)) return true;
             if (FocusChip("all")) return true;
             if (StreamsListView.Items.Count > 0) return FocusEntryAt(0);
             return false;
