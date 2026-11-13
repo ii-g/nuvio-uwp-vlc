@@ -140,11 +140,13 @@ namespace Nuvio.Views
         /// addons button when the library is empty). Called by the router's
         /// SettleArrivalFocus, which retries when this returns false (the hero
         /// button is not focusable until layout runs). Bails out when focus is
-        /// already inside the page, so a late settle never yanks focus away.</summary>
+        /// already inside the page, so a late settle never yanks focus away
+        /// (a bare ItemsControl the framework parked on is not a real target,
+        /// so the bail-out does not fire for it).</summary>
         public override bool TryFocusArrival()
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
-            if (focused != null && IsDescendantOf(focused, this)) return true;
+            if (focused != null && IsDescendantOf(focused, this) && IsRealFocusTarget(focused)) return true;
             if (_viewModel.HasHero) return HeroPlayButton.Focus(FocusState.Programmatic);
             if (_viewModel.IsEmpty) return ManageAddonsButton.Focus(FocusState.Programmatic);
             // No hero and not empty: nothing to focus here, the input router
