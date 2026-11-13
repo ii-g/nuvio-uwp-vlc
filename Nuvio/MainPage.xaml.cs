@@ -41,7 +41,7 @@ namespace Nuvio
         private NativeInputRouter _router;
         /// <summary>Phase 1 Focus Manager coordinator (null until OnLoaded constructs it). Owns input dispatch, the Settings arrival settle and the navigation guard while FocusCoordinator.UseFocusCoordinator is true; the router stays the rollback path.</summary>
         private FocusCoordinator _coordinator;
-        /// <summary>AnimatedFocusBorder PoC (single-card beam). Null until OnLoaded creates it; the beam is a rendering proof only and owns no focus logic.</summary>
+        /// <summary>AnimatedFocusBorder beam. Null until OnLoaded creates it; a visual-only effect that circles the focused element — it reads focus state but never moves focus.</summary>
         private AnimatedFocusBorder _focusBeam;
         private bool _videoViewRequested;
         private bool _videoViewStarting;
@@ -296,10 +296,10 @@ namespace Nuvio
             Navigation.Coordinator = _coordinator;
             _controller = new ControllerBridge(HandleControllerInput);
 
-            // AnimatedFocusBorder PoC: one shared beam on the first Home card only.
-            AnimatedFocusBorder.IsEnabled = true; // PoC: single-card beam; flip off to restore white ring only
+            // AnimatedFocusBorder: one shared beam that circles the focused element.
+            AnimatedFocusBorder.IsEnabled = true; // Flip off to restore the white ring only
             _focusBeam = new AnimatedFocusBorder();
-            _focusBeam.TryAttachFirstCard(ContentFrame, FocusBeamHost);
+            _focusBeam.TryAttach(FocusBeamHost);
 
             try
             {
