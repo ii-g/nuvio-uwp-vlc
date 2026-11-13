@@ -300,11 +300,6 @@
                 </Grid>
             </Border>
 
-            <!-- AnimatedFocusBorder PoC host: one shared beam visual lives here,
-                 above the content and the sidebar, below the toasts. It never
-                 receives input. -->
-            <Canvas x:Name="FocusBeamHost" Grid.Column="0" Grid.ColumnSpan="2" IsHitTestVisible="False" />
-
         </Grid>
 
         <Grid x:Name="ToastHost" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,24" IsHitTestVisible="False">
