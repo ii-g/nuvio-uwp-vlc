@@ -7,7 +7,6 @@ using Nuvio.Input;
 using Nuvio.Playback;
 using Nuvio.Services;
 using Nuvio.Views;
-using Nuvio.Views.Shared;
 using Windows.Globalization;
 using Windows.System;
 using Windows.UI;
@@ -41,8 +40,6 @@ namespace Nuvio
         private NativeInputRouter _router;
         /// <summary>Phase 1 Focus Manager coordinator (null until OnLoaded constructs it). Owns input dispatch, the Settings arrival settle and the navigation guard while FocusCoordinator.UseFocusCoordinator is true; the router stays the rollback path.</summary>
         private FocusCoordinator _coordinator;
-        /// <summary>AnimatedFocusBorder beam. Null until OnLoaded creates it; a visual-only effect that circles the focused element — it reads focus state but never moves focus.</summary>
-        private AnimatedFocusBorder _focusBeam;
         private bool _videoViewRequested;
         private bool _videoViewStarting;
         private bool _dialogOpen;
@@ -295,11 +292,6 @@ namespace Nuvio
             _router.Coordinator = _coordinator;
             Navigation.Coordinator = _coordinator;
             _controller = new ControllerBridge(HandleControllerInput);
-
-            // AnimatedFocusBorder: one shared beam that circles the focused element.
-            AnimatedFocusBorder.IsEnabled = true; // Flip off to restore the white ring only
-            _focusBeam = new AnimatedFocusBorder();
-            _focusBeam.TryAttach(FocusBeamHost);
 
             try
             {
