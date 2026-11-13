@@ -144,7 +144,7 @@
                     <StackPanel Grid.Column="1" Spacing="3">
                         <TextBlock Text="{Binding Name}" Foreground="White" FontSize="9" FontWeight="Bold" TextWrapping="Wrap" shared:TextGlow.IsEnabled="True"/>
                         <TextBlock Text="{Binding Detail}" Foreground="#B8FFFFFF" FontSize="8" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis" Visibility="{Binding Detail, Converter={StaticResource StringToVisibilityConverter}}" shared:TextGlow.IsEnabled="True"/>
-                        <ItemsControl ItemsSource="{Binding Badges}">
+                        <ItemsControl IsTabStop="False" ItemsSource="{Binding Badges}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="3"/>
@@ -279,7 +279,7 @@
 
                 <!-- Status line (web .streams-status): loading / hidden-torrent /
                      failed-addon lines, rebuilt in code-behind. -->
-                <ItemsControl x:Name="StatusItems" Grid.Row="1" Padding="4,0,4,6">
+                <ItemsControl x:Name="StatusItems" IsTabStop="False" Grid.Row="1" Padding="4,0,4,6">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2">
