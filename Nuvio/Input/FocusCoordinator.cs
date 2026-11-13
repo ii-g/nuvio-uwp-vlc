@@ -824,25 +824,33 @@ namespace Nuvio.Input
             try
             {
                 if (IsFocusInsidePage(page)) settled = true;
-                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus) && !IsFocusInSidebar)
+                else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus) && !IsFocusInSidebar && FocusablePage.IsRealFocusTarget(CurrentFocused))
                 {
                     // The user deliberately moved focus off the settle's
                     // starting element (e.g. Up/Down in the strip inside
                     // the 200 ms ignore window): treat as takeover instead
-                    // of yanking focus back to the arrival target.
+                    // of yanking focus back to the arrival target. A bare
+                    // ItemsControl the framework parked on is not a
+                    // deliberate move — it falls through below instead.
                     Log.Write("Settle takeover: focus moved by the user; stopping without placing arrival focus");
                     StopSettle(clearGuard: true);
                 }
                 else
                 {
-                    // Focus moved inside the sidebar during the settle (a
+                    // Focus moved off the settle's starting element but
+                    // not onto a real target — inside the sidebar (a
                     // D-pad press while the strip was still collapsed and
-                    // the content not loaded yet): not a takeover — keep
-                    // retrying below until the content loads and the
+                    // the content not loaded yet), or parked by the
+                    // framework on a bare ItemsControl: not a takeover —
+                    // keep retrying below until the content loads and the
                     // arrival target lands.
-                    if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                    if (IsFocusInSidebar)
                     {
                         Log.Write("Settle: focus moved inside the sidebar during settle; ignoring, settle continues");
+                    }
+                    else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
+                    {
+                        Log.Write("Settle: focus parked on a bare container during settle; ignoring, settle continues");
                     }
                     if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
                 }
@@ -993,7 +1001,10 @@ namespace Nuvio.Input
 
         private bool IsFocusInsidePage(Page page)
         {
-            return IsFocusInside(page);
+            // A bare ItemsControl the framework parked on is inside the
+            // page but is not a real target (no ring, no interaction):
+            // it must not count as arrival.
+            return IsFocusInside(page) && FocusablePage.IsRealFocusTarget(CurrentFocused);
         }
 
         /// <summary>
