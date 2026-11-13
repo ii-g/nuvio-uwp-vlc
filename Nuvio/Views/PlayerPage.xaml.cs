@@ -135,11 +135,48 @@ namespace Nuvio.Views
             return BackButton.Focus(FocusState.Programmatic);
         }
 
-        /// <summary>Back-arrival target: the Back button as well — the player
-        /// has a single arrival target, so any key falls through to arrival.</summary>
+        /// <summary>Back-arrival target: a remembered key is honoured —
+        /// the player has one arrival target per key, in the page's own
+        /// focus-hint vocabulary (see OnFocusRequested). Unknown keys fall
+        /// through to arrival (Back), preserving the old behaviour for
+        /// unrecorded keys. The coordinator's Phase 4 OSD park calls
+        /// this with "back".</summary>
         public override bool TryFocusKey(string key)
         {
-            return TryFocusArrival();
+            switch (key)
+            {
+                case "back": return FocusButton(BackButton);
+                case "play": return FocusButton(PlayPauseButton);
+                case "seek": return FocusButton(SeekBar);
+                case "rewind": return FocusButton(RewindButton);
+                case "forward": return FocusButton(ForwardButton);
+                case "subtitles": return FocusButton(SubtitlesButton);
+                case "audio": return FocusButton(AudioButton);
+                case "speed": return FocusButton(SpeedButton);
+                case "aspect": return FocusButton(AspectButton);
+                case "sources": return FocusButton(SourcesButton);
+                case "episodes": return FocusButton(EpisodesButton);
+                // "next" matches OnFocusRequested: the Next-episode card's
+                // Play button, not the OSD Next button.
+                case "next": return FocusButton(NextPlayButton);
+                case "error":
+                    if (TryNextButton.Visibility == Visibility.Visible) return FocusButton(TryNextButton);
+                    return FocusButton(RetryButton);
+                default:
+                    return TryFocusArrival();
+            }
+        }
+
+        /// <summary>Focuses a player button when it can take focus: a
+        /// hidden (Collapsed) button — Sources with a single source,
+        /// Episodes / Next for a movie — returns false so the caller
+        /// falls back instead of reporting success. Focus() itself
+        /// refuses disabled elements. No cast needed here: every target
+        /// is a Button, and Focus lives on Control.</summary>
+        private static bool FocusButton(Control button)
+        {
+            if (button == null || button.Visibility != Visibility.Visible) return false;
+            return button.Focus(FocusState.Programmatic);
         }
 
         // ---------- ViewModel events ----------
@@ -205,6 +242,10 @@ namespace Nuvio.Views
                 case nameof(PlayerViewModel.Ready):
                     UpdateOsdVisibility();
                     UpdateSubtitlePosition();
+                    if (e.PropertyName == nameof(PlayerViewModel.ControlsVisible))
+                    {
+                        NotifyOsdVisibilityChanged();
+                    }
                     break;
                 case nameof(PlayerViewModel.Fraction):
                 case nameof(PlayerViewModel.IsScrubbing):
@@ -262,6 +303,38 @@ namespace Nuvio.Views
             OsdRoot.IsHitTestVisible = showOsd;
             OsdTopScrim.Visibility = _viewModel.Ready ? Visibility.Visible : Visibility.Collapsed;
             OsdBottom.Visibility = _viewModel.Ready ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Phase 4: tells the coordinator when the OSD hides/shows so it
+        /// can park focus on Back while hidden and restore the remembered
+        /// OSD element on show. Flag-gated (same pattern as StreamsPage's
+        /// NotifyContentChanged call): with the flag off nothing is
+        /// notified and the old behaviour — focus stays on the hidden
+        /// button — returns exactly. Only a hide with focus on an OSD
+        /// element is notified: a visible NextCard/ErrorBox button keeps
+        /// focus (those cards are outside OsdRoot and stay visible while
+        /// the OSD is hidden). Runs inside the ControlsVisible property
+        /// change, after UpdateOsdVisibility and before the ViewModel's
+        /// focus hint, so the hint's never-yank rule keeps the restored
+        /// element on show.
+        /// </summary>
+        private void NotifyOsdVisibilityChanged()
+        {
+            var coordinator = MainPage.Current?.Coordinator;
+            if (coordinator == null || !FocusCoordinator.UseFocusCoordinator) return;
+            if (!_viewModel.ControlsVisible)
+            {
+                var focused = FocusManager.GetFocusedElement() as Control;
+                if (focused != null && IsDescendantOf(focused, OsdRoot))
+                {
+                    coordinator.NotifyOsdHidden(focused);
+                }
+            }
+            else
+            {
+                coordinator.NotifyOsdShown();
+            }
         }
 
         private void OnRootSizeChanged(object sender, SizeChangedEventArgs e)
