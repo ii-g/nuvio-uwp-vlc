@@ -124,6 +124,14 @@ namespace Nuvio.Views
         private void OnEntriesChanged(object sender, EventArgs e)
         {
             RenderAll(resetScroll: false);
+            // Re-render repair (Phase 3): RenderAll re-focuses the chip/row
+            // it can still find, but drops focus silently when the focused
+            // chip/row is gone from the rebuilt list. The coordinator only
+            // acts when focus is actually lost (a no-op otherwise).
+            if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
+            {
+                MainPage.Current.Coordinator.NotifyContentChanged(this);
+            }
             // First render (chips/list rendered): the arrival target exists
             // now. Once-only, so later re-renders are no-ops here.
             RaiseContentReady();
@@ -240,8 +248,11 @@ namespace Nuvio.Views
             };
             dialog.Opened += (s, e) => dialog.Focus(FocusState.Programmatic);
             var shell = MainPage.Current;
-            // Part C: remember the invoker (the focused stream row) so focus
-            // returns to it when the dialog closes instead of being lost.
+            // Dialog restore: the coordinator owns it when the flag is on
+            // (it captures the invoker when DialogOpen is set below, and
+            // restores focus to it when DialogOpen clears); the capture
+            // below is the flag-off path only (RestoreDialogInvoker no-ops
+            // when the flag is on).
             var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             ContentDialogResult result;
