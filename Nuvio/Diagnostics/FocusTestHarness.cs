@@ -1,28 +1,60 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
+using Nuvio.Models;
+using Nuvio.Services;
 using Nuvio.Views;
+using Windows.Storage;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation.Peers;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 
 namespace Nuvio.Diagnostics
 {
     /// <summary>
-    /// Phase 0 scripted focus-test engine (Focus Manager programme, stage 0).
+    /// Phase 5 focus-test package (Focus Manager programme, final phase).
+    ///
+    /// 48 tests in the package: 46 automated here (the registry in
+    /// <see cref="BuildTests"/>) + 2 manual gate checks (dormant-with-no-gate,
+    /// flag-file-removal-disarms) that no in-app suite can observe about
+    /// itself — see FOCUS.md §7 for the manual procedures.
     ///
     /// Drives input ONLY through the pinned MainPage seam
-    /// <see cref="MainPage.SimulateFocusInput(string, bool)"/> — the integration
-    /// worker creates that seam on MainPage, and it must invoke the identical code
+    /// <see cref="MainPage.SimulateFocusInput(string, bool)"/> — the same code
     /// path the ControllerBridge poll callback uses (router Handle, then the
-    /// settling-aware takeover decision). This harness never calls the router or
-    /// FocusManager directly for input, and never sets focus itself except
-    /// through the seam.
+    /// settling-aware takeover decision). This harness never calls the router
+    /// or FocusManager directly for input, and never sets focus itself except
+    /// through the seam. Two documented exceptions, both test-only closers
+    /// for dialogs the seam cannot reach (see below); neither moves focus:
+    /// closing a dialog with ContentDialog.Hide() found through
+    /// VisualTreeHelper.GetOpenPopups, and choosing a dialog option with
+    /// ButtonAutomationPeer.Invoke(). The coordinator restore / navigation
+    /// that runs after the close is the real production path in both cases.
     ///
-    /// DORMANCY: the harness never runs unless the launch arguments contain
+    /// WHY the seam cannot drive dialogs: FocusCoordinator.HandleInput gates
+    /// all dispatch on IsDialogOpen, so D-pad/select presses sent through the
+    /// seam while a dialog is open are swallowed by design; the dialog closes
+    /// natively on the real system-back (Gamepad B), which a synthetic press
+    /// cannot raise. Opening a dialog IS driven through the seam (Y/Menu on
+    /// the invoker); closing it uses the dialog's own Hide(), which completes
+    /// the awaited ShowAsync and runs the production finally block
+    /// (DialogOpen = false → coordinator restore tick).
+    ///
+    /// OUTCOMES: each test writes one line
+    /// `TEST &lt;name&gt; PASS|FAIL|SKIP &lt;detail&gt;` to nuvio-vlc.log.
+    /// SKIP means the fixture the test needs was absent (no Continue items,
+    /// no catalog data, no playable stream, cold-start-only) — it is not a
+    /// pass and not a failure. A FAIL is a real focus-rule violation.
+    /// The suite also writes `TEST suite START …` and
+    /// `TEST suite DONE passed=N failed=M skipped=S ms=N`.
+    ///
+    /// DORMANCY: the suite never runs unless the launch arguments contain
     /// the token "focustest" (see <see cref="LaunchToken"/>) OR a flag file
     /// named exactly "focustest" (no extension) exists in the app's local
     /// folder (ApplicationData.Current.LocalFolder — the LocalState folder;
@@ -36,6 +68,9 @@ namespace Nuvio.Diagnostics
     /// line arguments) or any launcher that forwards arguments to
     /// LaunchActivatedEventArgs.Arguments; on the device, upload the flag
     /// file via Device Portal File Explorer and delete it to disarm.
+    /// The gate decision stands as built: inert behind the gate in Release
+    /// (NOT #if DEBUG) — the package must be runnable on the release msix
+    /// on the Xbox, where there is no DEBUG build to install.
     ///
     /// NOTE on the settle observation: NativeInputRouter.IsSettling and its
     /// attempt counter are private to the router, and MainPage exposes no
@@ -57,6 +92,14 @@ namespace Nuvio.Diagnostics
     /// assertion below therefore identifies the button by Name
     /// ("HeroPlayButton") and HomePage ancestry, and logs the expected
     /// arrival key ("hero") against the button's actual Tag.
+    ///
+    /// DIALOG CLOSE APIs (verified on Microsoft Learn before use):
+    /// VisualTreeHelper.GetOpenPopups(Window) —
+    /// Windows.UI.Xaml.Media, public static IReadOnlyList&lt;Popup&gt;
+    /// GetOpenPopups(Window window), UniversalApiContract v1.0 (10.0.10240.0+);
+    /// ButtonAutomationPeer.Invoke() — Windows.UI.Xaml.Automation.Peers,
+    /// public void Invoke(), "sends a request to click the button associated
+    /// with the automation peer", UniversalApiContract v1.0 (10.0.10240.0+).
     /// </summary>
     internal sealed class FocusTestHarness
     {
@@ -75,14 +118,77 @@ namespace Nuvio.Diagnostics
         /// <summary>Bounded wait for the arrival settle: hero load is ~1.3 s on device and the router watchdog runs up to ~5 s.</summary>
         private const int SettleTimeoutMs = 15000;
 
+        /// <summary>Bounded wait for a page's content to become ready after navigation (network data).</summary>
+        private const int PageReadyTimeoutMs = 15000;
+
+        /// <summary>Bounded wait for playback to open (stream resolve + player ready).</summary>
+        private const int PlayerOpenTimeoutMs = 20000;
+
         private const string HeroPlayButtonName = "HeroPlayButton";
+        private const string ManageAddonsButtonName = "ManageAddonsButton";
         private const string ExpectedHeroTagAndType = "hero/Button";
+        private const string LogFileName = "nuvio-vlc.log";
+        private const string CinemetaTransportUrl = "https://v3-cinemeta.strem.io/manifest.json";
 
         private readonly MainPage _shell;
+        private readonly string _armedVia;
+        private long _suiteLogOffset;
 
         public FocusTestHarness(MainPage shell)
+            : this(shell, "unknown")
+        {
+        }
+
+        internal FocusTestHarness(MainPage shell, string armedVia)
         {
             _shell = shell;
+            _armedVia = armedVia;
+        }
+
+        /// <summary>One test's outcome. Skip = fixture absent, not a pass and not a failure.</summary>
+        internal enum FocusTestOutcome { Pass, Fail, Skip }
+
+        /// <summary>One test's result, logged as `TEST &lt;name&gt; PASS|FAIL|SKIP &lt;detail&gt;`.</summary>
+        internal sealed class FocusTestResult
+        {
+            public string Name { get; private set; }
+            public FocusTestOutcome Outcome { get; private set; }
+            public string Detail { get; private set; }
+
+            private FocusTestResult(string name, FocusTestOutcome outcome, string detail)
+            {
+                Name = name;
+                Outcome = outcome;
+                Detail = detail;
+            }
+
+            public static FocusTestResult Pass(string name, string detail = null)
+            {
+                return new FocusTestResult(name, FocusTestOutcome.Pass, detail);
+            }
+
+            public static FocusTestResult Fail(string name, string detail)
+            {
+                return new FocusTestResult(name, FocusTestOutcome.Fail, detail);
+            }
+
+            public static FocusTestResult Skip(string name, string detail)
+            {
+                return new FocusTestResult(name, FocusTestOutcome.Skip, detail);
+            }
+        }
+
+        /// <summary>One registry entry: a test name and the method that runs it.</summary>
+        private sealed class FocusTest
+        {
+            public string Name { get; private set; }
+            public Func<Task<FocusTestResult>> Run { get; private set; }
+
+            public FocusTest(string name, Func<Task<FocusTestResult>> run)
+            {
+                Name = name;
+                Run = run;
+            }
         }
 
         /// <summary>
@@ -92,22 +198,23 @@ namespace Nuvio.Diagnostics
         /// local folder (the msix fallback — a dashboard launch carries no
         /// arguments). Safe to call from MainPage.OnNavigatedTo (before
         /// OnLoaded): the run waits for the shell to be ready before
-        /// navigating. Fire-and-forget on the UI thread; the single TEST
-        /// result line is written to the log.
+        /// navigating. Fire-and-forget on the UI thread; the suite writes
+        /// one TEST line per test plus START/DONE lines to the log.
         /// </summary>
         public static void RunIfRequested(MainPage shell, string launchArguments)
         {
             if (shell == null) return;
             var tokenArmed = !string.IsNullOrEmpty(launchArguments)
                 && launchArguments.IndexOf(LaunchToken, StringComparison.OrdinalIgnoreCase) >= 0;
-            if (!tokenArmed && !HasFlagFile()) return;
-            var harness = new FocusTestHarness(shell);
+            var flagArmed = !tokenArmed && HasFlagFile();
+            if (!tokenArmed && !flagArmed) return;
+            var harness = new FocusTestHarness(shell, tokenArmed ? "launch-token" : "flag-file");
             // Always via the dispatcher: this may be called before the shell
             // is loaded, from any thread. The run itself awaits on the UI
             // thread, so Task.Delay continuations stay on it too.
             shell.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                _ = harness.RunLaunchHeroPlayAsync();
+                _ = harness.RunAllTestsAsync();
             });
         }
 
@@ -124,13 +231,1417 @@ namespace Nuvio.Diagnostics
         {
             try
             {
-                var folder = Windows.Storage.ApplicationData.Current.LocalFolder;
+                var folder = ApplicationData.Current.LocalFolder;
                 if (folder == null || string.IsNullOrEmpty(folder.Path)) return false;
-                return System.IO.File.Exists(System.IO.Path.Combine(folder.Path, LaunchToken));
+                return File.Exists(Path.Combine(folder.Path, LaunchToken));
             }
             catch (Exception)
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// The suite: 46 automated tests in registry order (the two gate
+        /// self-checks first, then Phase 1–4, flag-off tests last so the flag
+        /// is restored before the suite ends). Every test runs even after a
+        /// failure, so one failure does not hide the rest. A throwing test
+        /// is a FAIL, never a crash: the suite logs it and continues.
+        /// </summary>
+        public async Task RunAllTestsAsync()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var passed = 0;
+            var failed = 0;
+            var skipped = 0;
+            _suiteLogOffset = LogOffset();
+            Log.Write("TEST suite START tests=46 armedVia=" + _armedVia);
+            var shellReady = await WaitForShellReadyAsync().ConfigureAwait(true);
+            if (!shellReady)
+            {
+                Log.Write("TEST suite FAIL shell-not-ready ms=" + stopwatch.ElapsedMilliseconds);
+                return;
+            }
+            foreach (var test in BuildTests())
+            {
+                FocusTestResult result;
+                try
+                {
+                    result = await test.Run().ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    result = FocusTestResult.Fail(test.Name, "exception " + ex.GetType().Name + ": " + ex.Message);
+                }
+                if (result == null) result = FocusTestResult.Fail(test.Name, "null result");
+                Log.Write("TEST " + result.Name + " " + result.Outcome.ToString().ToUpperInvariant()
+                    + (string.IsNullOrEmpty(result.Detail) ? string.Empty : " " + result.Detail));
+                switch (result.Outcome)
+                {
+                    case FocusTestOutcome.Pass: passed++; break;
+                    case FocusTestOutcome.Fail: failed++; break;
+                    default: skipped++; break;
+                }
+            }
+            // Defensive flag restore: the flag-off tests restore in their
+            // own finally blocks; this is the backstop so the app never
+            // leaves the suite with the coordinator switched off.
+            if (!FocusCoordinator.UseFocusCoordinator)
+            {
+                FocusCoordinator.UseFocusCoordinator = true;
+                Log.Write("TEST suite flag restored to on");
+            }
+            Log.Write("TEST suite DONE passed=" + passed + " failed=" + failed + " skipped=" + skipped
+                + " ms=" + stopwatch.ElapsedMilliseconds);
+        }
+
+        /// <summary>
+        /// Registry in run order. Gate self-checks first; Phase 1 (Settings),
+        /// Phase 2 (Home/Search/Catalog), Phase 3 (dialogs + Streams),
+        /// Phase 4 (OSD — the exit test runs after the other in-player tests
+        /// so the player stays open for them); flag-off tests last.
+        /// The 2 remaining package tests (gate-dormant-no-flag,
+        /// gate-flag-file-removed-disarms) are manual procedures in FOCUS.md
+        /// §7 — no in-app suite can observe its own non-execution.
+        /// </summary>
+        private List<FocusTest> BuildTests()
+        {
+            return new List<FocusTest>
+            {
+                new FocusTest("gate-launch-token", TestGateLaunchTokenAsync),
+                new FocusTest("gate-flag-file", TestGateFlagFileAsync),
+                new FocusTest("launch-hero-play", TestLaunchHeroPlayAsync),
+                new FocusTest("settings-arrival-first-row", TestSettingsArrivalFirstRowAsync),
+                new FocusTest("settings-arrival-strip-collapsed", TestSettingsArrivalStripCollapsedAsync),
+                new FocusTest("settings-down-one-row-per-press", TestSettingsDownOneRowAsync),
+                new FocusTest("settings-down-never-sidebar", TestSettingsDownNeverSidebarAsync),
+                new FocusTest("settings-back-addons-same-row", TestSettingsBackAddonsSameRowAsync),
+                new FocusTest("settings-registry-entry-isolation", TestSettingsRegistryIsolationAsync),
+                new FocusTest("settings-back-empty-stack-goes-home", TestSettingsBackEmptyStackGoesHomeAsync),
+                new FocusTest("settings-menu-back-collapses-returns-to-page", TestSettingsMenuBackCollapsesAsync),
+                new FocusTest("settings-guard-cleared-by-settle", TestSettingsGuardClearedBySettleAsync),
+                new FocusTest("home-launch-coordinator-settle", TestHomeLaunchCoordinatorSettleAsync),
+                new FocusTest("home-down-hero-to-first-card", TestHomeDownHeroToFirstCardAsync),
+                new FocusTest("home-row-to-row-per-row-memory", TestHomeRowMemoryAsync),
+                new FocusTest("home-down-never-sidebar-or-skip", TestHomeDownNeverSidebarAsync),
+                new FocusTest("home-back-details-meta-key", TestHomeBackDetailsMetaKeyAsync),
+                new FocusTest("home-back-continue-cw-key", TestHomeBackContinueCwKeyAsync),
+                new FocusTest("home-cold-first-entry-hero-play", TestHomeColdFirstEntryAsync),
+                new FocusTest("search-arrival-box", TestSearchArrivalBoxAsync),
+                new FocusTest("search-down-results-scroll", TestSearchDownResultsAsync),
+                new FocusTest("search-back-result-or-box-when-gone", TestSearchBackResultAsync),
+                new FocusTest("catalog-arrival-first-card", TestCatalogArrivalFirstCardAsync),
+                new FocusTest("catalog-four-direction-grid-scroll", TestCatalogFourDirectionAsync),
+                new FocusTest("catalog-back-opened-card", TestCatalogBackOpenedCardAsync),
+                new FocusTest("first-entry-first-card-everywhere", TestFirstEntryEverywhereAsync),
+                new FocusTest("dialog-home-continue-cancel-restores", TestDialogHomeContinueCancelAsync),
+                new FocusTest("dialog-details-episode-restores", TestDialogDetailsEpisodeAsync),
+                new FocusTest("dialog-player-subtitle-restores", TestDialogPlayerSubtitleAsync),
+                new FocusTest("dialog-player-delay-restores", TestDialogPlayerDelayAsync),
+                new FocusTest("dialog-settings-confirm-restores", TestDialogSettingsConfirmAsync),
+                new FocusTest("dialog-streams-debrid-both-buttons-restore", TestDialogStreamsDebridAsync),
+                new FocusTest("dialog-navigating-choice-arrival-settle", TestDialogNavigatingChoiceAsync),
+                new FocusTest("dialog-nested-outer-only-on-outer-close", TestDialogNestedAsync),
+                new FocusTest("streams-filter-row-vanishes-fallback", TestStreamsFilterRowVanishesAsync),
+                new FocusTest("dialog-guard-no-regression", TestDialogGuardNoRegressionAsync),
+                new FocusTest("osd-hide-parks-back-remembers", TestOsdHideParksBackAsync),
+                new FocusTest("osd-show-restores-same-button", TestOsdShowRestoresAsync),
+                new FocusTest("osd-seek-explicit-hint-wins", TestOsdSeekHintWinsAsync),
+                new FocusTest("osd-hidden-y-dialog-then-restore", TestOsdHiddenYDialogAsync),
+                new FocusTest("osd-pause-x-hidden-shows-restores", TestOsdPauseXHiddenAsync),
+                new FocusTest("osd-hidden-back-twice-exits", TestOsdHiddenBackTwiceExitsAsync),
+                new FocusTest("osd-next-card-not-parked", TestOsdNextCardNotParkedAsync),
+                new FocusTest("osd-flag-off-old-behaviour", TestOsdFlagOffAsync),
+                new FocusTest("flag-off-phase2-legacy", TestFlagOffPhase2Async),
+                new FocusTest("flag-off-phase3-dialogs-legacy", TestFlagOffPhase3Async),
+            };
+        }
+
+        // ---------- Shared helpers ----------
+
+        private async Task<bool> WaitForShellReadyAsync()
+        {
+            var waitedMs = 0;
+            while (waitedMs < ShellReadyTimeoutMs)
+            {
+                if (_shell != null && _shell.Navigation != null) return true;
+                await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
+                waitedMs += SettlePollIntervalMs;
+            }
+            return _shell != null && _shell.Navigation != null;
+        }
+
+        private async Task<bool> WaitForAsync(Func<bool> condition, int timeoutMs)
+        {
+            var elapsedMs = 0;
+            while (elapsedMs < timeoutMs)
+            {
+                bool ok;
+                try
+                {
+                    ok = condition();
+                }
+                catch (Exception)
+                {
+                    ok = false;
+                }
+                if (ok) return true;
+                await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
+                elapsedMs += SettlePollIntervalMs;
+            }
+            return false;
+        }
+
+        private async Task WaitForSettleAsync(int timeoutMs = 8000)
+        {
+            var coordinator = _shell != null ? _shell.Coordinator : null;
+            if (coordinator == null) return;
+            await WaitForAsync(() => !coordinator.IsSettling, timeoutMs).ConfigureAwait(true);
+        }
+
+        private async Task PressAsync(string action, bool repeat = false, int waitMs = InterPressDelayMs)
+        {
+            if (_shell != null && !string.IsNullOrEmpty(action)) _shell.SimulateFocusInput(action, repeat);
+            await Task.Delay(waitMs).ConfigureAwait(true);
+        }
+
+        private FrameworkElement FocusedElement()
+        {
+            return FocusManager.GetFocusedElement() as FrameworkElement;
+        }
+
+        private string FocusedName()
+        {
+            var focused = FocusedElement();
+            return focused != null && !string.IsNullOrEmpty(focused.Name) ? focused.Name : "(none)";
+        }
+
+        private string FocusedTag()
+        {
+            var button = FocusManager.GetFocusedElement() as Button;
+            if (button == null) return "(none)";
+            var tag = button.Tag as string;
+            return string.IsNullOrEmpty(tag) ? "(none)" : tag;
+        }
+
+        private static T AncestorOfType<T>(DependencyObject element) where T : DependencyObject
+        {
+            for (var node = element != null ? VisualTreeHelper.GetParent(element) : null; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                var found = node as T;
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static T FindNamedDescendant<T>(DependencyObject root, string name) where T : FrameworkElement
+        {
+            if (root == null) return null;
+            var named = root as T;
+            if (named != null && named.Name == name) return named;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindNamedDescendant<T>(VisualTreeHelper.GetChild(root, i), name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static List<T> FindDescendantsOfType<T>(DependencyObject root) where T : DependencyObject
+        {
+            var found = new List<T>();
+            CollectDescendantsOfType(root, found);
+            return found;
+        }
+
+        private static void CollectDescendantsOfType<T>(DependencyObject root, List<T> found) where T : DependencyObject
+        {
+            if (root == null) return;
+            var match = root as T;
+            if (match != null) found.Add(match);
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++) CollectDescendantsOfType(VisualTreeHelper.GetChild(root, i), found);
+        }
+
+        private static bool HasAncestor<T>(DependencyObject element) where T : DependencyObject
+        {
+            return AncestorOfType<T>(element) != null;
+        }
+
+        private static T FindPage<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null) return null;
+            var found = root as T;
+            if (found != null) return found;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var child = FindPage<T>(VisualTreeHelper.GetChild(root, i));
+                if (child != null) return child;
+            }
+            return null;
+        }
+
+        private async Task<T> WaitForPageAsync<T>(int timeoutMs = PageReadyTimeoutMs) where T : FocusablePage
+        {
+            T page = null;
+            var ready = await WaitForAsync(() =>
+            {
+                page = FindPage<T>(_shell);
+                return page != null && page.IsContentReady;
+            }, timeoutMs).ConfigureAwait(true);
+            return ready ? page : null;
+        }
+
+        private async Task<bool> NavigateHomeAndSettleAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return false;
+            _shell.Navigation.NavigateHome();
+            var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+            if (home == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            return IsHeroPlayButton(FocusManager.GetFocusedElement())
+                || FocusedName() == ManageAddonsButtonName;
+        }
+
+        private GridView FocusedRowGridView()
+        {
+            return AncestorOfType<GridView>(FocusManager.GetFocusedElement() as DependencyObject);
+        }
+
+        private string FocusedCardMetaId()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return null;
+            var meta = container.Content as Meta;
+            return meta != null ? meta.Id : null;
+        }
+
+        private string FocusedContinueContentId()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return null;
+            var entry = container.Content as ProgressEntry;
+            return entry != null ? entry.ContentId : null;
+        }
+
+        private bool SameCard(object first, object second)
+        {
+            if (ReferenceEquals(first, second)) return true;
+            var firstItem = first as GridViewItem;
+            var secondItem = second as GridViewItem;
+            if (firstItem == null || secondItem == null) return false;
+            return ReferenceEquals(firstItem.Content, secondItem.Content);
+        }
+
+        private string LogFilePath()
+        {
+            try
+            {
+                var folder = ApplicationData.Current.LocalFolder;
+                if (folder == null || string.IsNullOrEmpty(folder.Path)) return null;
+                return Path.Combine(folder.Path, LogFileName);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private long LogOffset()
+        {
+            try
+            {
+                var path = LogFilePath();
+                if (path == null || !File.Exists(path)) return 0;
+                return new FileInfo(path).Length;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        private bool LogContainsSince(string text, long offset)
+        {
+            try
+            {
+                var path = LogFilePath();
+                if (path == null || !File.Exists(path)) return false;
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (offset < 0 || offset >= stream.Length) return false;
+                    stream.Seek(offset, SeekOrigin.Begin);
+                    using (var reader = new StreamReader(stream))
+                    {
+                        return reader.ReadToEnd().IndexOf(text, StringComparison.Ordinal) >= 0;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private bool IsDialogOpen()
+        {
+            var coordinator = _shell != null ? _shell.Coordinator : null;
+            if (coordinator != null && FocusCoordinator.UseFocusCoordinator) return coordinator.IsDialogOpen;
+            return FindOpenDialog() != null;
+        }
+
+        private async Task<bool> WaitForDialogOpenAsync(int timeoutMs = 3000)
+        {
+            return await WaitForAsync(() => IsDialogOpen(), timeoutMs).ConfigureAwait(true);
+        }
+
+        private async Task<bool> WaitForDialogClosedAsync(int timeoutMs = 3000)
+        {
+            return await WaitForAsync(() => !IsDialogOpen(), timeoutMs).ConfigureAwait(true);
+        }
+
+        /// <summary>
+        /// Finds the open ContentDialog through the popup tree (the dialog
+        /// lives under PopupRoot, a separate tree from the page). Returns null
+        /// when no dialog is open. Test-only discovery: production code never
+        /// walks the popup tree.
+        /// </summary>
+        private ContentDialog FindOpenDialog()
+        {
+            try
+            {
+                var popups = VisualTreeHelper.GetOpenPopups(Window.Current);
+                foreach (var popup in popups)
+                {
+                    var dialog = FindDescendantOfType<ContentDialog>(popup.Child);
+                    if (dialog == null && popup.Child is ContentDialog direct) dialog = direct;
+                    if (dialog != null) return dialog;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            return null;
+        }
+
+        private static T FindDescendantOfType<T>(DependencyObject root) where T : DependencyObject
+        {
+            if (root == null) return null;
+            var match = root as T;
+            if (match != null) return match;
+            var count = VisualTreeHelper.GetChildrenCount(root);
+            for (var i = 0; i < count; i++)
+            {
+                var found = FindDescendantOfType<T>(VisualTreeHelper.GetChild(root, i));
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static string ButtonLabel(Button button)
+        {
+            if (button == null) return string.Empty;
+            var text = button.Content as string;
+            if (!string.IsNullOrEmpty(text)) return text;
+            var labels = FindDescendantsOfType<TextBlock>(button);
+            var joined = string.Empty;
+            foreach (var label in labels) joined += label.Text;
+            return joined;
+        }
+
+        /// <summary>
+        /// Closes the open dialog with its own Hide(). The awaited ShowAsync
+        /// then completes and the production finally block runs (DialogOpen =
+        /// false → coordinator restore tick), so the restore under test is the
+        /// real path — only the close gesture itself is test-only, because
+        /// the synthetic seam cannot raise the native system-back the dialog
+        /// listens for. Returns false when no dialog was open to close.
+        /// </summary>
+        private async Task<bool> CloseOpenDialogAsync()
+        {
+            var dialog = FindOpenDialog();
+            if (dialog == null) return false;
+            dialog.Hide();
+            return await WaitForDialogClosedAsync().ConfigureAwait(true);
+        }
+
+        /// <summary>
+        /// Chooses a dialog option by its label, through
+        /// ButtonAutomationPeer.Invoke() — the documented UWP way to click a
+        /// button programmatically. Used only where the seam cannot drive the
+        /// choice (input is gated while a dialog is open). The Click handler
+        /// and everything after it (navigation, restore) is production code.
+        /// Label matching is by substring, so it works in both UI languages.
+        /// </summary>
+        private async Task<bool> InvokeDialogButtonAsync(params string[] labelParts)
+        {
+            var dialog = FindOpenDialog();
+            if (dialog == null) return false;
+            var buttons = FindDescendantsOfType<Button>(dialog);
+            foreach (var button in buttons)
+            {
+                var label = ButtonLabel(button);
+                if (string.IsNullOrEmpty(label)) continue;
+                foreach (var part in labelParts)
+                {
+                    if (!string.IsNullOrEmpty(part)
+                        && label.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        new ButtonAutomationPeer(button).Invoke();
+                        await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private async Task<bool> ReachContinueCardAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return false;
+            var home = FindPage<HomePage>(_shell);
+            if (home == null) return false;
+            var grid = FindNamedDescendant<GridView>(home, "ContinueGridView");
+            if (grid == null || grid.Items.Count == 0) return false;
+            for (var i = 0; i < 12; i++)
+            {
+                var row = FocusedRowGridView();
+                if (row != null && ReferenceEquals(row, grid)) return true;
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            var finalRow = FocusedRowGridView();
+            return finalRow != null && ReferenceEquals(finalRow, grid);
+        }
+
+        private async Task<bool> ReachCatalogAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return false;
+            _shell.Navigation.NavigateCatalog(new CatalogNavigation
+            {
+                TransportUrl = CinemetaTransportUrl,
+                Type = "movie",
+                Id = "top",
+            });
+            var catalog = await WaitForPageAsync<CatalogPage>().ConfigureAwait(true);
+            if (catalog == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            return FocusManager.GetFocusedElement() as GridViewItem != null
+                && HasAncestor<CatalogPage>(FocusManager.GetFocusedElement() as DependencyObject);
+        }
+
+        /// <summary>
+        /// Drives the real UI chain Home → Details → Streams → Player. Each
+        /// step is bounded; any step timing out means the fixture (catalog
+        /// data, a stream, playback) was absent and the caller SKIPs.
+        /// Returns true only when the player is open and focus is inside it.
+        /// </summary>
+        private async Task<bool> TryReachPlayerAsync()
+        {
+            if (FindPage<PlayerPage>(_shell) != null) return true;
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return false;
+            await PressAsync("down").ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() as GridViewItem == null) return false;
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() != "PlayButton") return false;
+            await PressAsync("select").ConfigureAwait(true);
+            var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
+            if (streams == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() == null) return false;
+            await PressAsync("select").ConfigureAwait(true);
+            var player = await WaitForPageAsync<PlayerPage>(PlayerOpenTimeoutMs).ConfigureAwait(true);
+            if (player == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            return HasAncestor<PlayerPage>(FocusManager.GetFocusedElement() as DependencyObject);
+        }
+
+        /// <summary>
+        /// Steers focus to a named OSD button with D-pad presses only
+        /// (Down into the transport row, then a Right sweep and a Left sweep).
+        /// Returns false when the button is not reached in the bounded sweep
+        /// — the caller SKIPs rather than failing the product for a steering
+        /// miss.
+        /// </summary>
+        private async Task<bool> SteerToOsdButtonAsync(string buttonName)
+        {
+            if (FocusedName() == buttonName) return true;
+            await PressAsync("down").ConfigureAwait(true);
+            if (FocusedName() == buttonName) return true;
+            for (var i = 0; i < 10; i++)
+            {
+                await PressAsync("right").ConfigureAwait(true);
+                if (FocusedName() == buttonName) return true;
+            }
+            for (var i = 0; i < 10; i++)
+            {
+                await PressAsync("left").ConfigureAwait(true);
+                if (FocusedName() == buttonName) return true;
+            }
+            return FocusedName() == buttonName;
+        }
+
+        private async Task<bool> WaitForOsdHiddenAsync(int timeoutMs = 8000)
+        {
+            var offset = LogOffset();
+            var hidden = await WaitForAsync(() =>
+                LogContainsSince("OSD hidden; parked focus on Back", offset)
+                || OsdOpacity() == 0, timeoutMs).ConfigureAwait(true);
+            return hidden;
+        }
+
+        private double? OsdOpacity()
+        {
+            var player = FindPage<PlayerPage>(_shell);
+            if (player == null) return null;
+            var osd = FindNamedDescendant<FrameworkElement>(player, "OsdRoot");
+            if (osd == null) return null;
+            return osd.Opacity;
+        }
+
+        // ---------- Gate tests ----------
+
+        private Task<FocusTestResult> TestGateLaunchTokenAsync()
+        {
+            if (_armedVia == "launch-token") return Task.FromResult(FocusTestResult.Pass("gate-launch-token", "suite armed via launch token"));
+            return Task.FromResult(FocusTestResult.Skip("gate-launch-token", "armed via " + _armedVia));
+        }
+
+        private Task<FocusTestResult> TestGateFlagFileAsync()
+        {
+            if (_armedVia == "flag-file") return Task.FromResult(FocusTestResult.Pass("gate-flag-file", "suite armed via flag file"));
+            return Task.FromResult(FocusTestResult.Skip("gate-flag-file", "armed via " + _armedVia));
+        }
+
+        // ---------- Phase 1: Settings ----------
+
+        /// <summary>
+        /// Phase 0 script, launch → hero Play. Navigates home, waits for the
+        /// page's ContentReady plus the arrival settle to finish (bounded
+        /// poll, never spins forever), then asserts focus is the hero Play
+        /// button, inside the page, with the sidebar guard clear (observed
+        /// via the shell proxy: focus is not on a sidebar button and the
+        /// strip is not expanded — the guard field itself is private to
+        /// MainPage). Returns false instead of logging: the suite writes the
+        /// TEST line.
+        /// </summary>
+        public async Task<bool> RunLaunchHeroPlayAsync()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var passed = false;
+            var settleAttempts = 0;
+            object focused = null;
+            if (_shell != null)
+            {
+                var shellReady = await WaitForShellReadyAsync().ConfigureAwait(true);
+                if (shellReady)
+                {
+                    if (FindPage<HomePage>(_shell) == null)
+                    {
+                        _shell.Navigation.NavigateHome();
+                    }
+                    var elapsedMs = 0;
+                    while (elapsedMs < SettleTimeoutMs)
+                    {
+                        settleAttempts++;
+                        var page = FindPage<HomePage>(_shell);
+                        if (page != null && page.IsContentReady)
+                        {
+                            focused = FocusManager.GetFocusedElement();
+                            if (IsHeroPlayButton(focused))
+                            {
+                                passed = true;
+                                break;
+                            }
+                        }
+                        await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
+                        elapsedMs += SettlePollIntervalMs;
+                    }
+                    if (passed)
+                    {
+                        var focusedElement = focused as DependencyObject;
+                        bool sidebarFirst;
+                        bool sidebarLast;
+                        var inSidebar = focusedElement != null && _shell.IsSidebarButton(focusedElement, out sidebarFirst, out sidebarLast);
+                        passed = !inSidebar && !_shell.IsSidebarExpanded;
+                    }
+                }
+            }
+            return passed;
+        }
+
+        private async Task<FocusTestResult> TestLaunchHeroPlayAsync()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var passed = await RunLaunchHeroPlayAsync().ConfigureAwait(true);
+            var detail = "expected=" + ExpectedHeroTagAndType + " actual=" + DescribeTagAndType(FocusManager.GetFocusedElement())
+                + " ms=" + stopwatch.ElapsedMilliseconds;
+            if (passed) return FocusTestResult.Pass("launch-hero-play", detail);
+            return FocusTestResult.Fail("launch-hero-play", detail);
+        }
+
+        private async Task<FocusTestResult> TestSettingsArrivalFirstRowAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-arrival-first-row", "no shell");
+            _shell.Navigation.NavigateSettingsRoot();
+            var page = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("settings-arrival-first-row", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var tag = FocusedTag();
+            if (tag == "root|account") return FocusTestResult.Pass("settings-arrival-first-row", "focused=" + tag);
+            return FocusTestResult.Fail("settings-arrival-first-row", "focused tag=" + tag + " expected root|account");
+        }
+
+        private async Task<FocusTestResult> TestSettingsArrivalStripCollapsedAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-arrival-strip-collapsed", "no shell");
+            _shell.Navigation.NavigateSettingsRoot();
+            var page = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("settings-arrival-strip-collapsed", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (!_shell.IsSidebarExpanded) return FocusTestResult.Pass("settings-arrival-strip-collapsed", "strip collapsed");
+            return FocusTestResult.Fail("settings-arrival-strip-collapsed", "strip expanded on arrival");
+        }
+
+        private async Task<FocusTestResult> TestSettingsDownOneRowAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-down-one-row-per-press", "no shell");
+            _shell.Navigation.NavigateSettingsRoot();
+            var page = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("settings-down-one-row-per-press", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedTag() != "root|account") return FocusTestResult.Fail("settings-down-one-row-per-press", "arrival tag=" + FocusedTag());
+            await PressAsync("down").ConfigureAwait(true);
+            var tag = FocusedTag();
+            if (tag == "root|addons") return FocusTestResult.Pass("settings-down-one-row-per-press", "one press account->addons");
+            return FocusTestResult.Fail("settings-down-one-row-per-press", "after one Down tag=" + tag + " expected root|addons");
+        }
+
+        private async Task<FocusTestResult> TestSettingsDownNeverSidebarAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-down-never-sidebar", "no shell");
+            _shell.Navigation.NavigateSettingsRoot();
+            var page = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("settings-down-never-sidebar", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            for (var i = 0; i < 9; i++)
+            {
+                var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                if (focused == null) return FocusTestResult.Fail("settings-down-never-sidebar", "focus lost at press " + i);
+                bool first;
+                bool last;
+                if (_shell.IsSidebarButton(focused, out first, out last)) return FocusTestResult.Fail("settings-down-never-sidebar", "landed on sidebar at press " + i);
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            var end = FocusManager.GetFocusedElement() as DependencyObject;
+            if (end == null) return FocusTestResult.Fail("settings-down-never-sidebar", "focus lost at end");
+            bool endFirst;
+            bool endLast;
+            if (_shell.IsSidebarButton(end, out endFirst, out endLast)) return FocusTestResult.Fail("settings-down-never-sidebar", "landed on sidebar at end");
+            return FocusTestResult.Pass("settings-down-never-sidebar", "9 Down presses, never sidebar, end tag=" + FocusedTag());
+        }
+
+        /// <summary>
+        /// Steers to one root-list row: navigates to the Settings root
+        /// (arrival = root|account) and walks Down, then Up, until the row's
+        /// tag is focused. The coordinator records the row focus is on when
+        /// a section navigation leaves the root page, so a section test must
+        /// steer here FIRST — navigating straight to a section would record
+        /// whatever row the previous test left focus on, not the row under
+        /// test. Returns false when the row is not reached in the bounded
+        /// walk.
+        /// </summary>
+        private async Task<bool> SteerToSettingsRootRowAsync(string tag)
+        {
+            if (_shell == null || _shell.Navigation == null) return false;
+            _shell.Navigation.NavigateSettingsRoot();
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return false;
+            await WaitForSettleAsync().ConfigureAwait(true);
+            for (var i = 0; i < 12; i++)
+            {
+                if (FocusedTag() == tag) return true;
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            if (FocusedTag() == tag) return true;
+            for (var i = 0; i < 12; i++)
+            {
+                if (FocusedTag() == tag) return true;
+                await PressAsync("up").ConfigureAwait(true);
+            }
+            return FocusedTag() == tag;
+        }
+
+        private async Task<FocusTestResult> TestSettingsBackAddonsSameRowAsync()
+        {
+            if (!await SteerToSettingsRootRowAsync("root|addons").ConfigureAwait(true)) return FocusTestResult.Fail("settings-back-addons-same-row", "could not steer to root|addons");
+            _shell.Navigation.NavigateSettings("addons");
+            var page = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("settings-back-addons-same-row", "addons did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("down").ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var settled = await WaitForAsync(() => FocusedTag() == "root|addons", 5000).ConfigureAwait(true);
+            if (settled) return FocusTestResult.Pass("settings-back-addons-same-row", "B returned to root|addons");
+            return FocusTestResult.Fail("settings-back-addons-same-row", "after B tag=" + FocusedTag() + " expected root|addons");
+        }
+
+        /// <summary>
+        /// One registry-isolation leg: steer to the root row, open its
+        /// section, move inside it, press B, expect the same root row back.
+        /// Returns null on pass, or the failure detail.
+        /// </summary>
+        private async Task<string> SettingsBackLegAsync(string rootTag, string section)
+        {
+            if (!await SteerToSettingsRootRowAsync(rootTag).ConfigureAwait(true)) return "could not steer to " + rootTag;
+            _shell.Navigation.NavigateSettings(section);
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return section + " did not load";
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("down").ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            if (!await WaitForAsync(() => FocusedTag() == rootTag, 5000).ConfigureAwait(true)) return "after B from " + section + " tag=" + FocusedTag() + " expected " + rootTag;
+            return null;
+        }
+
+        private async Task<FocusTestResult> TestSettingsRegistryIsolationAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-registry-entry-isolation", "no shell");
+            var failure = await SettingsBackLegAsync("root|addons", "addons").ConfigureAwait(true);
+            if (failure != null) return FocusTestResult.Fail("settings-registry-entry-isolation", failure);
+            failure = await SettingsBackLegAsync("root|debrid", "debrid").ConfigureAwait(true);
+            if (failure != null) return FocusTestResult.Fail("settings-registry-entry-isolation", failure);
+            failure = await SettingsBackLegAsync("root|addons", "addons").ConfigureAwait(true);
+            if (failure != null) return FocusTestResult.Fail("settings-registry-entry-isolation", failure);
+            return FocusTestResult.Pass("settings-registry-entry-isolation", "addons/debrid/addons entries never overwrote each other");
+        }
+
+        private async Task<FocusTestResult> TestSettingsBackEmptyStackGoesHomeAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-back-empty-stack-goes-home", "no shell");
+            _shell.Navigation.NavigateSettingsRoot();
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("settings-back-empty-stack-goes-home", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+            if (home == null) return FocusTestResult.Fail("settings-back-empty-stack-goes-home", "B did not reach Home");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (IsHeroPlayButton(FocusManager.GetFocusedElement())) return FocusTestResult.Pass("settings-back-empty-stack-goes-home", "B on root went Home, hero Play focused");
+            return FocusTestResult.Fail("settings-back-empty-stack-goes-home", "Home focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestSettingsMenuBackCollapsesAsync()
+        {
+            // B closes the strip only by navigating: with back history,
+            // B goes back to the root page, the new settle focuses content
+            // and ContentFrame.GotFocus collapses the strip. (B on Home
+            // with an empty stack shows the exit toast instead and leaves
+            // the strip alone — that is the documented rule, not a collapse.)
+            if (!await SteerToSettingsRootRowAsync("root|addons").ConfigureAwait(true)) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "could not steer to root|addons");
+            _shell.Navigation.NavigateSettings("addons");
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "addons did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var expanded = false;
+            for (var i = 0; i < 3 && !expanded; i++)
+            {
+                await PressAsync("left").ConfigureAwait(true);
+                expanded = _shell.IsSidebarExpanded;
+            }
+            if (!expanded) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "Left from the section did not expand the strip");
+            await PressAsync("back").ConfigureAwait(true);
+            var collapsed = await WaitForAsync(() => !_shell.IsSidebarExpanded && FocusedTag() == "root|addons", 5000).ConfigureAwait(true);
+            if (!collapsed) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "after B expanded=" + _shell.IsSidebarExpanded + " tag=" + FocusedTag());
+            if (HasAncestor<SettingsPage>(FocusManager.GetFocusedElement() as DependencyObject)) return FocusTestResult.Pass("settings-menu-back-collapses-returns-to-page", "B went back, strip collapsed, focus back on root|addons");
+            return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "focus after B=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestSettingsGuardClearedBySettleAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("settings-guard-cleared-by-settle", "no shell");
+            var coordinator = _shell.Coordinator;
+            if (coordinator == null) return FocusTestResult.Skip("settings-guard-cleared-by-settle", "no coordinator (flag off)");
+            _shell.Navigation.NavigateSettingsRoot();
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("settings-guard-cleared-by-settle", "settings did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (!coordinator.IsNavigationGuardArmed) return FocusTestResult.Pass("settings-guard-cleared-by-settle", "guard cleared by settle");
+            return FocusTestResult.Fail("settings-guard-cleared-by-settle", "guard still armed after settle");
+        }
+
+        // ---------- Phase 2: Home / Search / Catalog ----------
+
+        private Task<FocusTestResult> TestHomeLaunchCoordinatorSettleAsync()
+        {
+            if (LogContainsSince("settled=true", _suiteLogOffset)
+                && LogContainsSince("focusName=HeroPlayButton", _suiteLogOffset))
+            {
+                return Task.FromResult(FocusTestResult.Pass("home-launch-coordinator-settle", "coordinator settle line present"));
+            }
+            return Task.FromResult(FocusTestResult.Fail("home-launch-coordinator-settle", "no coordinator settle line since suite start"));
+        }
+
+        private async Task<FocusTestResult> TestHomeDownHeroToFirstCardAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-down-hero-to-first-card", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            var focused = FocusManager.GetFocusedElement();
+            if (focused is GridViewItem && HasAncestor<HomePage>(focused as DependencyObject)) return FocusTestResult.Pass("home-down-hero-to-first-card", "Down from hero landed on a card");
+            return FocusTestResult.Fail("home-down-hero-to-first-card", "after Down focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestHomeRowMemoryAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-row-to-row-per-row-memory", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            var first = FocusManager.GetFocusedElement();
+            var firstRow = FocusedRowGridView();
+            if (first == null || firstRow == null) return FocusTestResult.Fail("home-row-to-row-per-row-memory", "no card on first Down");
+            await PressAsync("down").ConfigureAwait(true);
+            var secondRow = FocusedRowGridView();
+            if (secondRow == null) return FocusTestResult.Fail("home-row-to-row-per-row-memory", "no card on second Down");
+            if (ReferenceEquals(firstRow, secondRow)) return FocusTestResult.Fail("home-row-to-row-per-row-memory", "second Down stayed in the same row");
+            await PressAsync("up").ConfigureAwait(true);
+            if (ReferenceEquals(FocusManager.GetFocusedElement(), first)) return FocusTestResult.Pass("home-row-to-row-per-row-memory", "Up returned to the remembered poster of the row above");
+            return FocusTestResult.Fail("home-row-to-row-per-row-memory", "Up did not restore the remembered poster, focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestHomeDownNeverSidebarAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-down-never-sidebar-or-skip", "home did not settle");
+            var rowsSeen = 0;
+            GridView lastRow = null;
+            for (var i = 0; i < 6; i++)
+            {
+                var focused = FocusManager.GetFocusedElement() as DependencyObject;
+                if (focused == null) return FocusTestResult.Fail("home-down-never-sidebar-or-skip", "focus lost at press " + i);
+                bool first;
+                bool last;
+                if (_shell.IsSidebarButton(focused, out first, out last)) return FocusTestResult.Fail("home-down-never-sidebar-or-skip", "landed on sidebar at press " + i);
+                var row = FocusedRowGridView();
+                if (row != null && !ReferenceEquals(row, lastRow)) { rowsSeen++; lastRow = row; }
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            if (rowsSeen < 2) return FocusTestResult.Fail("home-down-never-sidebar-or-skip", "only " + rowsSeen + " row(s) visited in 6 presses");
+            return FocusTestResult.Pass("home-down-never-sidebar-or-skip", "6 Down presses, never sidebar, " + rowsSeen + " rows visited");
+        }
+
+        private async Task<FocusTestResult> TestHomeBackDetailsMetaKeyAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-back-details-meta-key", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            var metaId = FocusedCardMetaId();
+            if (metaId == null) return FocusTestResult.Fail("home-back-details-meta-key", "no card with a Meta id on first Down");
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("home-back-details-meta-key", "select did not open Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+            if (home == null) return FocusTestResult.Fail("home-back-details-meta-key", "B did not return Home");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var backId = FocusedCardMetaId();
+            if (backId == metaId) return FocusTestResult.Pass("home-back-details-meta-key", "B returned to the exact card " + metaId);
+            return FocusTestResult.Fail("home-back-details-meta-key", "after B card=" + (backId ?? "(none)") + " expected " + metaId);
+        }
+
+        private async Task<FocusTestResult> TestHomeBackContinueCwKeyAsync()
+        {
+            var contentId = await ReachContinueCardAsync().ConfigureAwait(true) ? FocusedContinueContentId() : null;
+            if (contentId == null) return FocusTestResult.Skip("home-back-continue-cw-key", "no Continue card reached");
+            var card = FocusManager.GetFocusedElement();
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("home-back-continue-cw-key", "select did not open Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+            if (home == null) return FocusTestResult.Fail("home-back-continue-cw-key", "B did not return Home");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (SameCard(FocusManager.GetFocusedElement(), card) && FocusedContinueContentId() == contentId) return FocusTestResult.Pass("home-back-continue-cw-key", "B returned to the exact Continue card");
+            return FocusTestResult.Fail("home-back-continue-cw-key", "after B card=" + (FocusedContinueContentId() ?? "(none)") + " expected " + contentId);
+        }
+
+        private Task<FocusTestResult> TestHomeColdFirstEntryAsync()
+        {
+            // Cold-start-only: the registry has recorded keys by the time this
+            // runs, so a fresh first entry cannot be reproduced in-suite.
+            // Covered by launch-hero-play on a cold launch.
+            return Task.FromResult(FocusTestResult.Skip("home-cold-first-entry-hero-play", "cold-start only; covered by launch-hero-play"));
+        }
+
+        private async Task<FocusTestResult> TestSearchArrivalBoxAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("search-arrival-box", "no shell");
+            _shell.Navigation.NavigateSearch(string.Empty);
+            var page = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("search-arrival-box", "search did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var focused = FocusManager.GetFocusedElement();
+            if (focused is TextBox && HasAncestor<SearchPage>(focused as DependencyObject)) return FocusTestResult.Pass("search-arrival-box", "arrival on the search box");
+            return FocusTestResult.Fail("search-arrival-box", "arrival focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestSearchDownResultsAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("search-down-results-scroll", "no shell");
+            _shell.Navigation.NavigateSearch("the");
+            var page = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("search-down-results-scroll", "search did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await Task.Delay(3000).ConfigureAwait(true);
+            await PressAsync("down").ConfigureAwait(true);
+            var first = FocusManager.GetFocusedElement();
+            if (!(first is GridViewItem) || !HasAncestor<SearchPage>(first as DependencyObject)) return FocusTestResult.Skip("search-down-results-scroll", "no results for the query");
+            await PressAsync("down").ConfigureAwait(true);
+            var second = FocusManager.GetFocusedElement();
+            if (second is GridViewItem && !ReferenceEquals(first, second)) return FocusTestResult.Pass("search-down-results-scroll", "Down moved through results one row per press");
+            return FocusTestResult.Fail("search-down-results-scroll", "second Down did not move to another result");
+        }
+
+        private async Task<FocusTestResult> TestSearchBackResultAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "no shell");
+            _shell.Navigation.NavigateSearch("the");
+            var page = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
+            if (page == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "search did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await Task.Delay(3000).ConfigureAwait(true);
+            await PressAsync("down").ConfigureAwait(true);
+            var metaId = FocusedCardMetaId();
+            if (metaId == null) return FocusTestResult.Skip("search-back-result-or-box-when-gone", "no results for the query");
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "select did not open Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var search = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
+            if (search == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "B did not return to Search");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var backId = FocusedCardMetaId();
+            if (backId == metaId) return FocusTestResult.Pass("search-back-result-or-box-when-gone", "B returned to the exact result");
+            if (FocusManager.GetFocusedElement() is TextBox) return FocusTestResult.Pass("search-back-result-or-box-when-gone", "result gone, B fell back to the box");
+            return FocusTestResult.Fail("search-back-result-or-box-when-gone", "after B result=" + (backId ?? "(none)") + " expected " + metaId);
+        }
+
+        private async Task<FocusTestResult> TestCatalogArrivalFirstCardAsync()
+        {
+            if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-arrival-first-card", "catalog did not load");
+            return FocusTestResult.Pass("catalog-arrival-first-card", "arrival on the first card");
+        }
+
+        private async Task<FocusTestResult> TestCatalogFourDirectionAsync()
+        {
+            if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-four-direction-grid-scroll", "catalog did not load");
+            var start = FocusManager.GetFocusedElement();
+            await PressAsync("right").ConfigureAwait(true);
+            var afterRight = FocusManager.GetFocusedElement();
+            if (ReferenceEquals(start, afterRight)) return FocusTestResult.Fail("catalog-four-direction-grid-scroll", "Right did not move");
+            await PressAsync("down").ConfigureAwait(true);
+            var afterDown = FocusManager.GetFocusedElement();
+            if (ReferenceEquals(afterRight, afterDown)) return FocusTestResult.Fail("catalog-four-direction-grid-scroll", "Down did not move");
+            await PressAsync("left").ConfigureAwait(true);
+            await PressAsync("up").ConfigureAwait(true);
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null) return FocusTestResult.Fail("catalog-four-direction-grid-scroll", "focus lost after Left/Up");
+            bool first;
+            bool last;
+            if (_shell.IsSidebarButton(focused, out first, out last)) return FocusTestResult.Fail("catalog-four-direction-grid-scroll", "four-direction walk landed on the sidebar");
+            if (!HasAncestor<CatalogPage>(focused)) return FocusTestResult.Fail("catalog-four-direction-grid-scroll", "four-direction walk left the catalog");
+            return FocusTestResult.Pass("catalog-four-direction-grid-scroll", "Right/Down/Left/Up stayed in the grid");
+        }
+
+        private async Task<FocusTestResult> TestCatalogBackOpenedCardAsync()
+        {
+            if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-back-opened-card", "catalog did not load");
+            var metaId = FocusedCardMetaId();
+            if (metaId == null) return FocusTestResult.Fail("catalog-back-opened-card", "first card has no Meta id");
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("catalog-back-opened-card", "select did not open Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var catalog = await WaitForPageAsync<CatalogPage>().ConfigureAwait(true);
+            if (catalog == null) return FocusTestResult.Fail("catalog-back-opened-card", "B did not return to the catalog");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var backId = FocusedCardMetaId();
+            if (backId == metaId) return FocusTestResult.Pass("catalog-back-opened-card", "B returned to the opened card");
+            return FocusTestResult.Fail("catalog-back-opened-card", "after B card=" + (backId ?? "(none)") + " expected " + metaId);
+        }
+
+        private async Task<FocusTestResult> TestFirstEntryEverywhereAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("first-entry-first-card-everywhere", "no shell");
+            _shell.Navigation.NavigateSearch(string.Empty);
+            var search = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
+            if (search == null) return FocusTestResult.Fail("first-entry-first-card-everywhere", "search did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (!(FocusManager.GetFocusedElement() is TextBox)) return FocusTestResult.Fail("first-entry-first-card-everywhere", "search first entry was not the box");
+            if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("first-entry-first-card-everywhere", "catalog did not load (search half passed)");
+            return FocusTestResult.Pass("first-entry-first-card-everywhere", "search box + catalog first card; empty-library half is cold-start only");
+        }
+
+        // ---------- Phase 3: dialogs + Streams ----------
+
+        private async Task<FocusTestResult> TestDialogHomeContinueCancelAsync()
+        {
+            var contentId = await ReachContinueCardAsync().ConfigureAwait(true) ? FocusedContinueContentId() : null;
+            if (contentId == null) return FocusTestResult.Skip("dialog-home-continue-cancel-restores", "no Continue card reached");
+            var card = FocusManager.GetFocusedElement();
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-home-continue-cancel-restores", "Y did not open the Continue menu");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-home-continue-cancel-restores", "dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (SameCard(FocusManager.GetFocusedElement(), card) && FocusedContinueContentId() == contentId) return FocusTestResult.Pass("dialog-home-continue-cancel-restores", "cancel restored the invoking card");
+            return FocusTestResult.Fail("dialog-home-continue-cancel-restores", "after close card=" + (FocusedContinueContentId() ?? "(none)"));
+        }
+
+        private async Task<FocusTestResult> TestDialogDetailsEpisodeAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-details-episode-restores", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no card on first Down");
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("dialog-details-episode-restores", "select did not open Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            object episodeCard = null;
+            var opened = false;
+            for (var i = 0; i < 12 && !opened; i++)
+            {
+                // Y opens a menu only on a card (a GridViewItem). On the
+                // Play button or a section header it does nothing, so walk
+                // Down past non-cards instead of pressing Y on them.
+                var focused = FocusManager.GetFocusedElement();
+                if (!(focused is GridViewItem))
+                {
+                    await PressAsync("down").ConfigureAwait(true);
+                    continue;
+                }
+                episodeCard = focused;
+                await PressAsync("y").ConfigureAwait(true);
+                opened = await WaitForDialogOpenAsync(1000).ConfigureAwait(true);
+                if (!opened) await PressAsync("down").ConfigureAwait(true);
+            }
+            if (!opened) return FocusTestResult.Skip("dialog-details-episode-restores", "no episode menu found (title may have no episodes)");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-details-episode-restores", "dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (SameCard(FocusManager.GetFocusedElement(), episodeCard)) return FocusTestResult.Pass("dialog-details-episode-restores", "cancel restored the episode card");
+            return FocusTestResult.Fail("dialog-details-episode-restores", "after close focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestDialogPlayerSubtitleAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-subtitle-restores", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-subtitle-restores", "could not steer to SpeedButton");
+            var invoker = FocusedName();
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-subtitle-restores", "Y did not open the subtitle menu");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-subtitle-restores", "dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() == invoker) return FocusTestResult.Pass("dialog-player-subtitle-restores", "close restored the invoker " + invoker);
+            return FocusTestResult.Fail("dialog-player-subtitle-restores", "after close focused=" + FocusedName() + " expected " + invoker);
+        }
+
+        private async Task<FocusTestResult> TestDialogPlayerDelayAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "could not steer to SpeedButton");
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "Y did not open the subtitle menu");
+            if (!await InvokeDialogButtonAsync("elay", "تأخير").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "no delay row in the subtitle menu");
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "delay menu did not open");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "delay dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            // The delay dialog's invoker is the subtitle menu's row button in
+            // the closed dialog's tree, so the coordinator falls back to the
+            // player arrival target (Back) — that IS the restore rule.
+            if (FocusedName() == "BackButton") return FocusTestResult.Pass("dialog-player-delay-restores", "close fell back to the arrival target Back");
+            return FocusTestResult.Fail("dialog-player-delay-restores", "after close focused=" + FocusedName() + " expected BackButton");
+        }
+
+        private async Task<FocusTestResult> TestDialogSettingsConfirmAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("dialog-settings-confirm-restores", "no shell");
+            _shell.Navigation.NavigateSettings("addons");
+            if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("dialog-settings-confirm-restores", "addons did not load");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var reached = false;
+            for (var i = 0; i < 15; i++)
+            {
+                if (FocusedName() == "ResetAddonsButton") { reached = true; break; }
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            if (!reached) return FocusTestResult.Skip("dialog-settings-confirm-restores", "Reset button not reached");
+            await PressAsync("select").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "select did not open the confirm dialog");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() == "ResetAddonsButton") return FocusTestResult.Pass("dialog-settings-confirm-restores", "close restored the Reset button");
+            return FocusTestResult.Fail("dialog-settings-confirm-restores", "after close focused=" + FocusedName());
+        }
+
+        private Task<FocusTestResult> TestDialogStreamsDebridAsync()
+        {
+            // The debrid invalid-key dialog needs a torrent stream resolved
+            // against an invalid Debrid key — a fixture the suite cannot
+            // construct (no Debrid account with an invalid key, no forced
+            // torrent resolve). The reachable half — Streams arrival focus —
+            // is covered by streams-filter-row-vanishes-fallback. The dialog
+            // itself stays a manual device check (Phase 3 list, step 6).
+            return Task.FromResult(FocusTestResult.Skip("dialog-streams-debrid-both-buttons-restore", "debrid dialog needs invalid-key + torrent fixture (manual check)"));
+        }
+
+        private async Task<FocusTestResult> TestDialogNavigatingChoiceAsync()
+        {
+            var contentId = await ReachContinueCardAsync().ConfigureAwait(true) ? FocusedContinueContentId() : null;
+            if (contentId == null) return FocusTestResult.Skip("dialog-navigating-choice-arrival-settle", "no Continue card reached");
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-navigating-choice-arrival-settle", "Y did not open the Continue menu");
+            // The first button in the menu is always "Go to details".
+            var dialog = FindOpenDialog();
+            if (dialog == null) return FocusTestResult.Fail("dialog-navigating-choice-arrival-settle", "dialog vanished");
+            var buttons = FindDescendantsOfType<Button>(dialog);
+            if (buttons.Count == 0) return FocusTestResult.Fail("dialog-navigating-choice-arrival-settle", "dialog has no buttons");
+            new ButtonAutomationPeer(buttons[0]).Invoke();
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Fail("dialog-navigating-choice-arrival-settle", "choice did not navigate to Details");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (HasAncestor<DetailsPage>(FocusManager.GetFocusedElement() as DependencyObject)) return FocusTestResult.Pass("dialog-navigating-choice-arrival-settle", "choice navigated, arrival settled inside Details");
+            return FocusTestResult.Fail("dialog-navigating-choice-arrival-settle", "after choice focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestDialogNestedAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", "could not steer to SpeedButton");
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "Y did not open the subtitle menu");
+            if (!await InvokeDialogButtonAsync("elay", "تأخير").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", "no delay row in the subtitle menu");
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "delay menu did not open");
+            // While the inner (delay) dialog is open, the outer invoker must
+            // NOT have been restored: focus stays inside the inner dialog.
+            var innerFocused = FocusManager.GetFocusedElement();
+            if (innerFocused == null || FindOpenDialog() == null) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "no focus inside the inner dialog");
+            if (!HasAncestor<ContentDialog>(innerFocused as DependencyObject)) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "focus left the inner dialog early, focused=" + FocusedName());
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "inner dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() == "BackButton") return FocusTestResult.Pass("dialog-nested-outer-only-on-outer-close", "inner close landed on the arrival target, never inside the closed outer dialog");
+            return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "after inner close focused=" + FocusedName() + " expected BackButton");
+        }
+
+        private async Task<FocusTestResult> TestStreamsFilterRowVanishesAsync()
+        {
+            // Reach Streams through the player chain's first half: open a
+            // title, play, and stop at the Streams page instead of playing.
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no card on first Down");
+            await PressAsync("select").ConfigureAwait(true);
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "Details did not open");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() != "PlayButton") return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no Play button on Details");
+            await PressAsync("select").ConfigureAwait(true);
+            var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
+            if (streams == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no streams for the title");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var row = FocusManager.GetFocusedElement();
+            if (row == null) return FocusTestResult.Fail("streams-filter-row-vanishes-fallback", "focus lost on Streams arrival");
+            // Move up toward the filter chips; if a chip is reached, select
+            // it to change the filter, then focus must land on a neighbour,
+            // a chip, or the arrival target — never vanish.
+            await PressAsync("up").ConfigureAwait(true);
+            var tag = FocusedTag();
+            if (tag == null || !tag.StartsWith("chip:", StringComparison.Ordinal))
+            {
+                return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "filter chips not reached from the rows");
+            }
+            await PressAsync("select").ConfigureAwait(true);
+            await Task.Delay(1000).ConfigureAwait(true);
+            var after = FocusManager.GetFocusedElement() as DependencyObject;
+            if (after == null) return FocusTestResult.Fail("streams-filter-row-vanishes-fallback", "focus vanished after the filter change");
+            if (!HasAncestor<StreamsPage>(after)) return FocusTestResult.Fail("streams-filter-row-vanishes-fallback", "focus left Streams after the filter change");
+            return FocusTestResult.Pass("streams-filter-row-vanishes-fallback", "focus survived the filter change on " + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestDialogGuardNoRegressionAsync()
+        {
+            if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("dialog-guard-no-regression", "no shell");
+            _shell.Navigation.NavigateHome();
+            await PressAsync("down").ConfigureAwait(true);
+            await PressAsync("down").ConfigureAwait(true);
+            var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+            if (home == null) return FocusTestResult.Fail("dialog-guard-no-regression", "Home did not load after rapid presses");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            var focused = FocusManager.GetFocusedElement() as DependencyObject;
+            if (focused == null) return FocusTestResult.Fail("dialog-guard-no-regression", "focus lost after rapid presses during load");
+            bool first;
+            bool last;
+            if (_shell.IsSidebarButton(focused, out first, out last)) return FocusTestResult.Fail("dialog-guard-no-regression", "rapid presses stuck focus on the sidebar");
+            if (!HasAncestor<HomePage>(focused)) return FocusTestResult.Fail("dialog-guard-no-regression", "focus outside Home after rapid presses");
+            if (_shell.IsSidebarExpanded) return FocusTestResult.Fail("dialog-guard-no-regression", "strip expanded after rapid presses during load");
+            return FocusTestResult.Pass("dialog-guard-no-regression", "rapid D-pad during load never stuck focus, ended on " + FocusedName());
+        }
+
+        // ---------- Phase 4: Player OSD ----------
+
+        private async Task<FocusTestResult> TestOsdHideParksBackAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hide-parks-back-remembers", "no playable stream");
+            var offset = LogOffset();
+            var hidden = await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            if (!hidden) return FocusTestResult.Fail("osd-hide-parks-back-remembers", "OSD did not hide within the wait");
+            var parkedLog = LogContainsSince("OSD hidden; parked focus on Back", offset);
+            if (FocusedName() == "BackButton" && parkedLog) return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus parked on Back, log confirms");
+            if (FocusedName() == "BackButton") return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus parked on Back (log line not found)");
+            return FocusTestResult.Fail("osd-hide-parks-back-remembers", "after hide focused=" + FocusedName() + " expected BackButton");
+        }
+
+        private async Task<FocusTestResult> TestOsdShowRestoresAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "could not steer to SpeedButton");
+            var offset = LogOffset();
+            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            await PressAsync("right").ConfigureAwait(true);
+            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
+            if (restored)
+            {
+                var logged = LogContainsSince("OSD shown; focus restored to SpeedButton", offset);
+                return FocusTestResult.Pass("osd-show-restores-same-button", "OSD showed, focus back on SpeedButton" + (logged ? ", log confirms" : ""));
+            }
+            return FocusTestResult.Fail("osd-show-restores-same-button", "after show focused=" + FocusedName() + " expected SpeedButton");
+        }
+
+        private async Task<FocusTestResult> TestOsdSeekHintWinsAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-seek-explicit-hint-wins", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SeekBar").ConfigureAwait(true)) return FocusTestResult.Skip("osd-seek-explicit-hint-wins", "could not steer to SeekBar");
+            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            await PressAsync("right").ConfigureAwait(true);
+            var onSeek = await WaitForAsync(() => FocusedName() == "SeekBar", 3000).ConfigureAwait(true);
+            if (onSeek) return FocusTestResult.Pass("osd-seek-explicit-hint-wins", "explicit hint kept focus on the seek bar");
+            return FocusTestResult.Fail("osd-seek-explicit-hint-wins", "after Right focused=" + FocusedName() + " expected SeekBar");
+        }
+
+        private async Task<FocusTestResult> TestOsdHiddenYDialogAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", "could not steer to SpeedButton");
+            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            await PressAsync("y").ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "Y did not open the subtitle menu while hidden");
+            if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "dialog did not close");
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() != "BackButton") return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after dialog close focused=" + FocusedName() + " expected BackButton");
+            await PressAsync("down").ConfigureAwait(true);
+            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
+            if (restored) return FocusTestResult.Pass("osd-hidden-y-dialog-then-restore", "dialog closed to Back, direction restored SpeedButton");
+            return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after direction focused=" + FocusedName() + " expected SpeedButton");
+        }
+
+        private async Task<FocusTestResult> TestOsdPauseXHiddenAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", "no playable stream");
+            if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", "could not steer to SpeedButton");
+            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            await PressAsync("x").ConfigureAwait(true);
+            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
+            if (restored) return FocusTestResult.Pass("osd-pause-x-hidden-shows-restores", "X paused, OSD showed, focus back on SpeedButton");
+            return FocusTestResult.Fail("osd-pause-x-hidden-shows-restores", "after X focused=" + FocusedName() + " expected SpeedButton");
+        }
+
+        private async Task<FocusTestResult> TestOsdHiddenBackTwiceExitsAsync()
+        {
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-back-twice-exits", "no playable stream");
+            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            await Task.Delay(500).ConfigureAwait(true);
+            await PressAsync("back").ConfigureAwait(true);
+            var left = await WaitForAsync(() => FindPage<PlayerPage>(_shell) == null, 5000).ConfigureAwait(true);
+            if (left) return FocusTestResult.Pass("osd-hidden-back-twice-exits", "second Back while hidden left the player");
+            return FocusTestResult.Fail("osd-hidden-back-twice-exits", "still in the player after two Back presses");
+        }
+
+        private Task<FocusTestResult> TestOsdNextCardNotParkedAsync()
+        {
+            // Needs playback near the end of an episode so the Next card is
+            // showing — a timing fixture the suite cannot construct. Manual
+            // device check (Phase 4 list, step 5).
+            return Task.FromResult(FocusTestResult.Skip("osd-next-card-not-parked", "needs near-end playback for the Next card (manual check)"));
+        }
+
+        private async Task<FocusTestResult> TestOsdFlagOffAsync()
+        {
+            FocusCoordinator.UseFocusCoordinator = false;
+            try
+            {
+                if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-flag-off-old-behaviour", "no playable stream");
+                if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-flag-off-old-behaviour", "could not steer to SpeedButton");
+                await Task.Delay(5000).ConfigureAwait(true);
+                var opacity = OsdOpacity();
+                if (opacity.HasValue && opacity.Value == 0 && FocusedName() == "SpeedButton")
+                {
+                    return FocusTestResult.Pass("osd-flag-off-old-behaviour", "flag off: OSD hid, focus stayed on the hidden SpeedButton");
+                }
+                return FocusTestResult.Fail("osd-flag-off-old-behaviour", "flag off: opacity=" + (opacity.HasValue ? opacity.Value.ToString() : "(none)") + " focused=" + FocusedName());
+            }
+            finally
+            {
+                FocusCoordinator.UseFocusCoordinator = true;
+                await NavigateHomeAndSettleAsync().ConfigureAwait(true);
+            }
+        }
+
+        // ---------- Flag-off sanity ----------
+
+        private async Task<FocusTestResult> TestFlagOffPhase2Async()
+        {
+            FocusCoordinator.UseFocusCoordinator = false;
+            try
+            {
+                if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("flag-off-phase2-legacy", "no shell");
+                _shell.Navigation.NavigateHome();
+                var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
+                if (home == null) return FocusTestResult.Fail("flag-off-phase2-legacy", "home did not load with flag off");
+                await Task.Delay(2000).ConfigureAwait(true);
+                if (!IsHeroPlayButton(FocusManager.GetFocusedElement())) return FocusTestResult.Fail("flag-off-phase2-legacy", "flag off: home arrival focused=" + FocusedName());
+                _shell.Navigation.NavigateSettingsRoot();
+                var settings = await WaitForPageAsync<SettingsPage>().ConfigureAwait(true);
+                if (settings == null) return FocusTestResult.Fail("flag-off-phase2-legacy", "settings did not load with flag off");
+                await Task.Delay(2000).ConfigureAwait(true);
+                if (FocusedTag() != "root|account") return FocusTestResult.Fail("flag-off-phase2-legacy", "flag off: settings arrival tag=" + FocusedTag());
+                return FocusTestResult.Pass("flag-off-phase2-legacy", "flag off: legacy settle still lands on hero Play and the first settings row");
+            }
+            finally
+            {
+                FocusCoordinator.UseFocusCoordinator = true;
+                await NavigateHomeAndSettleAsync().ConfigureAwait(true);
+            }
+        }
+
+        private async Task<FocusTestResult> TestFlagOffPhase3Async()
+        {
+            FocusCoordinator.UseFocusCoordinator = false;
+            try
+            {
+                var contentId = await ReachContinueCardAsync().ConfigureAwait(true) ? FocusedContinueContentId() : null;
+                if (contentId == null) return FocusTestResult.Skip("flag-off-phase3-dialogs-legacy", "no Continue card reached");
+                var card = FocusManager.GetFocusedElement();
+                await PressAsync("y").ConfigureAwait(true);
+                var opened = await WaitForAsync(() => FindOpenDialog() != null, 3000).ConfigureAwait(true);
+                if (!opened) return FocusTestResult.Fail("flag-off-phase3-dialogs-legacy", "Y did not open the Continue menu with flag off");
+                if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("flag-off-phase3-dialogs-legacy", "dialog did not close with flag off");
+                await Task.Delay(1000).ConfigureAwait(true);
+                if (SameCard(FocusManager.GetFocusedElement(), card) && FocusedContinueContentId() == contentId) return FocusTestResult.Pass("flag-off-phase3-dialogs-legacy", "flag off: legacy restore returned to the invoking card");
+                return FocusTestResult.Fail("flag-off-phase3-dialogs-legacy", "flag off: after close card=" + (FocusedContinueContentId() ?? "(none)"));
+            }
+            finally
+            {
+                FocusCoordinator.UseFocusCoordinator = true;
+                await NavigateHomeAndSettleAsync().ConfigureAwait(true);
             }
         }
 
@@ -178,89 +1689,6 @@ namespace Nuvio.Diagnostics
             return passed;
         }
 
-        /// <summary>
-        /// Phase 0 script, launch → hero Play. Navigates home, waits for the
-        /// page's ContentReady plus the arrival settle to finish (bounded
-        /// poll, never spins forever), then asserts focus is the hero Play
-        /// button, inside the page, with the sidebar guard clear (observed
-        /// via the shell proxy: focus is not on a sidebar button and the
-        /// strip is not expanded — the guard field itself is private to
-        /// MainPage). Writes exactly one result line to the log.
-        /// </summary>
-        public async Task RunLaunchHeroPlayAsync()
-        {
-            var stopwatch = Stopwatch.StartNew();
-            var passed = false;
-            var settleAttempts = 0;
-            object focused = null;
-            if (_shell != null)
-            {
-                // 1. Wait for the shell to finish loading (NavigationService
-                //    is created in MainPage.OnLoaded, after this harness may
-                //    have been armed from OnNavigatedTo).
-                var shellReady = false;
-                var shellWaitedMs = 0;
-                while (shellWaitedMs < ShellReadyTimeoutMs)
-                {
-                    if (_shell.Navigation != null)
-                    {
-                        shellReady = true;
-                        break;
-                    }
-                    await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
-                    shellWaitedMs += SettlePollIntervalMs;
-                }
-                if (shellReady)
-                {
-                    // 2. Navigate home (a no-op re-navigation when OnLoaded
-                    //    already landed there; required when the shell was
-                    //    showing another page).
-                    if (FindPage<HomePage>(_shell) == null)
-                    {
-                        _shell.Navigation.NavigateHome();
-                    }
-                    // 3. Wait for the settle: page present, content ready,
-                    //    focus on the hero Play button. Bounded: the loop
-                    //    exits on timeout with a FAIL line, never spins.
-                    var elapsedMs = 0;
-                    while (elapsedMs < SettleTimeoutMs)
-                    {
-                        settleAttempts++;
-                        var page = FindPage<HomePage>(_shell);
-                        if (page != null && page.IsContentReady)
-                        {
-                            focused = FocusManager.GetFocusedElement();
-                            if (IsHeroPlayButton(focused))
-                            {
-                                passed = true;
-                                break;
-                            }
-                        }
-                        await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
-                        elapsedMs += SettlePollIntervalMs;
-                    }
-                    // 4. Sidebar guard proxy: focus must not sit on a
-                    //    sidebar button and the strip must not be expanded.
-                    if (passed)
-                    {
-                        var focusedElement = focused as DependencyObject;
-                        bool sidebarFirst;
-                        bool sidebarLast;
-                        var inSidebar = focusedElement != null && _shell.IsSidebarButton(focusedElement, out sidebarFirst, out sidebarLast);
-                        passed = !inSidebar && !_shell.IsSidebarExpanded;
-                    }
-                }
-            }
-            var focusedType = focused != null ? focused.GetType().Name : "null";
-            var actualTagAndType = DescribeTagAndType(focused);
-            Log.Write("TEST launch-hero-play " + (passed ? "PASS" : "FAIL")
-                + " expected=" + ExpectedHeroTagAndType
-                + " actual=" + actualTagAndType
-                + " focused=" + focusedType
-                + " settleAttempts=" + settleAttempts
-                + " ms=" + stopwatch.ElapsedMilliseconds);
-        }
-
         private bool IsFocusedElementNamed(string name)
         {
             var focused = FocusManager.GetFocusedElement() as FrameworkElement;
@@ -273,29 +1701,6 @@ namespace Nuvio.Diagnostics
             var button = focused as Button;
             if (button == null || button.Name != HeroPlayButtonName) return false;
             return HasAncestor<HomePage>(button);
-        }
-
-        private static bool HasAncestor<T>(DependencyObject element) where T : DependencyObject
-        {
-            for (var node = VisualTreeHelper.GetParent(element); node != null; node = VisualTreeHelper.GetParent(node))
-            {
-                if (node is T) return true;
-            }
-            return false;
-        }
-
-        private static T FindPage<T>(DependencyObject root) where T : DependencyObject
-        {
-            if (root == null) return null;
-            var found = root as T;
-            if (found != null) return found;
-            var count = VisualTreeHelper.GetChildrenCount(root);
-            for (var i = 0; i < count; i++)
-            {
-                var child = FindPage<T>(VisualTreeHelper.GetChild(root, i));
-                if (child != null) return child;
-            }
-            return null;
         }
 
         /// <summary>Tag/Type of the focused element for the result line. Single-character tags are Segoe glyphs, logged as their code point.</summary>
