@@ -331,6 +331,13 @@ namespace Nuvio.Input
             return rows.TryGetValue(rowKey, out focusKey) && !string.IsNullOrEmpty(focusKey);
         }
 
+        /// <summary>Forgets the per-row memory of one entry (fresh-arrival invalidation). The entry's arrival key is untouched, so Back restore still works; only the row map is dropped, so the next row-to-row move in a fresh visit falls back to the row's first poster and the map rebuilds from GotFocus records during this visit.</summary>
+        public void ClearRowFocusKeys(string entryKey)
+        {
+            if (string.IsNullOrEmpty(entryKey)) return;
+            _rowFocusKeys.Remove(entryKey);
+        }
+
         /// <summary>
         /// Single input entry point (port of NativeInputRouter.Handle):
         /// dialog gate, then 150 ms same-direction dedupe, then
@@ -427,9 +434,9 @@ namespace Nuvio.Input
             }
             if (focused != null && IsEdgeMove(focused, direction)) return;
             // Toward the sidebar from content: intercept ONLY when XYFocus
-            // itself would land on the strip — open it and land on its
-            // first button (Home) instead of the geometrically nearest
-            // button. Toward-start is right in RTL, left in LTR. Peek at
+            // itself would land on the strip — open it and land on the
+            // button for the current page instead of the geometrically
+            // nearest button. Toward-start is right in RTL, left in LTR. Peek at
             // the move XYFocus would make (FindNextFocusableElement moves
             // nothing, it only reports the candidate): a sidebar button —
             // or null, meaning no focusable element at all in that
