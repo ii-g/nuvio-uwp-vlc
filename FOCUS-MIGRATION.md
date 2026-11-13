@@ -733,6 +733,19 @@ Files changed (pages track):
   the coordinator-owned form (it was exercised only in the local
   form before); test list item 1 covers it.
 
+### Phase 3 closure (2026-11-14)
+
+Gate closed by the user's decision on 2026-11-14 00:57: the dialog
+device test list above was WAIVED, not run — the six dialogs were
+never exercised on the device in the coordinator-owned form, and
+nothing here claims otherwise. The known limitations above (flag-off
+`RestoreDialogInvoker` path, `HomePage.OnContinueRefreshed` gap,
+`IsFocusValid` not excluding bare containers, Continue-cancel
+device-unverified) carry forward as documented. Next step: the
+AnimatedFocusBorder focus integration (the beam circles the focused
+element; 7 DIP band, 132 DIP arcs, 2x supersampled surface), which
+does not touch the coordinator, the router, or `FocusablePage`.
+
 ## Fix round — root back-stack + Home row memory + sidebar current-page button (2026-11-13)
 
 User report: focus memory "saves across pages" (video: B on Home
