@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
@@ -57,6 +58,63 @@ namespace Nuvio.Views
             // The grid's internal scroller only exists once the GridView is laid out.
             _gridScroller = FocusScrollHelper.FindScrollViewer(CatalogGridView);
             if (_gridScroller != null) _gridScroller.ViewChanged += OnGridScrollerViewChanged;
+            // The shape may already be resolved (manifest shape); the panel exists
+            // now, so the column count can be applied too.
+            ApplyCatalogShape();
+        }
+
+        private void OnViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(CatalogViewModel.Shape) || e.PropertyName == nameof(CatalogViewModel.Columns) || string.IsNullOrEmpty(e.PropertyName))
+            {
+                ApplyCatalogShape();
+            }
+        }
+
+        /// <summary>Applies the resolved page shape to the grid: the card template,
+        /// the focus-ring host height (via the matching item style) and the column
+        /// count (ItemsWrapGrid MaximumRowsOrColumns; Orientation is Horizontal, so
+        /// the value is the column count — Microsoft Learn, ItemsWrapGrid). Runs on
+        /// the UI thread: Shape is only ever set from the ViewModel's RunOnUi blocks.
+        /// The poster shape is the XAML default, so a pre-load call is a no-op. A
+        /// missing template/style resource leaves the current one in place instead
+        /// of crashing the page.</summary>
+        private void ApplyCatalogShape()
+        {
+            if (_viewModel == null || CatalogGridView == null) return;
+            var shape = _viewModel.Shape ?? "poster";
+            string templateKey;
+            string styleKey;
+            if (shape == "landscape")
+            {
+                templateKey = "CatalogLandscapeCardTemplate";
+                styleKey = "CatalogLandscapeGridViewItemStyle";
+            }
+            else if (shape == "square")
+            {
+                templateKey = "CatalogSquareCardTemplate";
+                styleKey = "CatalogSquareGridViewItemStyle";
+            }
+            else
+            {
+                templateKey = "CatalogPosterCardTemplate";
+                styleKey = "CatalogGridViewItemStyle";
+            }
+            var resources = Application.Current.Resources;
+            object templateValue;
+            if (resources.TryGetValue(templateKey, out templateValue))
+            {
+                var template = templateValue as DataTemplate;
+                if (template != null) CatalogGridView.ItemTemplate = template;
+            }
+            object styleValue;
+            if (resources.TryGetValue(styleKey, out styleValue))
+            {
+                var style = styleValue as Style;
+                if (style != null) CatalogGridView.ItemContainerStyle = style;
+            }
+            var panel = CatalogGridView.ItemsPanelRoot as ItemsWrapGrid;
+            if (panel != null) panel.MaximumRowsOrColumns = _viewModel.Columns;
         }
 
         protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -68,6 +126,7 @@ namespace Nuvio.Views
             _catalogKey = navigation == null ? null : navigation.Type + "|" + navigation.Id + "|" + navigation.TransportUrl;
             _viewModel = new CatalogViewModel(shell.Stremio, shell.Progress, shell.Navigation, navigation);
             DataContext = _viewModel;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
             await _viewModel.LoadAsync().ConfigureAwait(true);
             // First page rendered: the arrival target (first card) exists now.
             RaiseContentReady();
@@ -76,6 +135,7 @@ namespace Nuvio.Views
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             base.OnNavigatedFrom(e);
+            if (_viewModel != null) _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             if (MainPage.Current?.Coordinator != null && FocusCoordinator.UseFocusCoordinator)
             {
                 MainPage.Current.Coordinator.StopScrolling();
