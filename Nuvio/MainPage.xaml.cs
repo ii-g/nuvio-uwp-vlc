@@ -455,6 +455,9 @@ namespace Nuvio
 
             // Record the invoker before opening so focus can go back to it when
             // the dialog closes (or to the page's arrival target when it cannot).
+            // Flag off only: with the flag on the coordinator owns the restore
+            // (DialogOpen = false below notifies it) and a local move here
+            // would race its one-tick restore.
             var invoker = FocusManager.GetFocusedElement() as DependencyObject;
             DialogOpen = true;
             ContentDialogResult result;
@@ -466,18 +469,21 @@ namespace Nuvio
             {
                 DialogOpen = false;
             }
-            try
+            if (_coordinator == null || !FocusCoordinator.UseFocusCoordinator)
             {
-                var control = invoker as Control;
-                var restored = control != null && control.Focus(FocusState.Programmatic);
-                if (!restored && _router != null)
+                try
                 {
-                    _router.SettleArrivalFocus(ContentFrame.Content as FocusablePage, false, null);
+                    var control = invoker as Control;
+                    var restored = control != null && control.Focus(FocusState.Programmatic);
+                    if (!restored && _router != null)
+                    {
+                        _router.SettleArrivalFocus(ContentFrame.Content as FocusablePage, false, null);
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                Log.Error("Restoring focus after the text dialog failed", ex);
+                catch (Exception ex)
+                {
+                    Log.Error("Restoring focus after the text dialog failed", ex);
+                }
             }
             if (result != ContentDialogResult.Primary && !submitted)
             {
@@ -640,7 +646,11 @@ namespace Nuvio
             // watchdog expiry, by user takeover, or by genuine user input
             // while no settle is pending — never by focus entering the
             // content (ContentFrame.GotFocus only collapses the strip).
-            _suppressExpandUntilArrivalSettled = true;
+            // Phase 3: with the flag on re-arm through the coordinator (it
+            // re-arms the shell bit too and restarts the hard-timeout clock
+            // from this navigation); with the flag off set the bit directly.
+            if (_coordinator != null && FocusCoordinator.UseFocusCoordinator) _coordinator.ArmNavigationGuard();
+            else _suppressExpandUntilArrivalSettled = true;
             // The details, catalog, player and streams pages take the full
             // screen: hide the sidebar strip while one is open, and restore
             // it on any other page — back navigation included, since
@@ -833,7 +843,13 @@ namespace Nuvio
         private void ExpandSidebarOnFocus()
         {
             if (!_userInputSeen) return;
-            if (_suppressExpandUntilArrivalSettled)
+            // Phase 3: with the flag on the coordinator is the single
+            // source of truth for the guard (it owns the arm/clear and the
+            // hard timeout); with the flag off the shell bit is the guard.
+            var guardArmed = _coordinator != null && FocusCoordinator.UseFocusCoordinator
+                ? _coordinator.IsNavigationGuardArmed
+                : _suppressExpandUntilArrivalSettled;
+            if (guardArmed)
             {
                 Log.Write("Sidebar expand suppressed after navigation (focus fallback)");
                 return;
