@@ -63,11 +63,13 @@
          and the rounded-corner anti-aliasing fringe show against the page
          background), so here the art host is a plain Grid and the art
          paints edge-to-edge. Home rows keep PosterCardTemplate unchanged. -->
-    <!-- Catalog cards are a fixed 88x132 (2:3): the home size, so 9 columns
-         fit the full-bleed 954 epx viewport (9x108-20=952). The size is
-         fixed here, not driven by the shared shape converters, so home rows
-         keep their PosterSize-driven sizes and the catalog ignores
-         Meta.PosterShape. -->
+    <!-- Catalog cards are fixed-size, one shape per page (the page's
+         CatalogViewModel.Shape): poster 88x132 (2:3), landscape 160x90
+         (16:9), square 104x104 (1:1). The size is fixed here, not driven
+         by the shared shape converters, so the poster stays 88x132
+         whatever the PosterSize setting is, and home rows keep their
+         PosterSize-driven sizes. The art host is a plain Grid with no
+         plate behind the art (see CatalogPosterCardTemplate). -->
     <DataTemplate x:Key="CatalogPosterCardTemplate">
         <Grid Width="88" Background="Transparent">
             <Grid.RowDefinitions>
@@ -83,6 +85,58 @@
                 <!-- The art host is pinned LeftToRight: an ImageBrush inherits the page's
                      RTL flow and mirrors the poster (build 162 showed every poster
                      flipped); the title text below stays RTL. -->
+                <Border CornerRadius="6" FlowDirection="LeftToRight">
+                    <Border.Background>
+                        <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
+                    </Border.Background>
+                </Border>
+                <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="15" Height="15" CornerRadius="8" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                    <TextBlock Text="✓" Foreground="White" FontSize="8" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ProgressBar Value="{Binding Progress}" Maximum="1" Visibility="{Binding Progress, Converter={StaticResource DoubleToVisibilityConverter}}" VerticalAlignment="Bottom" Margin="5,0,5,5" Height="2" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
+            </Grid>
+            <TextBlock Grid.Row="1" Text="{Binding Meta.Name}" Foreground="#B8FFFFFF" FontSize="8" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+        </Grid>
+    </DataTemplate>
+
+    <!-- The catalog's landscape card: CatalogPosterCardTemplate at 160x90
+         (16:9). 5 columns fit the full-bleed 954 epx viewport (5x180-20=880). -->
+    <DataTemplate x:Key="CatalogLandscapeCardTemplate">
+        <Grid Width="160" Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Height="90">
+                <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="8" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
+                <!-- Art as the Border background (see CatalogPosterCardTemplate). -->
+                <!-- The art host is pinned LeftToRight (see CatalogPosterCardTemplate). -->
+                <Border CornerRadius="6" FlowDirection="LeftToRight">
+                    <Border.Background>
+                        <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
+                    </Border.Background>
+                </Border>
+                <Border Visibility="{Binding IsWatched, Converter={StaticResource BooleanToVisibilityConverter}}" Width="15" Height="15" CornerRadius="8" Background="#A6000000" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                    <TextBlock Text="✓" Foreground="White" FontSize="8" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ProgressBar Value="{Binding Progress}" Maximum="1" Visibility="{Binding Progress, Converter={StaticResource DoubleToVisibilityConverter}}" VerticalAlignment="Bottom" Margin="5,0,5,5" Height="2" Foreground="#FF3C7BFF" Background="#40FFFFFF"/>
+            </Grid>
+            <TextBlock Grid.Row="1" Text="{Binding Meta.Name}" Foreground="#B8FFFFFF" FontSize="8" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" MaxLines="1"/>
+        </Grid>
+    </DataTemplate>
+
+    <!-- The catalog's square card: CatalogPosterCardTemplate at 104x104 (1:1).
+         7 columns fit the full-bleed 954 epx viewport (7x124-20=848). -->
+    <DataTemplate x:Key="CatalogSquareCardTemplate">
+        <Grid Width="104" Background="Transparent">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Height="104">
+                <TextBlock Text="{Binding Meta.Name}" Foreground="#80FFFFFF" FontSize="8" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="8"/>
+                <!-- Art as the Border background (see CatalogPosterCardTemplate). -->
+                <!-- The art host is pinned LeftToRight (see CatalogPosterCardTemplate). -->
                 <Border CornerRadius="6" FlowDirection="LeftToRight">
                     <Border.Background>
                         <ImageBrush ImageSource="{Binding Meta.Poster, Converter={StaticResource PosterImageConverter}, ConverterParameter=poster}" Stretch="UniformToFill"/>
@@ -245,8 +299,10 @@
              The first column starts 6 epx from the screen edge (the
              catalogRowHeader inset), which absorbs the 1.06 focus zoom
              and the 1 epx ring overhang. The focus ring host is a fixed
-             132 tall to match the 88x132 art (the shared
-             CardArtHeightConverter returns 132 for the home size). -->
+             132 tall to match the 88x132 art. The landscape and square
+             styles below are copies of this style with only the ring host
+             height changed (90 / 104): keep all three in sync when the
+             ring or the zoom changes. -->
         <Setter Property="Margin" Value="0,0,20,0"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -267,6 +323,116 @@
                              1 epx above the art's bottom edge and the poster leaked
                              out below it.) -->
                         <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="132">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
+                        </Grid>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed"/>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Focused">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Unfocused"/>
+                                <VisualState x:Name="PointerFocused">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="SelectionStates">
+                                <VisualState x:Name="Unselected"/>
+                                <VisualState x:Name="Selected"/>
+                                <VisualState x:Name="SelectedUnfocused"/>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Catalog landscape containers: CatalogGridViewItemStyle with the
+         focus ring host 90 tall to match the 160x90 art. 5 columns of 160
+         need 5x180-20=880 in the 954 epx viewport. -->
+    <Style x:Key="CatalogLandscapeGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CatalogGridViewItemStyle}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="GridViewItem">
+                    <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
+                        </Grid.RenderTransform>
+                        <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                        <!-- The frame wraps the art only (see CatalogGridViewItemStyle). -->
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="90">
+                            <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
+                        </Grid>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed"/>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Focused">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Unfocused"/>
+                                <VisualState x:Name="PointerFocused">
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="ScaleTransform" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.18"/>
+                                        <DoubleAnimation Storyboard.TargetName="FocusRing" Storyboard.TargetProperty="Opacity" To="1" Duration="0"/>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="SelectionStates">
+                                <VisualState x:Name="Unselected"/>
+                                <VisualState x:Name="Selected"/>
+                                <VisualState x:Name="SelectedUnfocused"/>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Catalog square containers: CatalogGridViewItemStyle with the focus
+         ring host 104 tall to match the 104x104 art. 7 columns of 104 need
+         7x124-20=848 in the 954 epx viewport. -->
+    <Style x:Key="CatalogSquareGridViewItemStyle" TargetType="GridViewItem" BasedOn="{StaticResource CatalogGridViewItemStyle}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="GridViewItem">
+                    <Grid x:Name="RootGrid" Background="{TemplateBinding Background}" RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="ScaleTransform" ScaleX="1" ScaleY="1"/>
+                        </Grid.RenderTransform>
+                        <ContentPresenter x:Name="ContentPresenter" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" ContentTransitions="{TemplateBinding ContentTransitions}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                        <!-- The frame wraps the art only (see CatalogGridViewItemStyle). -->
+                        <Grid VerticalAlignment="Top" IsHitTestVisible="False" Height="104">
                             <Border x:Name="FocusRing" BorderThickness="3" CornerRadius="7" Margin="-1" Opacity="0" IsHitTestVisible="False" BorderBrush="White"/>
                         </Grid>
                         <VisualStateManager.VisualStateGroups>
