@@ -56,7 +56,7 @@
              first ("كل") chip was cut at the start edge. The scrollbar stays
              hidden; a focused chip scrolls into view on focus change. -->
         <ScrollViewer Grid.Row="1" Margin="{Binding FlowDirection, RelativeSource={RelativeSource Mode=Self}, Converter={StaticResource FlowDirectionToThicknessConverter}, ConverterParameter=catalogRowHeader}" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled">
-        <ItemsControl ItemsSource="{Binding Genres}" Margin="0,8,0,0">
+        <ItemsControl IsTabStop="False" ItemsSource="{Binding Genres}" Margin="0,8,0,0">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                     <StackPanel Orientation="Horizontal"/>
