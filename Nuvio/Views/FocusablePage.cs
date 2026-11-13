@@ -98,6 +98,24 @@ namespace Nuvio.Views
         }
 
         /// <summary>
+        /// True when <paramref name="focused"/> is a real focus target: an
+        /// element the user can see a ring on and interact with. A bare
+        /// ItemsControl is focusable by default in UWP, so the framework
+        /// parks focus on it when a page loads (the launch case: the settle
+        /// then reports success while no ring is visible anywhere) — it is
+        /// a container, not a target. ListViewBase (GridView/ListView) is
+        /// excluded from that rule: its items carry the ring and the row
+        /// model treats the grid as a unit, so focus on the grid itself
+        /// still counts.
+        /// </summary>
+        internal static bool IsRealFocusTarget(DependencyObject focused)
+        {
+            if (focused == null) return false;
+            if (focused is ItemsControl && !(focused is ListViewBase)) return false;
+            return true;
+        }
+
+        /// <summary>
         /// THE single dialog-restore implementation (replaces the per-page
         /// duplicates): back to the element that opened the dialog when it
         /// can still take focus (Control cast first — Focus lives on
