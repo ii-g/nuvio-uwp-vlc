@@ -497,3 +497,76 @@ Install the build, then run each step and check the ring position:
   candidate is not a `UIElement` (e.g. a `Hyperlink`). In our pages the
   candidates are buttons and cards, so there is no practical effect —
   but if a focusable `Hyperlink` ever appears, revisit the peek call.
+
+## Fix round — bare-container focus at launch (build 564 gate failure)
+
+### What the device showed
+
+Mohammed tested build 564 (2.0.564.0, head 72ae032) and reported: no
+focus ring at all on launch — focus never lands on the hero. Log
+`nuvio-vlc_9.log` (2.0.564.0) proved it: settle attempt 1 (sync)
+`focused=null`, attempt 2 (layout) `focused=null`, attempt 3 (watchdog)
+`settled=True` but `focused=ItemsControl` with no Name and no Tag —
+a false success.
+
+### Mechanism
+
+Part 1 of the sidebar fix (sidebar buttons `IsTabStop=false`) worked:
+the framework could no longer park on the strip. But when the Home
+content loaded, the framework parked focus on the first focusable
+element in the tree — a bare `ItemsControl` (focusable by default in
+UWP, no focus visual, so no ring anywhere). The settle then accepted
+it: `AttemptSettle` checks `IsFocusInsidePage` first (the container
+IS inside the page) and never calls `TrySettleOnce`; and
+`HomePage.TryFocusArrival` bails out with `return true` whenever
+focus is already inside the page, unable to tell "the framework
+parked on a bare container" from "the user deliberately placed focus
+on a card".
+
+### The fix (two layers, in the Focus Manager)
+
+1. **Bare containers are no longer tab stops:** `IsTabStop="False"`
+   on all nine bare `<ItemsControl>` in the project — Home
+   (`HeroGenres`, `CatalogRows`), Catalog (`Genres`), Details
+   (`Genres`, `Credits`), Search (`RecentSearches`, `Rows`), Streams
+   (`Badges`, `StatusItems`). Their children (text chips, buttons,
+   `GridView`s) keep their own focus behaviour; no code calls
+   `.Focus()` on any of them.
+2. **Strict settle success:** new `FocusablePage.IsRealFocusTarget`
+   — `false` for `null` and for a plain `ItemsControl` (not
+   `ListViewBase`, whose items carry the ring), `true` otherwise.
+   Applied in `FocusCoordinator.IsFocusInsidePage` + `AttemptSettle`
+   (takeover branch now also requires a real target, so a parked
+   container is not treated as user takeover), in
+   `NativeInputRouter` (same flaw on the flag-off path), and in the
+   `TryFocusArrival` bail-outs of Home / Player / Settings / Streams.
+   The "never yank user focus" rule is preserved for real targets
+   (Button / GridViewItem / TextBox …).
+
+### Device test list (after the build)
+
+1. Cold launch: ring on the hero Play button directly, no ring
+   before the hero loads.
+2. Press D-pad while the hero is still loading: settle completes
+   and lands on Play (no stuck focus).
+3. Flag off (same build, flag flipped): today's behaviour exactly.
+4. Arrival on other pages, no regression: Details (Play), Streams
+   (All chip), Settings (first row), Player (Back), Catalog (first
+   card), Search (the box).
+5. In the log: never `settled=True` with `focused=ItemsControl`; a
+   `Settle: focus parked on a bare container` line proves layer 2
+   fired.
+
+### Known follow-ups (not in this round)
+
+- `NoteUserInput` (coordinator + router) still cancels the settle on
+  any focus move off the starting element, with no real-target check
+  (sidebar excepted). Unreachable now: no path puts focus on a bare
+  container (all nine are `IsTabStop=false`, nothing focuses them,
+  no `new ItemsControl` in code-behind). Consider the same guard if
+  a new bare container is ever added.
+- `IsFocusValid` in the coordinator does not exclude a bare
+  container (visible + enabled + in the live tree = valid). No
+  effect today: its only caller `NotifyContentChanged` has no
+  callers yet. When callers are wired (Phase 3), reuse
+  `IsRealFocusTarget` there.
