@@ -667,8 +667,11 @@ namespace Nuvio.Views
                 dialog.Opened += (s, e) => first.Focus(FocusState.Programmatic);
             }
             var shell = MainPage.Current;
-            // Part C: remember the invoker (the OSD button that opened the
-            // menu) so focus returns to it when the menu closes.
+            // Dialog restore: the coordinator owns it when the flag is on
+            // (it captures the invoker when DialogOpen is set below, and
+            // restores focus to it when DialogOpen clears); the capture
+            // below is the flag-off path only (RestoreDialogInvoker no-ops
+            // when the flag is on).
             var invoker = FocusManager.GetFocusedElement() as UIElement;
             shell.DialogOpen = true;
             _viewModel.MenuOpen = true;
