@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Nuvio.Diagnostics;
 using Nuvio.Services;
 using Nuvio.Views;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -22,9 +23,14 @@ namespace Nuvio.Input
     /// MoveFocus and its helpers, reading this coordinator's registry);
     /// the router's MoveFocus stays as the legacy rollback path. The
     /// handleBack delegate is the router's existing HandleBack.
-    /// Restore-on-close stays with the pages until Phase 3. The
-    /// integration worker also adds this file to Nuvio.csproj
-    /// (legacy project: Compile items are listed explicitly).
+    /// Dialog restore-on-close lives here since Phase 3 (invoker stack
+    /// + one-tick restore below); the pages keep their synchronous
+    /// RestoreDialogInvoker calls as the flag-off compatibility path
+    /// (a no-op when the flag is on), so the coordinator's tick is the
+    /// only restore path when the flag is on — it skips when focus
+    /// already landed on a valid target. The integration worker also adds this
+    /// file to Nuvio.csproj (legacy project: Compile items are listed
+    /// explicitly).
     /// </summary>
     internal sealed class FocusCoordinator
     {
@@ -152,12 +158,15 @@ namespace Nuvio.Input
         private DateTime _navigationGuardArmedAt = DateTime.MinValue;
         private static readonly TimeSpan GuardHardTimeout = TimeSpan.FromSeconds(2);
 
-        // Dialog pause state (Phase 1 = pause switch + invoker capture
-        // ONLY; restore-on-close is Phase 3). The invoker is retained
-        // after close so Phase 3's restore can use it; the next open
-        // overwrites it.
-        private bool _dialogOpen;
-        private Control _dialogInvoker;
+        // Dialog pause state (Phase 3 owns the stack and restore-on-
+        // close). The stack keeps open/close pairs matched across
+        // nested dialogs: each NotifyDialogOpened pushes its invoker
+        // (null when focus was not on a Control — pushed as-is so the
+        // pairs stay matched), each NotifyDialogClosed pops one.
+        // Restore runs only when the stack empties; while another
+        // dialog is still open the outer dialog's invoker stays buried
+        // and is restored when that dialog closes.
+        private readonly Stack<Control> _dialogInvokers = new Stack<Control>();
 
         /// <summary>
         /// Stores references only — no subscriptions, no timers, no focus
@@ -713,18 +722,31 @@ namespace Nuvio.Input
                 };
                 page.LayoutUpdated += _settleLayoutHandler;
             }
-            // (d) Watchdog: keep trying while async content loads.
-            _settleTimer = new DispatcherTimer();
-            _settleTimer.Interval = SettleWatchdogInterval;
-            _settleTimer.Tick += OnSettleWatchdogTick;
-            _settleTimer.Start();
+            // (d) Watchdog: keep trying while async content loads. Reuse
+            // the running timer when one exists (an armed-without-settle
+            // enforcement timer, or the previous settle's timer, which
+            // StopSettle deliberately leaves running so CancelArrival
+            // cannot strand the hard-timeout enforcement); create and
+            // attach only when none runs, so the Tick handler is attached
+            // exactly once and at most one timer ever runs.
+            if (_settleTimer == null)
+            {
+                _settleTimer = new DispatcherTimer();
+                _settleTimer.Interval = SettleWatchdogInterval;
+                _settleTimer.Tick += OnSettleWatchdogTick;
+                _settleTimer.Start();
+            }
         }
 
         /// <summary>
         /// Cancels the pending settle WITHOUT clearing the guard: the caller
         /// is starting a new navigation (or a new settle), which owns the
         /// guard from here. Call ClearNavigationGuard explicitly if no new
-        /// settle follows, or the strip stays unopenable.
+        /// settle follows, or the strip stays unopenable. The shared
+        /// watchdog/enforcement timer keeps running across the cancel —
+        /// stopping it here used to strand the guard armed with no tick
+        /// left to enforce the hard timeout; the tick's idle branch stops
+        /// it once the guard is down.
         /// </summary>
         public void CancelArrival()
         {
@@ -769,7 +791,10 @@ namespace Nuvio.Input
                 return;
             }
             // Page changed under us (a navigation the shell did not settle):
-            // stop without clearing the guard — the new page's settle owns it.
+            // stop the settle without clearing the guard — the new page's
+            // settle owns it. The shared timer keeps running: the new
+            // settle reuses it in RequestArrival, or the idle branch below
+            // stops it once the guard is down.
             if (!ReferenceEquals(_frame.Content, page))
             {
                 Log.Write("Settle watchdog: page changed, stopping without clearing the sidebar guard");
@@ -873,12 +898,13 @@ namespace Nuvio.Input
         }
 
         /// <summary>
-        /// Settle finished: stop the watchdog, drop the ContentReady
-        /// subscription, and clear the sidebar guard. Success, watchdog
-        /// expiry and user takeover are the settle-side paths that clear
-        /// it (plus the hard guard timeout, which clears the guard
-        /// without ending the settle); a page change leaves it to the new
-        /// settle.
+        /// Settle finished: drop the ContentReady subscription and clear
+        /// the sidebar guard — the guard clear also stops the shared
+        /// watchdog/enforcement timer now that no settle runs (see
+        /// ClearNavigationGuard). Success, watchdog expiry and user
+        /// takeover are the settle-side paths that clear it (plus the hard
+        /// guard timeout, which clears the guard without ending the
+        /// settle); a page change leaves it to the new settle.
         /// ArrivalSettled fires here only, on success or expiry — not on
         /// takeover, page change or CancelArrival.
         /// </summary>
@@ -907,7 +933,13 @@ namespace Nuvio.Input
 
         private void StopSettle(bool clearGuard)
         {
-            StopWatchdog();
+            // The shared watchdog/enforcement timer is NOT stopped here:
+            // it is the same timer ArmNavigationGuard starts for the
+            // guard hard timeout, and stopping it on CancelArrival used
+            // to strand the guard armed with no tick left to enforce the
+            // 2 s bound. It stops in ClearNavigationGuard (settle end
+            // with the guard down) or in the tick's idle branch (no
+            // settle, guard down) — so no timer runs when idle.
             UnsubscribeSettleLayout();
             var page = _settlingPage;
             if (page != null) page.ContentReady -= OnSettleContentReady;
@@ -963,6 +995,17 @@ namespace Nuvio.Input
                 // sidebar buttons. Keep the settle running; the arrival
                 // target lands when the content loads.
                 Log.Write("Settle: user input moved focus inside the sidebar during settle; ignoring, settle continues");
+                return;
+            }
+            if (!FocusablePage.IsRealFocusTarget(CurrentFocused))
+            {
+                // Focus parked on a bare container is not a deliberate
+                // move either — the framework parks focus there while
+                // content loads, same as the sidebar ignore above. Keep
+                // the settle running; the arrival target lands when the
+                // content loads. (A null CurrentFocused is not a real
+                // target either, and is ignored the same way.)
+                Log.Write("Settle: user input moved focus onto a bare container during settle; ignoring, settle continues");
                 return;
             }
             Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
@@ -1027,12 +1070,14 @@ namespace Nuvio.Input
             // watchdog to clear the guard, so start the enforcement
             // timer here when none is running: the tick above enforces
             // the hard timeout and stops the timer once the guard is
-            // down. This reuses the settle's own timer field, so at most
-            // one timer ever runs — RequestArrival / StopSettle own its
-            // lifecycle from here (they stop and replace it when a settle
-            // starts), and a running settle's timer enforces the timeout
-            // the same way. No timer runs when idle: it starts only on
-            // arm and stops on guard-clear / settle end.
+            // down. This is the same timer field the settle uses, so at
+            // most one timer ever runs — RequestArrival reuses a running
+            // one and creates one only when none runs, StopSettle never
+            // stops it (a cancel must not strand the hard-timeout
+            // enforcement), and it stops in ClearNavigationGuard (settle
+            // end, guard down) or the tick's idle branch. No timer runs
+            // when idle: it starts only on arm / settle and stops on
+            // guard-clear / settle end.
             if (_settleTimer == null)
             {
                 _settleTimer = new DispatcherTimer();
@@ -1059,8 +1104,9 @@ namespace Nuvio.Input
             // next tick. Never stop it while a settle runs — the settle's
             // watchdog lives in the same field, and the settle must keep
             // ticking after the guard clears (arrival focus can still
-            // land). Called from StopSettle this is a no-op: the timer
-            // was already stopped there.
+            // land). This is the stop point for a finished settle:
+            // StopSettle no longer stops the timer (it must survive
+            // CancelArrival), so the guard clear here is what ends it.
             if (_settlingPage == null) StopWatchdog();
         }
 
@@ -1068,27 +1114,117 @@ namespace Nuvio.Input
         public bool IsNavigationGuardArmed { get { return _navigationGuardArmed; } }
 
         /// <summary>
-        /// Pauses coordinator input and captures the dialog invoker — the
-        /// currently focused element when null is passed — for Phase 3's
-        /// restore-on-close. Focus is NOT moved here or on close in this
-        /// phase; pages keep their own restores until Phase 3.
+        /// Pauses coordinator input and pushes the dialog invoker — the
+        /// currently focused element when null is passed — onto the
+        /// dialog stack for the restore-on-close. The invoker may be null
+        /// (focus was not on a Control); it is pushed as-is so open/close
+        /// pairs stay matched. Focus is NOT moved here.
         /// </summary>
         public void NotifyDialogOpened(Control invoker)
         {
-            _dialogInvoker = invoker ?? FocusManager.GetFocusedElement() as Control;
-            _dialogOpen = true;
-            Log.Write("Dialog opened; coordinator input paused; invoker=" + (_dialogInvoker != null ? _dialogInvoker.GetType().Name : "null"));
+            var captured = invoker ?? FocusManager.GetFocusedElement() as Control;
+            _dialogInvokers.Push(captured);
+            Log.Write("Dialog opened; coordinator input paused; invoker=" + (captured != null ? captured.GetType().Name : "null") + "; depth=" + _dialogInvokers.Count);
         }
 
-        /// <summary>Resumes coordinator input. Does NOT move focus (Phase 3 owns restore-on-close).</summary>
+        /// <summary>
+        /// Resumes coordinator input and schedules the restore-on-close
+        /// one tick later — but only when the stack empties: while another
+        /// dialog is still open the outer dialog's invoker stays buried
+        /// and is restored when that dialog closes. A close with no open
+        /// dialog logs a warning and does nothing (never crashes).
+        /// </summary>
         public void NotifyDialogClosed()
         {
-            _dialogOpen = false;
-            Log.Write("Dialog closed; coordinator input resumed");
+            if (_dialogInvokers.Count == 0)
+            {
+                Log.Write("Dialog closed with no dialog open; ignoring (no restore)");
+                return;
+            }
+            var invoker = _dialogInvokers.Pop();
+            if (_dialogInvokers.Count > 0)
+            {
+                Log.Write("Dialog closed; another dialog still open (depth=" + _dialogInvokers.Count + "); restore deferred");
+                return;
+            }
+            Log.Write("Dialog closed; coordinator input resumed; scheduling restore to invoker=" + (invoker != null ? invoker.GetType().Name : "null"));
+            // One tick later, on the UI thread, so the dialog's close has
+            // unwound before focus moves (CoreDispatcher.RunAsync with
+            // CoreDispatcherPriority.Normal — Windows.UI.Core, UWP since
+            // 10.0.10240.0; the same call FocusTestHarness already uses).
+            var _ = _shell.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => RestoreDialogInvoker(invoker));
         }
 
         /// <summary>True while a dialog is open; the controller is paused (see HandleInput).</summary>
-        public bool IsDialogOpen { get { return _dialogOpen; } }
+        public bool IsDialogOpen { get { return _dialogInvokers.Count > 0; } }
+
+        /// <summary>
+        /// One-tick-later dialog restore (Phase 3 — the only restore path
+        /// when the flag is on; the pages' synchronous
+        /// RestoreDialogInvoker is the flag-off path and a no-op when the
+        /// flag is on). Skip when a dialog opened again before the tick ran, or
+        /// when an arrival settle is running (the settle owns arrival —
+        /// e.g. a navigation started from a dialog choice); skip when
+        /// focus is already on a real, valid target inside the current
+        /// page (the page's own restore already landed). Otherwise focus
+        /// the popped invoker when it is a real, valid target in the live
+        /// tree under the current page, else fall back to the page's
+        /// arrival target — and leave focus as-is when that fails too.
+        /// Never parks focus on a bare container.
+        /// </summary>
+        private void RestoreDialogInvoker(Control invoker)
+        {
+            if (IsDialogOpen)
+            {
+                Log.Write("Dialog restore skipped: another dialog is open");
+                return;
+            }
+            if (_settlingPage != null)
+            {
+                Log.Write("Dialog restore skipped: arrival settle is running");
+                return;
+            }
+            var page = _frame.Content as FocusablePage;
+            if (page != null && IsFocusInsidePage(page) && IsFocusValid(CurrentFocused))
+            {
+                Log.Write("Dialog restore skipped: focus is already on a valid target in the current page");
+                return;
+            }
+            if (invoker != null && FocusablePage.IsRealFocusTarget(invoker) && IsFocusValid(invoker) && IsDescendantOfCurrentPage(invoker))
+            {
+                if (invoker.Focus(FocusState.Programmatic))
+                {
+                    Log.Write("Dialog restore: focus returned to invoker " + invoker.GetType().Name);
+                    return;
+                }
+                Log.Write("Dialog restore: invoker Focus() failed; falling back to the page arrival target");
+            }
+            else
+            {
+                Log.Write("Dialog restore: invoker is not a valid target in the current page; falling back to the page arrival target");
+            }
+            if (page != null)
+            {
+                var arrived = page.TryFocusArrival();
+                Log.Write("Dialog restore: arrival fallback " + (arrived ? "succeeded" : "failed") + "; leaving focus as-is on failure");
+            }
+            else
+            {
+                Log.Write("Dialog restore: no FocusablePage is current; leaving focus as-is");
+            }
+        }
+
+        /// <summary>True when element is the frame's current content or one of its descendants (live page membership for the dialog restore).</summary>
+        private bool IsDescendantOfCurrentPage(DependencyObject element)
+        {
+            var content = _frame.Content as DependencyObject;
+            if (content == null || element == null) return false;
+            for (var node = element; node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (ReferenceEquals(node, content)) return true;
+            }
+            return false;
+        }
 
         /// <summary>The element that currently has focus, or null.</summary>
         public DependencyObject CurrentFocused { get { return FocusManager.GetFocusedElement() as DependencyObject; } }
@@ -1181,7 +1317,23 @@ namespace Nuvio.Input
             try
             {
                 var first = FocusManager.FindFirstFocusableElement(_frame) as Control;
-                if (first != null) first.Focus(FocusState.Programmatic);
+                if (first != null)
+                {
+                    first.Focus(FocusState.Programmatic);
+                    // Guarantee: FindFirstFocusableElement walks tab order,
+                    // and the nine bare ItemsControls are all
+                    // IsTabStop=false, so it cannot return one — verified
+                    // by reading the XAML (Catalog Genres; Details Genres
+                    // + Credits; Home HeroGenres + CatalogRows; Search
+                    // RecentSearches + Rows; Streams Badges + StatusItems).
+                    // The check below is the backstop anyway: a future
+                    // bare container added without the flag would fail it
+                    // and log instead of parking focus invisibly.
+                    if (!IsFocusValid(CurrentFocused))
+                    {
+                        Log.Write("NotifyContentChanged: last-resort focus did not land on a valid target; leaving focus as-is");
+                    }
+                }
             }
             catch (Exception)
             {
@@ -1216,6 +1368,10 @@ namespace Nuvio.Input
         private bool IsFocusValid(DependencyObject focused)
         {
             if (focused == null) return false;
+            // A bare ItemsControl the framework parked on is not a real
+            // target (no ring, no interaction) — never valid, even
+            // though it is visible, enabled and in the live tree.
+            if (!FocusablePage.IsRealFocusTarget(focused)) return false;
             var element = focused as UIElement;
             if (element != null && element.Visibility != Visibility.Visible) return false;
             var control = focused as Control;
