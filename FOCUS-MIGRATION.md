@@ -746,6 +746,16 @@ AnimatedFocusBorder focus integration (the beam circles the focused
 element; 7 DIP band, 132 DIP arcs, 2x supersampled surface), which
 does not touch the coordinator, the router, or `FocusablePage`.
 
+### Beam removal (2026-11-14)
+
+The user said "remove it completely" after build 609 went green. The
+beam is gone in full: `AnimatedFocusBorder.cs` deleted, the `FocusBeamHost`
+canvas removed from `MainPage.xaml`, the wiring and field removed from
+`MainPage.xaml.cs` (including the now-unused `Nuvio.Views.Shared` using),
+and the `Compile` entry removed from `Nuvio.csproj`. The plain white
+focus ring is untouched and is the only focus frame again. The beam's
+code stays recoverable from git history (heads d224cda–611a997).
+
 ## Fix round — root back-stack + Home row memory + sidebar current-page button (2026-11-13)
 
 User report: focus memory "saves across pages" (video: B on Home
