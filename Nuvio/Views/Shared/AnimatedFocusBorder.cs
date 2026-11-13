@@ -96,18 +96,21 @@ namespace Nuvio.Views.Shared
             {
                 _frame = frame;
                 _host = host;
-                EnsureCompositorAndSurface();
-                AttachBeamRoot();
+                // Subscribe before creating the surface: if creation throws,
+                // the next layout pass still retries through SyncTarget
+                // instead of the beam dying for the whole session.
                 if (!_layoutSubscribed)
                 {
                     _host.LayoutUpdated += OnHostLayoutUpdated;
                     _layoutSubscribed = true;
                 }
+                EnsureCompositorAndSurface();
+                AttachBeamRoot();
                 return SyncTarget();
             }
             catch (Exception ex)
             {
-                Log.Write("AnimatedFocusBorder: attach failed: " + ex.Message);
+                Log.Write("AnimatedFocusBorder: attach failed: " + ex.Message + " (hr=0x" + ex.HResult.ToString("X8") + ")");
                 HideBeam();
                 return false;
             }
@@ -183,13 +186,22 @@ namespace Nuvio.Views.Shared
         private void EnsureCompositorAndSurface()
         {
             if (_beamSurface != null) return;
+            // Diagnostic: name the failing step — the first device log only
+            // carried the generic E_INVALIDARG message.
+            string step = "GetElementVisual";
+            try
+            {
             _compositor = ElementCompositionPreview.GetElementVisual(_host).Compositor;
+            step = "GetSharedDevice";
             CanvasDevice canvasDevice = CanvasDevice.GetSharedDevice();
+            step = "CreateCompositionGraphicsDevice";
             _graphicsDevice = CanvasComposition.CreateCompositionGraphicsDevice(_compositor, canvasDevice);
             _graphicsDevice.RenderingDeviceReplaced += OnRenderingDeviceReplaced;
+            step = "RawPixelsPerViewPixel";
             double scale = DisplayInformation.GetForCurrentView().RawPixelsPerViewPixel;
             int pixelWidth = Math.Max(1, (int)Math.Round(SegmentSurfaceWidthDip * scale));
             int pixelHeight = Math.Max(1, (int)Math.Round(SegmentSurfaceHeightDip * scale));
+            step = "CreateDrawingSurface";
             _beamSurface = _graphicsDevice.CreateDrawingSurface(new Size(pixelWidth, pixelHeight), DirectXPixelFormat.B8G8R8A8UIntNormalized, DirectXAlphaMode.Premultiplied);
             // Draw once, in DIPs: a horizontal bar with a stepped glow baked in
             // (12 DIP faint, 8 DIP mid, 4 DIP bright core) so no shadow object
@@ -202,15 +214,23 @@ namespace Nuvio.Views.Shared
             // The session rect is in DIPs at the session DPI and must match the
             // surface size: pixels = DIPs x dpi / 96. (Pixel dimensions here
             // would double-count the scale on a 200% Xbox display.)
+            step = "CreateDrawingSession";
             using (CanvasDrawingSession ds = CanvasComposition.CreateDrawingSession(_beamSurface, new Rect(0, 0, SegmentSurfaceWidthDip, SegmentSurfaceHeightDip), dpi))
             {
                 ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(26, 255, 255, 255), 12.0f, strokeStyle);
                 ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Color.FromArgb(56, 255, 255, 255), 8.0f, strokeStyle);
                 ds.DrawLine(new Vector2(barX0, barY), new Vector2(barX1, barY), Colors.White, 4.0f, strokeStyle);
             }
+            step = "CreateSurfaceBrush";
             _beamBrush = _compositor.CreateSurfaceBrush(_beamSurface);
             _beamBrush.Stretch = CompositionStretch.Fill;
             Log.Write("AnimatedFocusBorder: beam surface created " + pixelWidth + "x" + pixelHeight + " px (scale " + scale + ")");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("AnimatedFocusBorder: surface step '" + step + "' failed: " + ex.Message + " (hr=0x" + ex.HResult.ToString("X8") + ")");
+                throw;
+            }
         }
 
         private void AttachBeamRoot()
