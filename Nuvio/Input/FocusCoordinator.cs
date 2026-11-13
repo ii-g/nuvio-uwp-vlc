@@ -890,7 +890,13 @@ namespace Nuvio.Input
                     }
                     else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus))
                     {
-                        Log.Write("Settle: focus parked on a bare container during settle; ignoring, settle continues");
+                        // Null focus is not a bare container: the framework
+                        // dropped focus entirely (e.g. the old page detached
+                        // before the new one loaded). Log it as null so the
+                        // log never claims a container was parked on.
+                        Log.Write(FocusManager.GetFocusedElement() == null
+                            ? "Settle: focus is null during settle; ignoring, settle continues"
+                            : "Settle: focus parked on a bare container during settle; ignoring, settle continues");
                     }
                     if (TrySettleOnce(page, _settleIsBack) && IsFocusInsidePage(page)) settled = true;
                 }
@@ -1019,8 +1025,11 @@ namespace Nuvio.Input
                 // content loads, same as the sidebar ignore above. Keep
                 // the settle running; the arrival target lands when the
                 // content loads. (A null CurrentFocused is not a real
-                // target either, and is ignored the same way.)
-                Log.Write("Settle: user input moved focus onto a bare container during settle; ignoring, settle continues");
+                // target either, and is ignored the same way — but it is
+                // null focus, not a bare container, so log it as such.)
+                Log.Write(CurrentFocused == null
+                    ? "Settle: user input left focus null during settle; ignoring, settle continues"
+                    : "Settle: user input moved focus onto a bare container during settle; ignoring, settle continues");
                 return;
             }
             Log.Write("Settle cancelled by user input after " + _settleAttempts + " attempts; clearing the sidebar guard");
