@@ -117,6 +117,9 @@ Every new page must satisfy all of these to join the system:
   clears the entry's per-row memory (`MainPage` clears it on the Navigated
   boundary), so row-to-row moves land on each row's first poster and the map
   rebuilds from this visit's GotFocus records; Back arrivals keep the map.
+  This holds even on a Required-cache page re-navigated while already on it
+  (Home/Search): the settle must not accept the page's stale in-page focus
+  as settled — it must run the arrival target.
   Root navigations clear the frame BackStack, but only after a successful
   navigation (`NavigationService`: a refused/failed navigation must not wipe
   history).
