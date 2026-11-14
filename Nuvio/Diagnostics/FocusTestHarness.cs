@@ -634,6 +634,27 @@ namespace Nuvio.Diagnostics
             return entry != null ? entry.ContentId : null;
         }
 
+        /// <summary>
+        /// Steps Down (bounded, 4 extra presses — the bound proven in
+        /// TestHomeBackDetailsMetaKeyAsync) until a card with a Meta id is
+        /// focused, and returns that id. The first Home row is Continue
+        /// Watching, whose ProgressEntry cards carry no Meta and resume
+        /// playback on activation instead of opening Details, so activating
+        /// the first card after one Down is wrong. Returns null when no
+        /// Meta card appears in the scanned rows — a missing fixture, not
+        /// a product failure; callers Skip with that reason.
+        /// </summary>
+        private async Task<string> ScanForMetaCardAsync()
+        {
+            var metaId = FocusedCardMetaId();
+            for (var i = 0; i < 4 && metaId == null; i++)
+            {
+                await PressAsync("down").ConfigureAwait(true);
+                metaId = FocusedCardMetaId();
+            }
+            return metaId;
+        }
+
         private bool SameCard(object first, object second)
         {
             if (ReferenceEquals(first, second)) return true;
@@ -858,6 +879,7 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) { _lastReachFailure = "home did not settle"; return false; }
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) { _lastReachFailure = "no card on first Down"; return false; }
+            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) { _lastReachFailure = "no Meta card found in rows"; return false; }
             if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "card activation unavailable in harness"; return false; }
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) { _lastReachFailure = "Details did not open"; return false; }
@@ -1415,12 +1437,7 @@ namespace Nuvio.Diagnostics
             // carry no Meta — step Down (bounded) until a card with a Meta
             // id is focused. No Meta card in the scanned rows is a missing
             // fixture, not a product failure.
-            var metaId = FocusedCardMetaId();
-            for (var i = 0; i < 4 && metaId == null; i++)
-            {
-                await PressAsync("down").ConfigureAwait(true);
-                metaId = FocusedCardMetaId();
-            }
+            var metaId = await ScanForMetaCardAsync().ConfigureAwait(true);
             if (metaId == null) return FocusTestResult.Skip("home-back-details-meta-key", "no Meta card found in rows");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
@@ -1609,6 +1626,7 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-details-episode-restores", "home did not settle");
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no card on first Down");
+            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no Meta card found in rows");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return FocusTestResult.Fail("dialog-details-episode-restores", "activation did not open Details");
@@ -1745,6 +1763,7 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "home did not settle");
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no card on first Down");
+            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no Meta card found in rows");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "Details did not open");
