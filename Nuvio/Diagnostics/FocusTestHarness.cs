@@ -795,6 +795,17 @@ namespace Nuvio.Diagnostics
             return card != null && card.Meta != null ? card.Meta.Id : null;
         }
 
+        /// <summary>Mirrors FocusedCardMetaId for the card's Meta.Type
+        /// ('movie' | 'series' | … — Models/Meta.cs). Null for a Continue
+        /// card (ProgressEntry, no Meta) and for non-card focus.</summary>
+        private string FocusedCardMetaType()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return null;
+            var card = container.Content as CatalogCardItem;
+            return card != null && card.Meta != null ? card.Meta.Type : null;
+        }
+
         private string FocusedContinueContentId()
         {
             var container = FocusManager.GetFocusedElement() as GridViewItem;
@@ -822,6 +833,36 @@ namespace Nuvio.Diagnostics
                 metaId = FocusedCardMetaId();
             }
             return metaId;
+        }
+
+        /// <summary>
+        /// Type-filtered Home scan (episode-test Route 2): walks Down
+        /// row-by-row (bounded, 12 presses) until a card whose Meta.Type
+        /// is "series" is focused. Movie cards and Continue cards
+        /// (ProgressEntry, no Meta) are skipped. A Down that leaves the
+        /// focused card id unchanged counts as a stall (lazily-loading
+        /// rows); two consecutive stalls end the scan. Returns false when
+        /// no series card is reached — a missing fixture, not a product
+        /// failure; the caller SKIPs.
+        /// </summary>
+        private async Task<bool> ScanForSeriesCardAsync()
+        {
+            var stalls = 0;
+            for (var i = 0; i < 12; i++)
+            {
+                if (string.Equals(FocusedCardMetaType(), "series", StringComparison.OrdinalIgnoreCase)) return true;
+                var before = FocusedCardMetaId() ?? FocusedContinueContentId();
+                await PressAsync("down").ConfigureAwait(true);
+                await WaitForSettleAsync().ConfigureAwait(true);
+                var after = FocusedCardMetaId() ?? FocusedContinueContentId();
+                if (after == null || string.Equals(after, before, StringComparison.Ordinal))
+                {
+                    stalls++;
+                    if (stalls >= 2) return false;
+                }
+                else stalls = 0;
+            }
+            return string.Equals(FocusedCardMetaType(), "series", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool SameCard(object first, object second)
@@ -1014,20 +1055,32 @@ namespace Nuvio.Diagnostics
             return finalRow != null && ReferenceEquals(finalRow, grid);
         }
 
-        private async Task<bool> ReachCatalogAsync()
+        private async Task<bool> ReachCatalogAsync(string type = "movie", string id = "top")
         {
             if (_shell == null || _shell.Navigation == null) return false;
             _shell.Navigation.NavigateCatalog(new CatalogNavigation
             {
                 TransportUrl = CinemetaTransportUrl,
-                Type = "movie",
-                Id = "top",
+                Type = type,
+                Id = id,
             });
             var catalog = await WaitForPageAsync<CatalogPage>().ConfigureAwait(true);
             if (catalog == null) return false;
             await WaitForSettleAsync().ConfigureAwait(true);
             return FocusManager.GetFocusedElement() as GridViewItem != null
                 && HasAncestor<CatalogPage>(FocusManager.GetFocusedElement() as DependencyObject);
+        }
+
+        /// <summary>True when the catalog page loaded (content ready) but
+        /// its grid holds zero cards — the series/top catalog is not
+        /// advertised by the addon, a runtime fact, not a product failure.
+        /// Only meaningful after a failed ReachCatalogAsync.</summary>
+        private bool IsSeriesCatalogEmpty()
+        {
+            var catalog = FindPage<CatalogPage>(_shell);
+            if (catalog == null || !catalog.IsContentReady) return false;
+            var grid = FindNamedDescendant<GridView>(catalog, "CatalogGridView");
+            return grid != null && grid.Items.Count == 0;
         }
 
         /// <summary>Meta id of the catalog grid's first card (Items[0]).
@@ -1862,16 +1915,27 @@ namespace Nuvio.Diagnostics
             return FocusTestResult.Fail("dialog-home-continue-cancel-restores", "after close card=" + (FocusedContinueContentId() ?? "(none)"));
         }
 
-        private async Task<FocusTestResult> TestDialogDetailsEpisodeAsync()
+        /// <summary>
+        /// Opens Details for the focused card and, only when the loaded
+        /// title actually has episodes (Route 3 gate:
+        /// DetailsViewModel.HasEpisodes, read after the page is content
+        /// ready — Meta is assigned before LoadCompleted fires), runs the
+        /// episode-menu dialog body below. Returns null only when the
+        /// title has no episodes, so the caller presses Back (from Details)
+        /// and tries the next candidate; otherwise the body's
+        /// Pass/Fail/Skip. A Details page that never opens is a Fail, as
+        /// before — never a silent try-next (Back from the wrong page
+        /// would leave the catalog). The body itself is unchanged: the
+        /// dialog-close-restore expectation is untouched.
+        /// </summary>
+        private async Task<FocusTestResult> TryEpisodeDialogForFocusedCardAsync()
         {
-            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-details-episode-restores", "home did not settle");
-            await PressAsync("down").ConfigureAwait(true);
-            if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no card on first Down");
-            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no Meta card found in rows");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return FocusTestResult.Fail("dialog-details-episode-restores", "activation did not open Details");
             await WaitForSettleAsync().ConfigureAwait(true);
+            var viewModel = details.DataContext as DetailsViewModel;
+            if (viewModel == null || !viewModel.HasEpisodes) return null;
             object episodeCard = null;
             var opened = false;
             for (var i = 0; i < 12 && !opened; i++)
@@ -1895,6 +1959,76 @@ namespace Nuvio.Diagnostics
             await WaitForSettleAsync().ConfigureAwait(true);
             if (SameCard(FocusManager.GetFocusedElement(), episodeCard)) return FocusTestResult.Pass("dialog-details-episode-restores", "cancel restored the episode card");
             return FocusTestResult.Fail("dialog-details-episode-restores", "after close focused=" + FocusedName());
+        }
+
+        private async Task<FocusTestResult> TestDialogDetailsEpisodeAsync()
+        {
+            // The old test scanned Home for the first Meta card, which is
+            // always a movie (the first Home row after Continue is
+            // Cinemeta movie|top), so it could never reach an episode menu
+            // and SKIPPED in every log. Three routes, ≤3 titles total:
+            // Route 1 (deterministic): the Cinemeta series catalog, whose
+            // cards are series by construction. Route 2 (fallback): a
+            // type-filtered Home scan for a series card. Route 3 (gate):
+            // after opening Details, HasEpisodes decides — a title without
+            // episodes backs out and the next candidate is tried.
+            const string name = "dialog-details-episode-restores";
+            var attempts = 0;
+            string route1Skip = null;
+            var route2Ran = false;
+            if (await ReachCatalogAsync("series", "top").ConfigureAwait(true))
+            {
+                for (var i = 0; i < 3 && attempts < 3; i++)
+                {
+                    if (!string.Equals(FocusedCardMetaType(), "series", StringComparison.OrdinalIgnoreCase)) break;
+                    attempts++;
+                    var result = await TryEpisodeDialogForFocusedCardAsync().ConfigureAwait(true);
+                    if (result != null) return result;
+                    await PressAsync("back").ConfigureAwait(true);
+                    await WaitForSettleAsync().ConfigureAwait(true);
+                    await PressAsync("down").ConfigureAwait(true);
+                    await WaitForSettleAsync().ConfigureAwait(true);
+                    if (FocusManager.GetFocusedElement() as GridViewItem == null) break;
+                }
+            }
+            else if (IsSeriesCatalogEmpty())
+            {
+                // Leg skipped, not a product failure: series/top is not
+                // advertised by the addon. Fall through to Route 2.
+                route1Skip = "no series catalog (series/top not advertised)";
+            }
+            if (attempts < 3)
+            {
+                if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true))
+                {
+                    // Nothing was ever attempted and Home itself did not
+                    // settle: today's behaviour (Fail), unless the only
+                    // route that ran already established the catalog is
+                    // not advertised — then the honest outcome is that
+                    // leg's SKIP, not a product failure.
+                    if (attempts == 0 && route1Skip != null) return FocusTestResult.Skip(name, route1Skip);
+                    if (attempts == 0) return FocusTestResult.Fail(name, "home did not settle");
+                    return FocusTestResult.Skip(name, "no episode menu found (title may have no episodes)");
+                }
+                await PressAsync("down").ConfigureAwait(true);
+                route2Ran = true;
+                while (attempts < 3 && await ScanForSeriesCardAsync().ConfigureAwait(true))
+                {
+                    attempts++;
+                    var result = await TryEpisodeDialogForFocusedCardAsync().ConfigureAwait(true);
+                    if (result != null) return result;
+                    await PressAsync("back").ConfigureAwait(true);
+                    await WaitForSettleAsync().ConfigureAwait(true);
+                    await PressAsync("down").ConfigureAwait(true);
+                    await WaitForSettleAsync().ConfigureAwait(true);
+                }
+            }
+            // No route produced a series title with episodes. When Route 2
+            // never ran (Home did not settle) and the series catalog is
+            // not advertised, that leg's reason is the informative one;
+            // otherwise the exact SKIP as before.
+            if (attempts == 0 && route1Skip != null && !route2Ran) return FocusTestResult.Skip(name, route1Skip);
+            return FocusTestResult.Skip(name, "no episode menu found (title may have no episodes)");
         }
 
         private async Task<FocusTestResult> TestDialogPlayerSubtitleAsync()
