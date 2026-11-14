@@ -74,6 +74,8 @@ namespace Nuvio.Services
         private bool _isReady;
         private DateTime _lastTimeAt = DateTime.UtcNow;
         private string _currentOpenId;
+        private int _lastLoggedAudioCount = -1;
+        private int _lastLoggedSubtitleCount = -1;
 
         public PlayerService(HybridMediaPlayer player, AppSettings settings)
         {
@@ -287,7 +289,9 @@ namespace Nuvio.Services
                     RaiseBufferingChanged((int)Math.Round(JsonHelpers.GetDouble(payload, "percent") ?? 0));
                     break;
                 case "player.tracks":
-                    RaiseTracksChanged(ParseTracks(payload));
+                    var tracks = ParseTracks(payload);
+                    LogTracks(tracks);
+                    RaiseTracksChanged(tracks);
                     break;
                 case "player.ready":
                     _isReady = true;
@@ -415,6 +419,22 @@ namespace Nuvio.Services
         {
             var handler = TracksChanged;
             if (handler != null) handler(tracks);
+        }
+
+        // One line when the track set changes, for both engines: it proves
+        // the tracks payload survived the thread hop (the InvalidCast fix)
+        // and shows what the player actually offers. Selection changes
+        // re-raise "player.tracks" with the same counts, so they stay quiet.
+        private void LogTracks(PlayerTracks tracks)
+        {
+            if (tracks == null) return;
+            var audioCount = tracks.Audio != null ? tracks.Audio.Count : 0;
+            var subtitleCount = tracks.Subtitles != null ? tracks.Subtitles.Count : 0;
+            if (audioCount == _lastLoggedAudioCount && subtitleCount == _lastLoggedSubtitleCount) return;
+            _lastLoggedAudioCount = audioCount;
+            _lastLoggedSubtitleCount = subtitleCount;
+            Log.Write("Player tracks ready: audio=" + audioCount + " subtitles=" + subtitleCount +
+                " (audioId=" + tracks.AudioId + " subtitleId=" + tracks.SubtitleId + ")");
         }
 
         private void RaiseReady()
