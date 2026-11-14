@@ -440,7 +440,10 @@ namespace Nuvio.Diagnostics
         ///   row's Addon/Catalog for a Home View All card (exactly
         ///   HomeViewModel.OpenCatalog). The arrival-focus key the click
         ///   records is already in the registry: the page's GotFocus hook
-        ///   records it when the card takes focus, before this runs.
+        ///   records it when the card takes focus, before this runs. That
+        ///   covers the registry key only — restore must not depend on the
+        ///   click path: the focus-recorded registry key is the single
+        ///   source of truth for back restore.
         /// - Continue Watching card: NavigationService.ResumeEntry(entry) —
         ///   exactly HomeViewModel.ResumeEntry. Note it resumes playback
         ///   (Streams, or the Player directly when a stream is remembered),
@@ -859,6 +862,18 @@ namespace Nuvio.Diagnostics
             await WaitForSettleAsync().ConfigureAwait(true);
             return FocusManager.GetFocusedElement() as GridViewItem != null
                 && HasAncestor<CatalogPage>(FocusManager.GetFocusedElement() as DependencyObject);
+        }
+
+        /// <summary>Meta id of the catalog grid's first card (Items[0]).
+        /// Arrival focuses index 0 (CatalogPage.TryFocusArrival calls
+        /// FocusFirstCard), so the arrival test compares the focused card
+        /// against this instead of accepting any focused card in the page.</summary>
+        private string FirstCatalogCardMetaId()
+        {
+            var grid = FocusedRowGridView();
+            if (grid == null || grid.Items.Count == 0) return null;
+            var first = grid.Items[0] as CatalogCardItem;
+            return first != null && first.Meta != null ? first.Meta.Id : null;
         }
 
         /// <summary>
@@ -1544,6 +1559,10 @@ namespace Nuvio.Diagnostics
         private async Task<FocusTestResult> TestCatalogArrivalFirstCardAsync()
         {
             if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-arrival-first-card", "catalog did not load");
+            var firstId = FirstCatalogCardMetaId();
+            if (firstId == null) return FocusTestResult.Fail("catalog-arrival-first-card", "first card has no Meta id");
+            var focusedId = FocusedCardMetaId();
+            if (focusedId != firstId) return FocusTestResult.Fail("catalog-arrival-first-card", "arrival on card=" + (focusedId ?? "(none)") + " expected first card " + firstId);
             return FocusTestResult.Pass("catalog-arrival-first-card", "arrival on the first card");
         }
 
@@ -1572,14 +1591,6 @@ namespace Nuvio.Diagnostics
         {
             if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-back-opened-card", "catalog did not load");
             var metaId = FocusedCardMetaId();
-            // The View All card has no Meta by design: step to the previous
-            // card (toward the flow-start edge) instead of failing on it.
-            var stepToPrevious = _shell.FlowDirection == FlowDirection.RightToLeft ? "right" : "left";
-            for (var i = 0; i < 3 && metaId == null; i++)
-            {
-                await PressAsync(stepToPrevious).ConfigureAwait(true);
-                metaId = FocusedCardMetaId();
-            }
             if (metaId == null) return FocusTestResult.Fail("catalog-back-opened-card", "first card has no Meta id");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
