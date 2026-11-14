@@ -74,6 +74,14 @@ namespace Nuvio.Services
         public IReadOnlyList<Addon> Addons { get; }
     }
 
+    /// <summary>Outcome of an awaitable addons save (see SaveAddonsAsync).</summary>
+    internal enum AddonSaveResult
+    {
+        Saved,
+        RefusedLoadFailed,
+        Failed,
+    }
+
     /// <summary>
     /// The content layer: Stremio addon protocol client (manifests, catalogs, metadata,
     /// streams, subtitles), ported from services/addons.js. Protocol reference:
@@ -96,6 +104,14 @@ namespace Nuvio.Services
         private bool _addonsLoaded;
         private bool _addonsLoadFailed;
         private bool _hasStoredAddons;
+
+        // Serialises addon saves in call order: a save queued behind an
+        // earlier one runs after it, so the last save requested is the
+        // last writer of the stored file. Without this, a fire-and-forget
+        // save started by MergeAddons could finish after a later awaited
+        // save and overwrite it with a stale snapshot.
+        private readonly object _saveLock = new object();
+        private Task _lastSaveTask = Task.FromResult(0);
 
         public event EventHandler<AddonsChangedEventArgs> AddonsChanged;
 
@@ -125,28 +141,76 @@ namespace Nuvio.Services
             }
         }
 
-        private async void SaveAndNotifyAsync()
+        /// <summary>
+        /// The shared save core: writes the current in-memory addon list to
+        /// the store and reports the outcome. Refuses to write when the
+        /// stored file failed to load, so a failed read is never mistaken
+        /// for an empty list. Never throws: a write exception is logged and
+        /// reported as Failed. Does not raise AddonsChanged; the caller that
+        /// owns the notification does that.
+        /// </summary>
+        private async Task<AddonSaveResult> SaveAddonsCoreAsync()
         {
-            Log.Write("[DIAG] StremioService.SaveAndNotifyAsync: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] loadFailed=" + _addonsLoadFailed);
+            Log.Write("[DIAG] StremioService.SaveAddonsCoreAsync: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] loadFailed=" + _addonsLoadFailed);
             if (_addonsLoadFailed)
             {
                 // The stored file failed to load, so the in-memory list is empty by
                 // accident, not by choice: writing it would destroy the stored addons.
                 Log.Write("Saving addons refused: stored addons file failed to load; refusing to overwrite it");
-                RaiseAddonsChanged();
-                return;
+                return AddonSaveResult.RefusedLoadFailed;
             }
             try
             {
                 var array = new JsonArray();
                 foreach (var addon in _addons) array.Add(addon.ToJson());
                 await _store.WriteProfileJsonAsync("addons", array).ConfigureAwait(false);
-                Log.Write("[DIAG] StremioService.SaveAndNotifyAsync: saved count=" + array.Count + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "]");
+                Log.Write("[DIAG] StremioService.SaveAddonsCoreAsync: saved count=" + array.Count + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "]");
+                return AddonSaveResult.Saved;
             }
             catch (Exception ex)
             {
                 Log.Error("Saving addons failed", ex);
+                return AddonSaveResult.Failed;
             }
+        }
+
+        /// <summary>
+        /// Awaitable save: writes the current in-memory addon list to the
+        /// store and returns the outcome, after any save already queued.
+        /// Unlike SaveAndNotifyAsync this can be awaited, so a caller can
+        /// know the restored list is on disk before the app closes. Does
+        /// not raise AddonsChanged (the fire-and-forget save that triggered
+        /// the mutation already does that).
+        /// </summary>
+        public Task<AddonSaveResult> SaveAddonsAsync()
+        {
+            Task<AddonSaveResult> queued;
+            lock (_saveLock)
+            {
+                var previous = _lastSaveTask;
+                queued = SaveAfterAsync(previous);
+                _lastSaveTask = queued;
+            }
+            return queued;
+        }
+
+        private async Task<AddonSaveResult> SaveAfterAsync(Task previous)
+        {
+            try
+            {
+                await previous.ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // A queued save never throws, but a faulted predecessor
+                // must not block the save behind it.
+            }
+            return await SaveAddonsCoreAsync().ConfigureAwait(false);
+        }
+
+        private async void SaveAndNotifyAsync()
+        {
+            await SaveAddonsAsync().ConfigureAwait(false);
             RaiseAddonsChanged();
         }
 
