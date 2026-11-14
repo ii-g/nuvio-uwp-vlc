@@ -28,17 +28,24 @@ namespace Nuvio.Diagnostics
     /// flag-file-removal-disarms) that no in-app suite can observe about
     /// itself — see FOCUS.md §7 for the manual procedures.
     ///
-    /// Drives input ONLY through the pinned MainPage seam
+    /// Drives D-pad/back input ONLY through the pinned MainPage seam
     /// <see cref="MainPage.SimulateFocusInput(string, bool)"/> — the same code
     /// path the ControllerBridge poll callback uses (router Handle, then the
     /// settling-aware takeover decision). This harness never calls the router
     /// or FocusManager directly for input, and never sets focus itself except
-    /// through the seam. Two documented exceptions, both test-only closers
-    /// for dialogs the seam cannot reach (see below); neither moves focus:
-    /// closing a dialog with ContentDialog.Hide() found through
-    /// VisualTreeHelper.GetOpenPopups, and choosing a dialog option with
-    /// ButtonAutomationPeer.Invoke(). The coordinator restore / navigation
-    /// that runs after the close is the real production path in both cases.
+    /// through the seam. Activation (Gamepad A) cannot go through the seam:
+    /// the router ignores "select" by design (XAML activates the focused
+    /// control natively with a real controller), so ActivateFocusedAsync
+    /// performs the activation the focused element would perform — the
+    /// NavigationService entry the page's own ItemClick handler calls with
+    /// the same arguments, or ButtonAutomationPeer.Invoke() for a focused
+    /// Button, which runs the button's real Click handler. Two further
+    /// documented exceptions, both test-only closers for dialogs the seam
+    /// cannot reach (see below); neither moves focus: closing a dialog with
+    /// ContentDialog.Hide() found through VisualTreeHelper.GetOpenPopups,
+    /// and choosing a dialog option with ButtonAutomationPeer.Invoke(). The
+    /// coordinator restore / navigation that runs after the close is the real
+    /// production path in both cases.
     ///
     /// WHY the seam cannot drive dialogs: FocusCoordinator.HandleInput gates
     /// all dispatch on IsDialogOpen, so D-pad/select presses sent through the
@@ -409,6 +416,97 @@ namespace Nuvio.Diagnostics
             await Task.Delay(waitMs).ConfigureAwait(true);
         }
 
+        /// <summary>
+        /// Activates the currently focused element the way a real Gamepad A
+        /// press would. The seam cannot do this: the router ignores
+        /// "select" by design (XAML activates the focused control natively
+        /// with a real controller), so a PressAsync("select") is a no-op and
+        /// every activation below runs the production handler instead:
+        /// - Focused Button (Details PlayButton, Settings ResetAddonsButton,
+        ///   Streams filter chip): ButtonAutomationPeer.Invoke(), which runs
+        ///   the button's real Click handler. IInvokeProvider is implemented
+        ///   by the Button/RepeatButton/HyperlinkButton peers only (Microsoft
+        ///   Learn: IInvokeProvider, UWP, winrt-22621) — the same peer the
+        ///   harness already uses for dialog choices.
+        /// - Catalog card (Home/Search/Catalog rows): the NavigationService
+        ///   entry the page's own ItemClick handler calls with the same
+        ///   arguments — OpenTitle(card.Meta), or NavigateCatalog with the
+        ///   row's Addon/Catalog for a Home View All card (exactly
+        ///   HomeViewModel.OpenCatalog). The arrival-focus key the click
+        ///   records is already in the registry: the page's GotFocus hook
+        ///   records it when the card takes focus, before this runs.
+        /// - Continue Watching card: NavigationService.ResumeEntry(entry) —
+        ///   exactly HomeViewModel.ResumeEntry. Note it resumes playback
+        ///   (Streams, or the Player directly when a stream is remembered),
+        ///   never Details.
+        /// Returns false when the focused element has no harness-reachable
+        /// activation. Known gap — Streams rows: the focused ListViewItem's
+        /// ItemClick calls the page-private StreamsViewModel.PlayAsync
+        /// (debrid resolve + OpenPlayer with the resolved stream), which no
+        /// NavigationService entry can reproduce, and Invoke is unavailable
+        /// — ListViewItem/GridViewItem peers expose IDragProvider and
+        /// selection, not IInvokeProvider (Microsoft Learn: IInvokeProvider
+        /// remarks; ListViewItemAutomationPeer GetPattern returns a pattern
+        /// for IDragProvider only). That site needs an internal StreamsPage
+        /// helper (option (c), a second file) and stays a documented no-op
+        /// here. Details Similar cards and episode cards are the same shape
+        /// (private DetailsViewModel) and also return false.
+        /// </summary>
+        private async Task<bool> ActivateFocusedAsync()
+        {
+            var focused = FocusManager.GetFocusedElement();
+            if (focused == null) return false;
+            var button = focused as Button;
+            if (button != null)
+            {
+                new ButtonAutomationPeer(button).Invoke();
+                await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                return true;
+            }
+            var item = focused as GridViewItem;
+            if (item == null) return false;
+            // Cards only activate as their own page's ItemClick does. A
+            // Details Similar card needs OpenSimilarAsync (private view
+            // model) and an episode card needs PlayVideo with the episode's
+            // Video (private view model) — both return false, as above.
+            if (!HasAncestor<HomePage>(item) && !HasAncestor<SearchPage>(item) && !HasAncestor<CatalogPage>(item)) return false;
+            var card = item.Content as CatalogCardItem;
+            if (card != null)
+            {
+                if (_shell == null || _shell.Navigation == null) return false;
+                if (card.IsViewAll)
+                {
+                    var grid = FocusedRowGridView();
+                    var row = grid != null ? grid.DataContext as CatalogRowViewModel : null;
+                    if (row == null) return false;
+                    _shell.Navigation.NavigateCatalog(new CatalogNavigation
+                    {
+                        TransportUrl = row.Addon.TransportUrl,
+                        Type = row.Catalog.Type,
+                        Id = row.Catalog.Id,
+                    });
+                    await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                    return true;
+                }
+                if (card.Meta != null)
+                {
+                    _shell.Navigation.OpenTitle(card.Meta);
+                    await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                    return true;
+                }
+                return false;
+            }
+            var entry = item.Content as ProgressEntry;
+            if (entry != null)
+            {
+                if (_shell == null || _shell.Navigation == null) return false;
+                _shell.Navigation.ResumeEntry(entry);
+                await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                return true;
+            }
+            return false;
+        }
+
         private FrameworkElement FocusedElement()
         {
             return FocusManager.GetFocusedElement() as FrameworkElement;
@@ -748,17 +846,17 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return false;
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) return false;
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return false;
             await WaitForSettleAsync().ConfigureAwait(true);
             if (FocusedName() != "PlayButton") return false;
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
             if (streams == null) return false;
             await WaitForSettleAsync().ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() == null) return false;
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var player = await WaitForPageAsync<PlayerPage>(PlayerOpenTimeoutMs).ConfigureAwait(true);
             if (player == null) return false;
             await WaitForSettleAsync().ConfigureAwait(true);
@@ -1285,9 +1383,9 @@ namespace Nuvio.Diagnostics
             await PressAsync("down").ConfigureAwait(true);
             var metaId = FocusedCardMetaId();
             if (metaId == null) return FocusTestResult.Fail("home-back-details-meta-key", "no card with a Meta id on first Down");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Fail("home-back-details-meta-key", "select did not open Details");
+            if (details == null) return FocusTestResult.Fail("home-back-details-meta-key", "activation did not open Details");
             await WaitForSettleAsync().ConfigureAwait(true);
             await PressAsync("back").ConfigureAwait(true);
             var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
@@ -1303,9 +1401,19 @@ namespace Nuvio.Diagnostics
             var contentId = await ReachContinueCardAsync().ConfigureAwait(true) ? FocusedContinueContentId() : null;
             if (contentId == null) return FocusTestResult.Skip("home-back-continue-cw-key", "no Continue card reached");
             var card = FocusManager.GetFocusedElement();
-            await PressAsync("select").ConfigureAwait(true);
-            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Fail("home-back-continue-cw-key", "select did not open Details");
+            await ActivateFocusedAsync().ConfigureAwait(true);
+            // ResumeEntry resumes playback — Streams, or the Player directly
+            // when a stream is remembered — never Details (see
+            // ActivateFocusedAsync). Either destination counts; Back from
+            // either returns to Home, the page under test here.
+            var resumed = await WaitForAsync(() =>
+            {
+                var streams = FindPage<StreamsPage>(_shell);
+                if (streams != null && streams.IsContentReady) return true;
+                var player = FindPage<PlayerPage>(_shell);
+                return player != null && player.IsContentReady;
+            }, PageReadyTimeoutMs).ConfigureAwait(true);
+            if (!resumed) return FocusTestResult.Fail("home-back-continue-cw-key", "resume did not open Streams or the Player");
             await WaitForSettleAsync().ConfigureAwait(true);
             await PressAsync("back").ConfigureAwait(true);
             var home = await WaitForPageAsync<HomePage>().ConfigureAwait(true);
@@ -1363,9 +1471,9 @@ namespace Nuvio.Diagnostics
             await PressAsync("down").ConfigureAwait(true);
             var metaId = FocusedCardMetaId();
             if (metaId == null) return FocusTestResult.Skip("search-back-result-or-box-when-gone", "no results for the query");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "select did not open Details");
+            if (details == null) return FocusTestResult.Fail("search-back-result-or-box-when-gone", "activation did not open Details");
             await WaitForSettleAsync().ConfigureAwait(true);
             await PressAsync("back").ConfigureAwait(true);
             var search = await WaitForPageAsync<SearchPage>().ConfigureAwait(true);
@@ -1417,9 +1525,9 @@ namespace Nuvio.Diagnostics
                 metaId = FocusedCardMetaId();
             }
             if (metaId == null) return FocusTestResult.Fail("catalog-back-opened-card", "first card has no Meta id");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Fail("catalog-back-opened-card", "select did not open Details");
+            if (details == null) return FocusTestResult.Fail("catalog-back-opened-card", "activation did not open Details");
             await WaitForSettleAsync().ConfigureAwait(true);
             await PressAsync("back").ConfigureAwait(true);
             var catalog = await WaitForPageAsync<CatalogPage>().ConfigureAwait(true);
@@ -1462,9 +1570,9 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-details-episode-restores", "home did not settle");
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("dialog-details-episode-restores", "no card on first Down");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Fail("dialog-details-episode-restores", "select did not open Details");
+            if (details == null) return FocusTestResult.Fail("dialog-details-episode-restores", "activation did not open Details");
             await WaitForSettleAsync().ConfigureAwait(true);
             object episodeCard = null;
             var opened = false;
@@ -1534,8 +1642,8 @@ namespace Nuvio.Diagnostics
                 await PressAsync("down").ConfigureAwait(true);
             }
             if (!reached) return FocusTestResult.Skip("dialog-settings-confirm-restores", "Reset button not reached");
-            await PressAsync("select").ConfigureAwait(true);
-            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "select did not open the confirm dialog");
+            await ActivateFocusedAsync().ConfigureAwait(true);
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "activation did not open the confirm dialog");
             if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "dialog did not close");
             await WaitForSettleAsync().ConfigureAwait(true);
             if (FocusedName() == "ResetAddonsButton") return FocusTestResult.Pass("dialog-settings-confirm-restores", "close restored the Reset button");
@@ -1598,12 +1706,12 @@ namespace Nuvio.Diagnostics
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "home did not settle");
             await PressAsync("down").ConfigureAwait(true);
             if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no card on first Down");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "Details did not open");
             await WaitForSettleAsync().ConfigureAwait(true);
             if (FocusedName() != "PlayButton") return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no Play button on Details");
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
             if (streams == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no streams for the title");
             await WaitForSettleAsync().ConfigureAwait(true);
@@ -1618,7 +1726,7 @@ namespace Nuvio.Diagnostics
             {
                 return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "filter chips not reached from the rows");
             }
-            await PressAsync("select").ConfigureAwait(true);
+            await ActivateFocusedAsync().ConfigureAwait(true);
             await Task.Delay(1000).ConfigureAwait(true);
             var after = FocusManager.GetFocusedElement() as DependencyObject;
             if (after == null) return FocusTestResult.Fail("streams-filter-row-vanishes-fallback", "focus vanished after the filter change");
