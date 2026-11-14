@@ -1124,7 +1124,12 @@ namespace Nuvio.Diagnostics
 
         private async Task<bool> WaitForDialogOpenAsync(int timeoutMs = 3000)
         {
-            return await WaitForAsync(() => IsDialogOpen(), timeoutMs).ConfigureAwait(true);
+            // The open flag is raised before ShowAsync, so the flag alone
+            // can be observed before the popup exists in the tree. Confirm
+            // the popup too: every caller of this helper next touches the
+            // popup (closes it, or invokes a button inside it), so "open"
+            // must mean the popup is there, not just the flag.
+            return await WaitForAsync(() => IsDialogOpen() && FindOpenDialog() != null, timeoutMs).ConfigureAwait(true);
         }
 
         private async Task<bool> WaitForDialogClosedAsync(int timeoutMs = 3000)
@@ -1188,12 +1193,17 @@ namespace Nuvio.Diagnostics
         /// false → coordinator restore tick), so the restore under test is the
         /// real path — only the close gesture itself is test-only, because
         /// the synthetic seam cannot raise the native system-back the dialog
-        /// listens for. Returns false when no dialog was open to close.
+        /// listens for. The open flag is raised before ShowAsync, so a caller
+        /// that just saw the dialog as open may still find no popup in the
+        /// tree yet (log 24: the flag was seen and the close failed 1ms
+        /// later); the popup is waited for, bounded at 3s on the existing
+        /// 100ms poll, instead of failing at once. Returns false when no
+        /// dialog was open to close, or when no popup appears in time.
         /// </summary>
         private async Task<bool> CloseOpenDialogAsync()
         {
-            var dialog = FindOpenDialog();
-            if (dialog == null) return false;
+            ContentDialog dialog = null;
+            if (!await WaitForAsync(() => (dialog = FindOpenDialog()) != null, 3000).ConfigureAwait(true)) return false;
             dialog.Hide();
             return await WaitForDialogClosedAsync().ConfigureAwait(true);
         }
