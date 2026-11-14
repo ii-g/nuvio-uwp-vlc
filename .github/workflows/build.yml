@@ -306,6 +306,11 @@ jobs:
             "Head: $env:GITHUB_SHA",
             "Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID")
           $notes -join "`n" | Set-Content rolling-notes.md -Encoding utf8
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:GITHUB_REF_NAME" --jq '.sha'
+          if ($head -ne $env:GITHUB_SHA) {
+          "Stale: branch head is $head, this run is $env:GITHUB_SHA" | Set-Content rolling-notes.md -Encoding utf8
+          exit 0
+          }
           gh release view native-latest *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload native-latest NuvioUWPVLC-x64.msix NuvioUWPVLC-Dependencies.zip --clobber
