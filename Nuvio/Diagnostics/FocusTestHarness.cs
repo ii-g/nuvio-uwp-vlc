@@ -615,17 +615,22 @@ namespace Nuvio.Diagnostics
         ///   (Streams, or the Player directly when a stream is remembered),
         ///   never Details.
         /// Returns false when the focused element has no harness-reachable
-        /// activation. Known gap — Streams rows: the focused ListViewItem's
-        /// ItemClick calls the page-private StreamsViewModel.PlayAsync
-        /// (debrid resolve + OpenPlayer with the resolved stream), which no
-        /// NavigationService entry can reproduce, and Invoke is unavailable
-        /// — ListViewItem/GridViewItem peers expose IDragProvider and
-        /// selection, not IInvokeProvider (Microsoft Learn: IInvokeProvider
-        /// remarks; ListViewItemAutomationPeer GetPattern returns a pattern
-        /// for IDragProvider only). That site needs an internal StreamsPage
-        /// helper (option (c), a second file) and stays a documented no-op
-        /// here. Details Similar cards and episode cards are the same shape
-        /// (private DetailsViewModel) and also return false.
+        /// activation. Streams rows: the focused ListViewItem's ItemClick
+        /// calls StreamsViewModel.PlayAsync(row.Entry) on the page's view
+        /// model — a public method, and the page sets DataContext =
+        /// _viewModel — which opens the player for a playable stream
+        /// through NavigationService.OpenPlayer. The harness calls that
+        /// same public method on the page's DataContext below, so the
+        /// activation is the production handler minus its toast/debrid
+        /// branches, which only run when PlayAsync returns a non-null
+        /// PlayResult — never for a playable row, the only kind steering
+        /// activates. ButtonAutomationPeer.Invoke cannot do this:
+        /// ListViewItem peers expose IDragProvider and selection, not
+        /// IInvokeProvider (Microsoft Learn: IInvokeProvider remarks;
+        /// ListViewItemAutomationPeer GetPattern returns a pattern for
+        /// IDragProvider only). Details Similar cards and episode cards
+        /// are the same shape (private DetailsViewModel) and still
+        /// return false.
         /// </summary>
         private async Task<bool> ActivateFocusedAsync()
         {
@@ -635,6 +640,35 @@ namespace Nuvio.Diagnostics
             if (button != null)
             {
                 new ButtonAutomationPeer(button).Invoke();
+                await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
+                return true;
+            }
+            var listItem = focused as ListViewItem;
+            if (listItem != null)
+            {
+                // Streams rows only: run the production ItemClick's core —
+                // StreamsViewModel.PlayAsync(row.Entry) on the page's
+                // DataContext — which opens the player for a playable row.
+                // A non-null PlayResult (toast/debrid) means the player did
+                // not open; the caller judges that by waiting for the
+                // Player page, so this still returns true: the activation
+                // itself was performed. Throws (e.g. a failed resolve) are
+                // the ItemClick handler's logged-and-swallowed path; here
+                // they mean "not activated".
+                if (!HasAncestor<StreamsPage>(listItem)) return false;
+                var row = listItem.Content as StreamRowItem;
+                if (row == null || row.Entry == null) return false;
+                var streams = AncestorOfType<StreamsPage>(listItem);
+                var viewModel = streams != null ? streams.DataContext as StreamsViewModel : null;
+                if (viewModel == null) return false;
+                try
+                {
+                    await viewModel.PlayAsync(row.Entry).ConfigureAwait(true);
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
                 await Task.Delay(InterPressDelayMs).ConfigureAwait(true);
                 return true;
             }
