@@ -8,6 +8,7 @@ using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
 using Nuvio.Views;
+using Windows.Foundation;
 using Windows.Storage;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
@@ -22,7 +23,7 @@ namespace Nuvio.Diagnostics
     /// <summary>
     /// Phase 5 focus-test package (Focus Manager programme, final phase).
     ///
-    /// 48 tests in the package: 46 automated here (the registry in
+    /// 49 tests in the package: 47 automated here (the registry in
     /// <see cref="BuildTests"/>) + 2 manual gate checks (dormant-with-no-gate,
     /// flag-file-removal-disarms) that no in-app suite can observe about
     /// itself — see FOCUS.md §7 for the manual procedures.
@@ -244,7 +245,7 @@ namespace Nuvio.Diagnostics
         }
 
         /// <summary>
-        /// The suite: 46 automated tests in registry order (the two gate
+        /// The suite: 47 automated tests in registry order (the two gate
         /// self-checks first, then Phase 1–4, flag-off tests last so the flag
         /// is restored before the suite ends). Every test runs even after a
         /// failure, so one failure does not hide the rest. A throwing test
@@ -257,7 +258,7 @@ namespace Nuvio.Diagnostics
             var failed = 0;
             var skipped = 0;
             _suiteLogOffset = LogOffset();
-            Log.Write("TEST suite START tests=46 armedVia=" + _armedVia);
+            Log.Write("TEST suite START tests=47 armedVia=" + _armedVia);
             var shellReady = await WaitForShellReadyAsync().ConfigureAwait(true);
             if (!shellReady)
             {
@@ -326,6 +327,7 @@ namespace Nuvio.Diagnostics
                 new FocusTest("home-down-hero-to-first-card", TestHomeDownHeroToFirstCardAsync),
                 new FocusTest("home-row-to-row-per-row-memory", TestHomeRowMemoryAsync),
                 new FocusTest("home-down-never-sidebar-or-skip", TestHomeDownNeverSidebarAsync),
+                new FocusTest("home-anchor-pins-focused-card", TestHomeAnchorPinsFocusedCardAsync),
                 new FocusTest("home-back-details-meta-key", TestHomeBackDetailsMetaKeyAsync),
                 new FocusTest("home-back-continue-cw-key", TestHomeBackContinueCwKeyAsync),
                 new FocusTest("home-cold-first-entry-hero-play", TestHomeColdFirstEntryAsync),
@@ -1130,6 +1132,151 @@ namespace Nuvio.Diagnostics
             }
             if (rowsSeen < 2) return FocusTestResult.Fail("home-down-never-sidebar-or-skip", "only " + rowsSeen + " row(s) visited in 6 presses");
             return FocusTestResult.Pass("home-down-never-sidebar-or-skip", "6 Down presses, never sidebar, " + rowsSeen + " rows visited");
+        }
+
+        /// <summary>
+        /// The pinned focused card (D1): the focused poster itself sits
+        /// on the hero edge — the first slot of the row's viewport.
+        /// LTR 26..114 (26 epx inset, 88 card);
+        /// RTL 716..804 (912 viewport - 108 inset - 88 card).
+        /// The k-1 second-slot rule is superseded: the pinning is on the
+        /// focused card itself, and the strip moves one pitch (97 epx)
+        /// per step to keep it there. Walks a long poster row and
+        /// asserts the ring holds the first slot while the strip glides
+        /// underneath it — the rect is read twice, once pinned after the
+        /// first step in and once after three more steps, and both must sit
+        /// on the slot while HorizontalOffset grows between them.
+        /// </summary>
+        private async Task<FocusTestResult> TestHomeAnchorPinsFocusedCardAsync()
+        {
+            const double slotLeftRtl = 716;
+            const double slotRightRtl = 804;
+            const double slotLeftLtr = 26;
+            const double slotRightLtr = 114;
+            // The anchor deadband is 1 epx (TryComputeRowAnchorTarget
+            // returns false at |delta| <= 1), plus sub-pixel rounding on
+            // the glide: ±2 epx admits a settled strip and nothing more.
+            const double toleranceEpx = 2;
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-anchor-pins-focused-card", "home did not settle");
+            await PressAsync("down").ConfigureAwait(true);
+            // Walk down to the first poster row: the Continue row's 176 epx
+            // cards have a different pitch, so the slot above only holds
+            // for 88 epx posters. Entry is always the row's first card —
+            // the walk starts there and never steps sideways first.
+            GridView row = null;
+            for (var i = 0; i < 6; i++)
+            {
+                row = FocusedRowGridView();
+                var card = FocusManager.GetFocusedElement() as GridViewItem;
+                if (row != null && card != null && Math.Abs(card.ActualWidth - 88) <= 2) break;
+                row = null;
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            if (row == null) return FocusTestResult.Skip("home-anchor-pins-focused-card", "no poster row reached");
+            var viewer = FindDescendantOfType<ScrollViewer>(row);
+            if (viewer == null) return FocusTestResult.Skip("home-anchor-pins-focused-card", "no ScrollViewer in the poster row");
+            // The walk below moves the strip four pitches (388 epx); a row
+            // whose ScrollableWidth cannot cover that cannot prove the pin.
+            if (viewer.ScrollableWidth < 400) return FocusTestResult.Skip("home-anchor-pins-focused-card", "poster row too short to move the strip (scrollable=" + viewer.ScrollableWidth + ")");
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            var next = rtl ? "left" : "right";
+            var expectedLeft = rtl ? slotLeftRtl : slotLeftLtr;
+            var expectedRight = rtl ? slotRightRtl : slotRightLtr;
+            // One step in: the strip moves one pitch (97 epx) to bring
+            // the focused card onto the hero edge, so the ring should
+            // already sit on the first slot.
+            await PressAsync(next).ConfigureAwait(true);
+            if (!await WaitForRowScrollStableAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-anchor-pins-focused-card", "strip did not settle after the first step");
+            double left1, right1, offset1;
+            if (!TryFocusedCardPhysicalRect(out left1, out right1, out offset1)) return FocusTestResult.Fail("home-anchor-pins-focused-card", "focused card rect unreadable after the first step");
+            // Three more steps: the strip must glide under the ring, which stays put.
+            for (var i = 0; i < 3; i++) await PressAsync(next).ConfigureAwait(true);
+            if (!await WaitForRowScrollStableAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-anchor-pins-focused-card", "strip did not settle after the walk");
+            double left2, right2, offset2;
+            if (!TryFocusedCardPhysicalRect(out left2, out right2, out offset2)) return FocusTestResult.Fail("home-anchor-pins-focused-card", "focused card rect unreadable after the walk");
+            if (Math.Abs(left1 - expectedLeft) > toleranceEpx || Math.Abs(right1 - expectedRight) > toleranceEpx) return FocusTestResult.Fail("home-anchor-pins-focused-card", "first step rect=" + left1 + ".." + right1 + " expected " + expectedLeft + ".." + expectedRight);
+            if (Math.Abs(left2 - expectedLeft) > toleranceEpx || Math.Abs(right2 - expectedRight) > toleranceEpx) return FocusTestResult.Fail("home-anchor-pins-focused-card", "after walk rect=" + left2 + ".." + right2 + " expected " + expectedLeft + ".." + expectedRight);
+            if (offset2 <= offset1) return FocusTestResult.Fail("home-anchor-pins-focused-card", "strip did not move under the ring (offset " + offset1 + "->" + offset2 + ")");
+            return FocusTestResult.Pass("home-anchor-pins-focused-card", "ring held " + left2 + ".." + right2 + " while the strip moved " + offset1 + "->" + offset2);
+        }
+
+        /// <summary>
+        /// The focused card's physical edges inside its row's viewport, the
+        /// same measurement the app code uses (HomePage KeepCardInView /
+        /// TryComputeRowAnchorTarget): TransformToVisual against the row's
+        /// ScrollViewer — found with the harness's own descendant walk, the
+        /// same first-ScrollViewer-descendant the app's FindScrollViewer
+        /// returns — then flipped to physical edges, because
+        /// TransformToVisual reports RTL-origin coordinates in RTL (rect
+        /// Left is the start edge there, not the physical left). Also
+        /// returns the row's HorizontalOffset. False when the focused
+        /// element is not a card, the row cannot be found, or the row has
+        /// no ScrollViewer.
+        /// </summary>
+        private bool TryFocusedCardPhysicalRect(out double physicalLeft, out double physicalRight, out double horizontalOffset)
+        {
+            physicalLeft = 0;
+            physicalRight = 0;
+            horizontalOffset = 0;
+            var item = FocusManager.GetFocusedElement() as GridViewItem;
+            var row = FocusedRowGridView();
+            if (item == null || row == null) return false;
+            var viewer = FindDescendantOfType<ScrollViewer>(row);
+            if (viewer == null) return false;
+            var rect = item.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
+            var rtl = row.FlowDirection == FlowDirection.RightToLeft;
+            physicalLeft = rtl ? viewer.ViewportWidth - rect.Right : rect.Left;
+            physicalRight = rtl ? viewer.ViewportWidth - rect.Left : rect.Right;
+            horizontalOffset = viewer.HorizontalOffset;
+            return true;
+        }
+
+        /// <summary>
+        /// Waits until the focused card's rect and the row's
+        /// HorizontalOffset stop moving — two consecutive reads identical
+        /// within 0.5 epx — or the bounded wait runs out. PressAsync waits
+        /// only 200 ms and WaitForSettleAsync watches IsSettling, not the
+        /// scroll, and the anchor glide is exponential, so asserting on a
+        /// mid-glide rect would read a position the strip is only passing
+        /// through. A read that throws (card not in the tree yet) counts as
+        /// not stable yet, not as a failure. Returns false on timeout.
+        /// </summary>
+        private async Task<bool> WaitForRowScrollStableAsync(int timeoutMs = 5000)
+        {
+            double lastLeft = double.NaN;
+            double lastRight = double.NaN;
+            double lastOffset = double.NaN;
+            var elapsedMs = 0;
+            while (elapsedMs < timeoutMs)
+            {
+                double left, right, offset;
+                var readable = false;
+                try
+                {
+                    readable = TryFocusedCardPhysicalRect(out left, out right, out offset);
+                }
+                catch (Exception)
+                {
+                    readable = false;
+                    left = 0;
+                    right = 0;
+                    offset = 0;
+                }
+                if (readable
+                    && !double.IsNaN(lastLeft)
+                    && Math.Abs(left - lastLeft) <= 0.5
+                    && Math.Abs(right - lastRight) <= 0.5
+                    && Math.Abs(offset - lastOffset) <= 0.5) return true;
+                if (readable)
+                {
+                    lastLeft = left;
+                    lastRight = right;
+                    lastOffset = offset;
+                }
+                await Task.Delay(SettlePollIntervalMs).ConfigureAwait(true);
+                elapsedMs += SettlePollIntervalMs;
+            }
+            return false;
         }
 
         private async Task<FocusTestResult> TestHomeBackDetailsMetaKeyAsync()
