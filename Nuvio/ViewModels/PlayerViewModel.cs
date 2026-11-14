@@ -1109,10 +1109,15 @@ namespace Nuvio.ViewModels
 
         public void SeekTo(double time)
         {
+            // Capture before _lastTime is overwritten: CurrentTime() is
+            // extrapolated from _lastTime, so after the assignment it would
+            // read the target, not the position the seek started from.
+            var from = CurrentTime();
             var target = Math.Max(0, Duration > 0 ? Math.Min(Duration - 1, time) : time);
             _lastTime = target;
             _lastTimeAt = DateTime.UtcNow;
             _player.Seek(target);
+            Log.Write("Player seek: from=" + from.ToString("F1", CultureInfo.InvariantCulture) + "s to=" + target.ToString("F1", CultureInfo.InvariantCulture) + "s");
             RenderTimeline();
             if (_nextInfo != null && target < Duration - 60) CancelNext(false);
         }
