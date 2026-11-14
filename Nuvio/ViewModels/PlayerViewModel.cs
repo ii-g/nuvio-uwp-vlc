@@ -97,6 +97,13 @@ namespace Nuvio.ViewModels
     {
         private const int OpenTimeoutSeconds = 35;
         private const int HideControlsMs = 4000;
+        // Hide retries per arm: a tick that finds the player transiently
+        // not hideable (still loading, or rebuffering on the way to
+        // playing) re-arms instead of dying, so the hide lands one
+        // interval after the player becomes hideable. 7 retries cover
+        // 4s + 7 x 4s = 32s from the arm, inside the 35s open timeout:
+        // a player that never becomes ready never re-arms forever.
+        private const int HideRetryMax = 7;
         private const int SaveEveryMs = 5000;
         private const int MaxConsecutiveFailures = 3;
         private const int FallbackDelayMs = 1500;
@@ -142,6 +149,7 @@ namespace Nuvio.ViewModels
 
         private readonly DispatcherTimer _openTimer = new DispatcherTimer();
         private readonly DispatcherTimer _hideTimer = new DispatcherTimer();
+        private int _hideRetries;
         private readonly DispatcherTimer _stallTimer = new DispatcherTimer();
         private readonly DispatcherTimer _scrubTimer = new DispatcherTimer();
         private readonly DispatcherTimer _fallbackTimer = new DispatcherTimer();
@@ -1054,6 +1062,7 @@ namespace Nuvio.ViewModels
         public void ScheduleHide()
         {
             StopTimer(_hideTimer);
+            _hideRetries = 0;
             _hideTimer.Interval = TimeSpan.FromMilliseconds(HideControlsMs);
             _hideTimer.Start();
         }
@@ -1062,6 +1071,19 @@ namespace Nuvio.ViewModels
         {
             StopTimer(_hideTimer);
             HideControls();
+            // The tick fired while the hide was refused for a transient
+            // reason (still loading, or between states on the way to
+            // playing): re-arm instead of dying, so the hide does not
+            // wait on a later incidental re-arm. Never while paused —
+            // a paused player keeps its controls until it resumes
+            // (which re-arms through HandleStateChanged) — never with
+            // a menu open, and never past the retry budget.
+            if (ControlsVisible && !_closed && !MenuOpen && PlayState != "paused" && _hideRetries < HideRetryMax)
+            {
+                _hideRetries++;
+                _hideTimer.Interval = TimeSpan.FromMilliseconds(HideControlsMs);
+                _hideTimer.Start();
+            }
         }
 
         public void Poke()
