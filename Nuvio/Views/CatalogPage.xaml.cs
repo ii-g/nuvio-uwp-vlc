@@ -183,6 +183,12 @@ namespace Nuvio.Views
                 }
                 if (container != null && container.Focus(FocusState.Programmatic))
                 {
+                    // Record synchronously: GotFocus may never fire for a
+                    // programmatic focus when the page is left ~1ms later
+                    // (NavigationCacheMode.Disabled destroys the instance),
+                    // so the registry would otherwise keep a stale key.
+                    // Same value TryFocusKey restores: a no-op re-record.
+                    MainPage.Current?.RecordArrivalFocusKey(EntryKey, "meta:" + metaId);
                     return true;
                 }
                 return false;
@@ -196,7 +202,16 @@ namespace Nuvio.Views
             CatalogGridView.UpdateLayout();
             var container = CatalogGridView.ContainerFromIndex(0) as GridViewItem;
             if (container == null) return false;
-            return container.Focus(FocusState.Programmatic);
+            if (!container.Focus(FocusState.Programmatic)) return false;
+            // Record synchronously (see TryFocusOpenedCard): this arrival
+            // focus may be the only focus this page instance ever gets
+            // before it is destroyed, so do not rely on GotFocus firing.
+            var card = CatalogGridView.Items[0] as CatalogCardItem;
+            if (card != null && card.Meta != null)
+            {
+                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "meta:" + card.Meta.Id);
+            }
+            return true;
         }
 
         private void GenreChip_Click(object sender, RoutedEventArgs e)
