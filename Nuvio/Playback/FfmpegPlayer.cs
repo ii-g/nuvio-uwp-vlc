@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
@@ -46,6 +47,8 @@ namespace Nuvio.Playback
         private long _openGeneration;
         private long _lastPositionEventTicks;
         private long _lastHeartbeatTicks;
+        private long _positionChangedSinceHeartbeat;
+        private long _lastPositionChangedTicks;
         private double _lastPositionSeconds;
         private bool _hardwareDecodingRequested;
         private double _pendingStartSeconds;
@@ -555,7 +558,12 @@ namespace Nuvio.Playback
         public void Seek(double seconds)
         {
             if (_mediaPlayer == null || seconds < 0) return;
-            try { _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(seconds); }
+            try
+            {
+                var from = _mediaPlayer.PlaybackSession.Position.TotalSeconds;
+                _mediaPlayer.PlaybackSession.Position = TimeSpan.FromSeconds(seconds);
+                Log.Write("FFmpeg seek: from=" + from.ToString("F1", CultureInfo.InvariantCulture) + "s to=" + seconds.ToString("F1", CultureInfo.InvariantCulture) + "s");
+            }
             catch (Exception ex) { Log.Error("Seeking FFmpeg playback failed", ex); }
         }
         public void SetVolume(int volume) { if (_mediaPlayer != null) _mediaPlayer.Volume = Math.Max(0, Math.Min(100, volume)) / 100.0; }
@@ -563,7 +571,11 @@ namespace Nuvio.Playback
         public void SetRate(double rate)
         {
             if (_mediaPlayer == null || rate <= 0) return;
-            try { _mediaPlayer.PlaybackSession.PlaybackRate = Math.Max(0.25, Math.Min(4.0, rate)); }
+            try
+            {
+                _mediaPlayer.PlaybackSession.PlaybackRate = Math.Max(0.25, Math.Min(4.0, rate));
+                Log.Write("FFmpeg rate: " + _mediaPlayer.PlaybackSession.PlaybackRate);
+            }
             catch (Exception ex) { Log.Error("Setting playback rate failed", ex); }
         }
 
@@ -790,12 +802,18 @@ namespace Nuvio.Playback
             // stops moving while the state stays Playing is the stall
             // signal — plus buffering/download progress for the cause.
             var now = DateTime.UtcNow;
+            Interlocked.Increment(ref _positionChangedSinceHeartbeat);
+            var previousEventTicks = Interlocked.Exchange(ref _lastPositionChangedTicks, now.Ticks);
             var previousHeartbeat = Interlocked.Read(ref _lastHeartbeatTicks);
             if (_readySent && sender.PlaybackState == MediaPlaybackState.Playing &&
                 now.Ticks - previousHeartbeat >= TimeSpan.TicksPerSecond * 10 &&
                 Interlocked.CompareExchange(ref _lastHeartbeatTicks, now.Ticks, previousHeartbeat) == previousHeartbeat)
             {
-                LogHeartbeat(sender);
+                // Count includes this event; gap is the silence before it, so a
+                // heartbeat after quiet events still shows how long they were quiet.
+                var eventCount = Interlocked.Exchange(ref _positionChangedSinceHeartbeat, 0);
+                var lastGapMs = previousEventTicks == 0 ? -1 : (now.Ticks - previousEventTicks) / TimeSpan.TicksPerMillisecond;
+                LogHeartbeat(sender, eventCount, lastGapMs);
             }
             // PositionChanged can fire several times per second. Coalesce progress updates so
             // the WebView bridge doesn't build a backlog on the Xbox renderer thread.
@@ -816,16 +834,23 @@ namespace Nuvio.Playback
             payload.SetNamedValue("duration", JsonValue.CreateNumberValue(sender.NaturalDuration.TotalSeconds));
             Raise("player.duration", payload);
         }
-        private void LogHeartbeat(MediaPlaybackSession session)
+        private void LogHeartbeat(MediaPlaybackSession session, long eventCount, long lastGapMs)
         {
             try
             {
                 // BufferingProgress and DownloadProgress are 0..1 ratios
                 // (Microsoft Learn: multiply by 100 for a percentage).
+                // pos keeps three decimals so a ~0.59x clock can be told apart
+                // from rounding; events counts PositionChanged since the
+                // previous heartbeat and lastGap is the silence before the
+                // event that triggered this heartbeat.
                 Log.Write("FFmpeg heartbeat: state=" + session.PlaybackState +
-                    " pos=" + Math.Round(session.Position.TotalSeconds) + "s/" + Math.Round(session.NaturalDuration.TotalSeconds) + "s" +
+                    " pos=" + session.Position.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture) + "s/" + Math.Round(session.NaturalDuration.TotalSeconds) + "s" +
+                    " rate=" + session.PlaybackRate +
                     " buffering=" + Math.Round(session.BufferingProgress * 100) + "%" +
-                    " download=" + Math.Round(session.DownloadProgress * 100) + "%");
+                    " download=" + Math.Round(session.DownloadProgress * 100) + "%" +
+                    " events=" + eventCount +
+                    " lastGap=" + (lastGapMs < 0 ? "n/a" : lastGapMs + "ms"));
             }
             catch (Exception ex)
             {
