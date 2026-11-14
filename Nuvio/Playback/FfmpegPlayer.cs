@@ -325,11 +325,22 @@ namespace Nuvio.Playback
         // The 30-second open timeout is unchanged; the watchdog now also
         // logs progress every 5 seconds while the open is still waiting,
         // so a stalled open leaves a trail of session states instead of
-        // silence followed by a single OpenTimeout line.
+        // silence followed by a single OpenTimeout line. It also confirms
+        // the open from playback itself: a tick whose state is Playing
+        // with a position past the previous tick proves the stream is
+        // advancing, even when the video-size gate in SignalVideoReady
+        // never fired — so a playing stream is no longer killed at 30s.
         private async Task WatchOpenTimeoutAsync(long generation)
         {
             try
             {
+                // Baseline for the playback confirmation: the requested
+                // start position (Open reset _lastPositionSeconds to it
+                // before launching this task, and this body runs
+                // synchronously up to the first await). A first tick past
+                // it already proves advancement; later ticks compare
+                // against the previous tick instead.
+                var previousPositionSeconds = _lastPositionSeconds;
                 for (var elapsed = 5; elapsed <= (int)OpenTimeout.TotalSeconds; elapsed += 5)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
@@ -340,6 +351,18 @@ namespace Nuvio.Playback
                     await view.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
                     {
                         if (!IsCurrentOpen(generation, CancellationToken.None) || _readySent || _openFailed) return;
+                        var session = _mediaPlayer == null ? null : _mediaPlayer.PlaybackSession;
+                        if (session != null)
+                        {
+                            var positionSeconds = session.Position.TotalSeconds;
+                            if (session.PlaybackState == MediaPlaybackState.Playing &&
+                                positionSeconds > previousPositionSeconds)
+                            {
+                                ConfirmOpenByPlayback(generation, session);
+                                return;
+                            }
+                            previousPositionSeconds = positionSeconds;
+                        }
                         if (tickElapsed < (int)OpenTimeout.TotalSeconds) LogOpenProgress(tickElapsed);
                         else FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.", "OpenTimeout");
                     });
@@ -377,6 +400,7 @@ namespace Nuvio.Playback
                 return;
             }
             Log.Write("FFmpeg open still waiting (" + elapsedSeconds + "s/" + (int)OpenTimeout.TotalSeconds + "s, state=" + session.PlaybackState +
+                " size=" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight +
                 " pos=" + Math.Round(session.Position.TotalSeconds) + "s" +
                 " buffering=" + Math.Round(session.BufferingProgress * 100) + "%" +
                 " download=" + Math.Round(session.DownloadProgress * 100) + "%)");
@@ -759,6 +783,15 @@ namespace Nuvio.Playback
 
         private void SignalVideoReady(MediaPlaybackSession session)
         {
+            // Diagnostic only: every readiness check logs its inputs, so
+            // a later log shows whether a check was rejected for the
+            // state, for a zero video size, or for a stale/failed open —
+            // the two failure modes the open-timeout investigation could
+            // not tell apart. Acceptance is already logged below as
+            // "video track ready". No behaviour change.
+            Log.Write("FFmpeg video readiness check: state=" + session.PlaybackState +
+                " size=" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight +
+                " readySent=" + _readySent + " openFailed=" + _openFailed + " disposed=" + _disposed);
             if (_disposed || _openFailed || _readySent ||
                 session.PlaybackState != MediaPlaybackState.Playing ||
                 session.NaturalVideoHeight == 0 || session.NaturalVideoWidth == 0)
@@ -768,6 +801,30 @@ namespace Nuvio.Playback
             CancelPendingOpen();
             Log.Write("FFmpeg video track ready (" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight + ")");
             LogActualDecoder("ready");
+            Raise("player.ready", new JsonObject());
+            if (_view != null) SetViewOpacity(1);
+        }
+
+        // Playback itself proved the open: the watchdog saw Playing with
+        // a position advancing past the previous tick, while the
+        // video-size gate in SignalVideoReady never fired (size stayed
+        // 0, or the Playing transition never arrived with a size). This
+        // completes the same open-success effects SignalVideoReady
+        // performs — show the surface (Open hid it and only the ready
+        // path restores it), let the heartbeat run, and raise
+        // player.ready — under its own log line, so later logs tell
+        // this path apart from "video track ready". A genuinely stuck
+        // open never reaches here: no advance means no confirmation,
+        // and the watchdog still fails it at 30s.
+        private void ConfirmOpenByPlayback(long generation, MediaPlaybackSession session)
+        {
+            if (_disposed || _openFailed || _readySent || generation != Interlocked.Read(ref _openGeneration)) return;
+            _readySent = true;
+            CancelPendingOpen();
+            Log.Write("FFmpeg open confirmed by playback (state=" + session.PlaybackState +
+                " pos=" + Math.Round(session.Position.TotalSeconds) + "s" +
+                " size=" + session.NaturalVideoWidth + "x" + session.NaturalVideoHeight + ")");
+            LogActualDecoder("playback-confirmed");
             Raise("player.ready", new JsonObject());
             if (_view != null) SetViewOpacity(1);
         }
