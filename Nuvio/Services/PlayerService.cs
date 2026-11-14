@@ -202,7 +202,44 @@ namespace Nuvio.Services
         {
             // Events arrive on background threads (FFmpeg) or the UI thread (VLC):
             // parse and raise everything on the UI thread, fire-and-forget.
+            // "player.tracks" alone is regenerated here: its payload is the only
+            // one carrying programmatically built JsonArray values, and reading
+            // those cross-thread threw InvalidCastException in ParseTracks.
+            if (string.Equals(type, "player.tracks", StringComparison.Ordinal) && payload != null)
+                payload = RegenerateTracksPayload(payload);
             PostToUi(() => HandlePlayerEvent(type, payload));
+        }
+
+        /// <summary>
+        /// Rebuilds a "player.tracks" payload from its JSON text so the UI thread
+        /// reads a freshly parsed tree instead of the programmatically built one:
+        /// FfmpegPlayer builds the audio/subtitles arrays with new JsonArray() +
+        /// SetNamedValue on a background thread, and reading them cross-thread via
+        /// GetNamedValue threw InvalidCastException ("Player event dispatch failed",
+        /// one per playback), so TracksChanged was never raised. Stringify runs
+        /// here on the arriving thread: the creating thread for FFmpeg, but the
+        /// UI thread for VLC (its arrays are built on the worker thread while the
+        /// payload itself is raised inside RunOnUi) — a failure there keeps the
+        /// original payload, i.e. the old behaviour, with no regression. The
+        /// parsed tree is the same shape the Stremio/Meta/TMDB readers already
+        /// consume without errors. The field set is preserved exactly — both
+        /// engines tag every event with "id" — so the "id" stale-open filter in
+        /// HandlePlayerEvent behaves the same as before. On any failure the
+        /// original payload is kept, so behaviour is unchanged.
+        /// </summary>
+        private static JsonObject RegenerateTracksPayload(JsonObject payload)
+        {
+            try
+            {
+                var regenerated = JsonHelpers.ParseObject(payload.Stringify());
+                if (regenerated != null) return regenerated;
+                Log.Write("Regenerating player.tracks payload failed: parsed payload was null; keeping the original payload.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Regenerating player.tracks payload failed", ex);
+            }
+            return payload;
         }
 
         private void PostToUi(Action action)
