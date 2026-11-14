@@ -366,10 +366,15 @@ namespace Nuvio.Input
         }
 
         /// <summary>
-        /// One settle attempt. Focus already inside the page counts as
-        /// success WITHOUT moving anything (a late attempt must never yank
-        /// focus the user already placed); otherwise TrySettleOnce, then
-        /// verify focus really landed inside the page. Logs the attempt
+        /// One settle attempt. On a Back arrival, focus already inside the
+        /// page counts as success WITHOUT moving anything (a late attempt
+        /// must never yank focus the user already placed); on a fresh
+        /// arrival it does not — the focus may be the cached page's stale
+        /// focus (Home/Search are Required-cache, so re-navigating Home
+        /// returns the same instance with focus still on a card), and
+        /// accepting it would declare the settle done on a card instead of
+        /// the arrival target. Fresh arrivals always run TrySettleOnce,
+        /// then verify focus really landed inside the page. Logs the attempt
         /// number, entry key, result and the focused element's type after
         /// the attempt (ids only — never URLs, keys or tokens).
         /// </summary>
@@ -381,7 +386,7 @@ namespace Nuvio.Input
             var settled = false;
             try
             {
-                if (IsFocusInsidePage(page)) settled = true;
+                if (_settleIsBack && IsFocusInsidePage(page)) settled = true;
                 else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)
                     && FocusablePage.IsRealFocusTarget(FocusManager.GetFocusedElement() as DependencyObject))
                 {
@@ -518,6 +523,18 @@ namespace Nuvio.Input
                     {
                         if (arrival.TryFocusKey(key)) return true;
                     }
+                }
+                if (!isBack && page is HomePage)
+                {
+                    // Cached Home re-navigation: HomePage.TryFocusArrival
+                    // bails out (returns true without moving) when focus is
+                    // already inside the page, so it cannot move focus off
+                    // the stale card. The keyed form has no bail-out:
+                    // "hero" always focuses the hero Play button when a
+                    // hero exists. When there is none it returns false and
+                    // the arrival call below handles the empty-library
+                    // target (ManageAddons) exactly as before.
+                    if (arrival.TryFocusKey("hero")) return true;
                 }
                 return arrival.TryFocusArrival();
             }
