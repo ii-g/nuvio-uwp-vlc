@@ -170,15 +170,18 @@ Every new page must satisfy all of these to join the system:
   card's Play button, not the OSD Next button; `error` targets TryNext when
   visible, else Retry). The OSD hides by setting `OsdRoot.Opacity` to 0 —
   the buttons stay in the tree but invisible — so on hide, if focus is
-  inside the OSD, the coordinator parks it on the Back button (the player
-  arrival target, via `TryFocusKey("back")`) and remembers the last OSD
-  control; on re-show, focus returns to the remembered control, or the hint
-  target (`"seek"` → SeekBar, `"play"` → PlayPause). The show-restore runs
-  synchronously inside the `ControlsVisible` property change, before the
-  ViewModel raises its focus hint, so the hint's never-yank rule keeps the
-  restored element. It is skipped entirely when a dialog is open (the dialog
-  owns focus) or an arrival settle is running — the remembered slot is
-  cleared in both cases. Exception: when focus is on a visible Next-card or
+  inside the OSD, the coordinator parks it on Play/Pause (via
+  `TryFocusKey("play")`); on re-show, focus lands on Play/Pause again.
+  (This replaced the earlier Phase 4 rule — park on Back and restore the
+  remembered control.) The show focus runs synchronously inside the
+  `ControlsVisible` property change, before the ViewModel raises its focus
+  hint, so a specific hint (`"seek"` → SeekBar, ...) still wins after it.
+  Down from a bottom-row button (controls row) hides the OSD instead —
+  there is nowhere to navigate below it — while Down from the seek row
+  or the top row keeps default focus movement. The anchor/show focus
+  is skipped entirely when a dialog is open (the dialog owns focus) or
+  an arrival settle is running — the anchor is cleared in both cases.
+  Exception: when focus is on a visible Next-card or
   error-box button (outside the OSD root), nothing is parked and that button
   keeps focus. X toggles pause (there is no stop action). Back: cancel a
   pending scrub first; if controls are visible and playing, hide only;
