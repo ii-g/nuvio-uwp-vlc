@@ -577,11 +577,9 @@ namespace Nuvio.Input
         /// <summary>
         /// After a sidebar → content move, the focus may sit on any card of the row the
         /// framework picked; move it to that row's first card (index 0 in flow order).
-        /// No-op when focus did not land in a row (e.g. the hero). Resets the row's
-        /// offset to 0 first — even when focus already sits on index 0, so a fresh
-        /// entry never lands on index 0 at a stale offset — then moves focus to
-        /// index 0 when it is not already there. Scrolls the row to the start first
-        /// when the first container is virtualized away.
+        /// No-op when focus did not land in a row (e.g. the hero) or is already on the
+        /// first card. Scrolls the row to the start first when the first container is
+        /// virtualized away.
         /// </summary>
         private void FocusFirstCardOfEnteredRow()
         {
@@ -590,20 +588,6 @@ namespace Nuvio.Input
             if (item == null) return;
             var grid = ItemsControl.ItemsControlFromItemContainer(item) as GridView;
             if (grid == null || grid.Items.Count == 0) return;
-            // Sidebar entry always pins the row to its start: reset the strip
-            // to offset 0 before landing on index 0, so a fresh entry never
-            // lands on index 0 wherever the strip happened to be scrolled.
-            // Instant jump (no glide): the landing card must already be at
-            // the anchor when focus arrives, and the jump also cancels any
-            // glide the landing card's GotFocus just issued for the pre-pin
-            // card. Runs even when focus already sits on index 0 — that is
-            // the bug: index 0 at a stale offset. No viewer (a non-scrolling
-            // grid) keeps today's focus-only behavior.
-            var viewer = FocusScrollHelper.FindScrollViewer(grid);
-            if (viewer != null)
-            {
-                _scrollHelper.JumpTo(viewer, 0, null);
-            }
             if (grid.IndexFromContainer(item) == 0) return;
             var first = grid.ContainerFromIndex(0) as GridViewItem;
             if (first == null)
