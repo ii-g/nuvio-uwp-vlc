@@ -104,6 +104,9 @@ namespace Nuvio.Services
         private bool _addonsLoaded;
         private bool _addonsLoadFailed;
         private bool _hasStoredAddons;
+        // In-flight load: a concurrent caller awaits this same task instead
+        // of seeing an empty list. Cleared on fault so the next call retries.
+        private Task _loadAddonsTask;
 
         // Serialises addon saves in call order: a save queued behind an
         // earlier one runs after it, so the last save requested is the
@@ -122,22 +125,41 @@ namespace Nuvio.Services
 
         // ---------- Storage ----------
 
-        public async Task LoadAddonsAsync()
+        public Task LoadAddonsAsync()
         {
-            if (_addonsLoaded) return;
-            _addonsLoaded = true;
-            var result = await _store.ReadProfileJsonDetailedAsync("addons").ConfigureAwait(false);
-            _addonsLoadFailed = (result.Status == JsonReadStatus.Failed);
-            var value = result.Value;
-            _addons = new List<Addon>();
-            if (value != null && value.ValueType == JsonValueType.Array)
+            if (_addonsLoaded) return Task.FromResult(0);
+            var task = _loadAddonsTask;
+            if (task != null) return task;
+            task = LoadAddonsCoreAsync();
+            _loadAddonsTask = task;
+            return task;
+        }
+
+        private async Task LoadAddonsCoreAsync()
+        {
+            try
             {
-                _hasStoredAddons = true;
-                foreach (var item in value.GetArray())
+                var result = await _store.ReadProfileJsonDetailedAsync("addons").ConfigureAwait(false);
+                _addonsLoadFailed = (result.Status == JsonReadStatus.Failed);
+                var value = result.Value;
+                _addons = new List<Addon>();
+                if (value != null && value.ValueType == JsonValueType.Array)
                 {
-                    var addon = Addon.FromJson(item);
-                    if (addon != null && !string.IsNullOrEmpty(addon.TransportUrl)) _addons.Add(addon);
+                    _hasStoredAddons = true;
+                    foreach (var item in value.GetArray())
+                    {
+                        var addon = Addon.FromJson(item);
+                        if (addon != null && !string.IsNullOrEmpty(addon.TransportUrl)) _addons.Add(addon);
+                    }
                 }
+                _addonsLoaded = true;
+            }
+            catch
+            {
+                // A faulted stored task would poison every later caller, so
+                // drop it: the next call retries the read instead.
+                _loadAddonsTask = null;
+                throw;
             }
         }
 
@@ -227,6 +249,7 @@ namespace Nuvio.Services
             _addonsLoaded = false;
             _addonsLoadFailed = false;
             _addons = null;
+            _loadAddonsTask = null;
             var _ = LoadAddonsAsync().ContinueWith(t =>
             {
                 Log.Write("[DIAG] StremioService.ReloadAddons: reload complete count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] loadFailed=" + _addonsLoadFailed);
