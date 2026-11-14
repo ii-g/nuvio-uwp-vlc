@@ -91,6 +91,34 @@ namespace Nuvio.Views
             }
         }
 
+        /// <summary>Jumps a ScrollViewer to the given offsets instantly (no glide,
+        /// no animation): the view changes synchronously, so the strip is already
+        /// at the target before the next frame renders. Cancels any glide running
+        /// on a jumped axis only — a glide left running there would retarget the
+        /// viewer back toward its old destination on the next frame — and leaves
+        /// the other axis alone (a horizontal jump must not kill a vertical pin
+        /// glide sharing this viewer's state, and vice versa). Null leaves that
+        /// axis where it is. Offsets are clamped to the scrollable range, like
+        /// SmoothScrollTo.</summary>
+        public void JumpTo(ScrollViewer viewer, double? targetH, double? targetV)
+        {
+            if (viewer == null) return;
+            SmoothScrollState state;
+            if (_smoothScrolls.TryGetValue(viewer, out state))
+            {
+                if (targetH.HasValue) state.TargetH = null;
+                if (targetV.HasValue) state.TargetV = null;
+                if (!state.TargetH.HasValue && !state.TargetV.HasValue)
+                {
+                    state.Running = false;
+                    _smoothScrolls.Remove(viewer);
+                }
+            }
+            var h = targetH.HasValue ? Math.Max(0, Math.Min(viewer.ScrollableWidth, targetH.Value)) : (double?)null;
+            var v = targetV.HasValue ? Math.Max(0, Math.Min(viewer.ScrollableHeight, targetV.Value)) : (double?)null;
+            viewer.ChangeView(h, v, null, true);
+        }
+
         private void OnSmoothScrollRendering(object sender, object e)
         {
             var now = DateTime.UtcNow;
@@ -304,7 +332,11 @@ namespace Nuvio.Views
         /// inside the edge — the same place the first card rests. The offset is computed
         /// from the card's on-screen rect, so no ratio is guessed: BringIntoView ratios
         /// are fractions of the flow extent, which is why 0.99 pinned the card to the
-        /// flow end (the left edge in RTL) on build 162 instead of the start.</summary>
+        /// flow end (the left edge in RTL) on build 162 instead of the start. The move
+        /// is an instant jump (JumpTo, animation disabled), not a glide: the pin must
+        /// hold the moment focus lands — the GotFocus correction fires synchronously
+        /// inside the focus move, so the strip is already at the anchor before the
+        /// next frame renders.</summary>
         private void AnchorRow(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
@@ -351,7 +383,7 @@ namespace Nuvio.Views
                 }
                 target = viewer.HorizontalOffset + delta;
             }
-            SmoothScrollTo(viewer, SnapRowEnd(row, viewer, target), null);
+            JumpTo(viewer, SnapRowEnd(row, viewer, target), null);
         }
 
         /// <summary>Anchors the current row's block at 16% of the page height (web
