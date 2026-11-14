@@ -1154,3 +1154,38 @@ release msix on the Xbox, where there is no DEBUG build to install.
 - `settled=true` / `focusName=` log lines the suite reads are the
   coordinator's own settle lines, not a test hook; if their wording
   changes, `home-launch-coordinator-settle` must be updated with them.
+
+### 7. Harness run on build 623 (2.0.623.0) — result and fixes
+
+- **Run:** head `9c69353`, device run by Mohammed, 48 s:
+  **19 PASS / 8 FAIL / 19 SKIP** (log `nuvio-vlc_11-2.log`).
+  Most SKIP are "no playable stream" — the player/OSD tests need a real
+  stream, so they stay manual checks.
+- **Three harness false positives** (all in `FocusTestHarness.cs`,
+  commit `08274a9`):
+  - `LogContainsSince` searched the log for `"settled=true"` with a
+    case-sensitive match while the log writes `"settled=True"` — now
+    `OrdinalIgnoreCase`.
+  - `TestSettingsMenuBackCollapsesAsync` pressed Left to expand the
+    sidebar; in RTL the toward-sidebar direction is Right — now
+    flow-aware (`Right` in RTL, `Left` in LTR).
+  - `FocusedCardMetaId` cast card content `as Meta`; catalog items are
+    `CatalogCardItem` wrapping `Meta` — now reads `card.Meta.Id`, and the
+    test steps to the previous card (bounded, 3 attempts) off a ViewAll
+    card, which has `Meta == null` by design.
+- **One real app gap — cached Home + settle shortcut** (commits `516dc9f`
+  coordinator, `3b83f2a` legacy router): `HomePage` is `Required`-cache,
+  so re-navigating Home while already on it returns the same instance
+  with focus still on a card, and the settle's sync attempt accepted
+  that stale focus as settled instead of moving to hero Play. The
+  "already settled" shortcut is now gated to Back arrivals in both
+  settle paths; fresh arrivals always run `TrySettleOnce`. Home needed
+  one more step: `HomePage.TryFocusArrival()` bails out (returns true)
+  when focus is already inside the page, so on a fresh Home arrival the
+  settle calls `TryFocusKey("hero")` first (no bail-out; focuses hero
+  Play when a hero exists, else falls through to the arrival call for
+  the empty-library target). The `TryFocusArrival` bail-out itself was
+  deliberately NOT changed in this round — the workaround is Home-scoped
+  in the settle. No new `.Focus(` sites.
+- **Gate not yet re-run:** these fixes need a green build and a fresh
+  device harness run to confirm the 8 FAILs are gone.
