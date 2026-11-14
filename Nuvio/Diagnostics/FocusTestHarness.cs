@@ -156,6 +156,18 @@ namespace Nuvio.Diagnostics
         /// disabled. Null when the guard was skipped (no service / error).</summary>
         private List<Addon> _addonGuardStart;
 
+        /// <summary>Name of the test currently running in the suite loop,
+        /// for the addon guard's CHANGE lines (null outside a test). Set at
+        /// the top of each loop iteration, cleared when the suite ends.
+        /// No current-test tracking existed before the guard watch needed it.</summary>
+        private string _addonGuardCurrentTest;
+
+        /// <summary>Last-seen addon list as a comparison key (transport URL
+        /// + enabled flag per addon — never logged, only compared), so the
+        /// event handler and the per-test poll can tell a real change from
+        /// a repeat notification of the same list.</summary>
+        private string _addonGuardLastSeen;
+
         public FocusTestHarness(MainPage shell)
             : this(shell, "unknown")
         {
@@ -285,8 +297,10 @@ namespace Nuvio.Diagnostics
                 return;
             }
             _addonGuardStart = await TakeAddonGuardSnapshotAsync().ConfigureAwait(true);
+            SubscribeAddonGuardChangeWatch();
             foreach (var test in BuildTests())
             {
+                _addonGuardCurrentTest = test.Name;
                 FocusTestResult result;
                 try
                 {
@@ -305,8 +319,11 @@ namespace Nuvio.Diagnostics
                     case FocusTestOutcome.Fail: failed++; break;
                     default: skipped++; break;
                 }
+                CheckAddonGuardPoll();
             }
+            _addonGuardCurrentTest = null;
             await VerifyAndRestoreAddonGuardAsync().ConfigureAwait(true);
+            UnsubscribeAddonGuardChangeWatch();
             // Defensive flag restore: the flag-off tests restore in their
             // own finally blocks; this is the backstop so the app never
             // leaves the suite with the coordinator switched off.
@@ -466,6 +483,107 @@ namespace Nuvio.Diagnostics
                 Log.Write("Harness addon guard: ERROR " + ex.GetType().Name + ": " + ex.Message);
             }
             return Task.FromResult(0);
+        }
+
+        /// <summary>
+        /// Addon guard (c): live change watch. Subscribes to
+        /// StremioService.AddonsChanged at suite start (right after the
+        /// snapshot) and unsubscribes at suite end (after verification).
+        /// Every event logs one diagnostic line with the new count, the
+        /// addon names (never a transport URL) and the test running at the
+        /// time, so the next log shows WHEN the list changed and WHAT was
+        /// running — the end-of-suite guard alone could only say that
+        /// something was lost. The handler never throws: it runs inside
+        /// production save/merge paths.
+        /// </summary>
+        private void SubscribeAddonGuardChangeWatch()
+        {
+            try
+            {
+                if (_shell == null || _shell.Stremio == null) return;
+                _addonGuardLastSeen = AddonGuardKey(_shell.Stremio.ListAddons());
+                _shell.Stremio.AddonsChanged += OnAddonGuardAddonsChanged;
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Harness addon guard: ERROR subscribe failed " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        private void UnsubscribeAddonGuardChangeWatch()
+        {
+            try
+            {
+                if (_shell != null && _shell.Stremio != null) _shell.Stremio.AddonsChanged -= OnAddonGuardAddonsChanged;
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Harness addon guard: ERROR unsubscribe failed " + ex.GetType().Name + ": " + ex.Message);
+            }
+            _addonGuardCurrentTest = null;
+        }
+
+        private void OnAddonGuardAddonsChanged(object sender, AddonsChangedEventArgs e)
+        {
+            try
+            {
+                var addons = e == null ? null : e.Addons;
+                _addonGuardLastSeen = AddonGuardKey(addons);
+                var count = addons == null ? 0 : addons.Count;
+                var names = addons == null ? string.Empty : AddonGuardNames(addons);
+                Log.Write("Harness addon guard: CHANGE event count=" + count
+                    + " addons=[" + names + "] test=" + (_addonGuardCurrentTest ?? "(none)"));
+            }
+            catch (Exception)
+            {
+                // Never throw out of a production event path.
+            }
+        }
+
+        /// <summary>
+        /// Addon guard (c) backstop: the event only fires if
+        /// RaiseAddonsChanged runs. If the list is mutated without raising
+        /// the event, the event never fires, so after each test the loop
+        /// re-reads ListAddons() and compares it with the last-seen set.
+        /// A difference logs one diagnostic line in the same format as the
+        /// event. Synchronous, inside the existing test flow — no timer,
+        /// no background loop.
+        /// </summary>
+        private void CheckAddonGuardPoll()
+        {
+            try
+            {
+                if (_shell == null || _shell.Stremio == null) return;
+                if (_addonGuardLastSeen == null) return;
+                var current = _shell.Stremio.ListAddons();
+                var key = AddonGuardKey(current);
+                if (string.Equals(key, _addonGuardLastSeen, StringComparison.Ordinal)) return;
+                _addonGuardLastSeen = key;
+                Log.Write("Harness addon guard: CHANGE poll count=" + current.Count
+                    + " addons=[" + AddonGuardNames(current) + "] test=" + (_addonGuardCurrentTest ?? "(none)"));
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Harness addon guard: ERROR poll failed " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        /// <summary>Comparison key for the addon list: transport URL +
+        /// enabled flag per addon, in order. Never logged — only compared.
+        /// Names alone would miss an enabled-state flip and could collide
+        /// between addons.</summary>
+        private static string AddonGuardKey(IEnumerable<Addon> addons)
+        {
+            var parts = new List<string>();
+            if (addons != null)
+            {
+                foreach (var addon in addons)
+                {
+                    if (addon == null) continue;
+                    parts.Add((addon.TransportUrl ?? string.Empty) + "|" + (addon.Enabled != false ? "1" : "0"));
+                }
+            }
+            return parts.Count + ":" + string.Join(";", parts);
         }
 
         /// <summary>Guard log names only: the manifest name, else the host
