@@ -44,7 +44,7 @@
                      English original sits below it in smaller muted text; both hide
                      when the box has text. The field has no focus ring at all (no blue
                      accent border): focus is the caret and the placeholder/text
-                     brightness, and the Xbox system keyboard still opens on focus.
+                     brightness, and the Xbox system keyboard stays closed on programmatic focus (PreventKeyboardDisplayOnProgrammaticFocus, set guarded in code-behind) — Gamepad A on the box or a tap on the field opens it.
                      Tapping anywhere in the field (magnifier, English line) focuses
                      the box. -->
                 <Grid Margin="0,24,0,0" Tapped="SearchField_Tapped">
