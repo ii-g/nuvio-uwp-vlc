@@ -9,6 +9,7 @@ using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
 using Nuvio.ViewModels;
+using Windows.Foundation.Metadata;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.System;
@@ -69,6 +70,18 @@ namespace Nuvio.Views
         {
             NavigationCacheMode = NavigationCacheMode.Required;
             InitializeComponent();
+            // Xbox: programmatic focus must not pop the system keyboard.
+            // Every D-pad move is programmatic, so without this the keyboard
+            // opens on every arrival at the box (and on every Up back to it
+            // from the results). The property's introduction version is not
+            // pinned in the Learn "Applies to" table, so it is set only
+            // where present; the min target (10.0.22000.0) predates the
+            // documented 22621 view. The keyboard stays reachable: Gamepad A
+            // on the box and a tap on the field open it explicitly below.
+            if (ApiInformation.IsPropertyPresent("Windows.UI.Xaml.Controls.TextBox", "PreventKeyboardDisplayOnProgrammaticFocus"))
+            {
+                SearchBox.PreventKeyboardDisplayOnProgrammaticFocus = true;
+            }
             var shell = MainPage.Current;
             _viewModel = new SearchViewModel(shell.Stremio, shell.Progress, shell.Store, shell.Navigation);
             DataContext = _viewModel;
@@ -365,9 +378,12 @@ namespace Nuvio.Views
 
         // Tapping anywhere in the borderless field (magnifier, English line)
         // focuses the box; the TextBox itself handles taps on its own text.
+        // A tap is a deliberate open, so the keyboard is asked for too:
+        // programmatic focus alone no longer shows it (see constructor).
         private void SearchField_Tapped(object sender, TappedRoutedEventArgs e)
         {
             SearchBox.Focus(FocusState.Programmatic);
+            MainPage.ShowOnScreenKeyboard();
         }
 
         private void OnGotFocus(object sender, RoutedEventArgs e)
@@ -612,6 +628,15 @@ namespace Nuvio.Views
         {
             var focused = FocusManager.GetFocusedElement() as DependencyObject;
             if (focused == null) return false;
+            // Explicit keyboard open: programmatic focus no longer shows it
+            // (see constructor), so Gamepad A on the box is the way to ask
+            // for it — the same TryShow path MainPage uses for text dialogs.
+            // A held A repeats; the open is once per press.
+            if (action == "select" && !repeat && ReferenceEquals(focused, SearchBox))
+            {
+                MainPage.ShowOnScreenKeyboard();
+                return true;
+            }
             if (action == "down" && ReferenceEquals(focused, SearchBox))
             {
                 return FocusDownFromSearchBox();
