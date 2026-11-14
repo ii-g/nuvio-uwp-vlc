@@ -127,6 +127,7 @@ namespace Nuvio.Services
 
         private async void SaveAndNotifyAsync()
         {
+            Log.Write("[DIAG] StremioService.SaveAndNotifyAsync: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] loadFailed=" + _addonsLoadFailed);
             if (_addonsLoadFailed)
             {
                 // The stored file failed to load, so the in-memory list is empty by
@@ -140,6 +141,7 @@ namespace Nuvio.Services
                 var array = new JsonArray();
                 foreach (var addon in _addons) array.Add(addon.ToJson());
                 await _store.WriteProfileJsonAsync("addons", array).ConfigureAwait(false);
+                Log.Write("[DIAG] StremioService.SaveAndNotifyAsync: saved count=" + array.Count + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "]");
             }
             catch (Exception ex)
             {
@@ -157,10 +159,15 @@ namespace Nuvio.Services
         /// <summary>Reloads from storage, e.g. after switching profile or a sync pull.</summary>
         public void ReloadAddons()
         {
+            Log.Write("[DIAG] StremioService.ReloadAddons: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "]");
             _addonsLoaded = false;
             _addonsLoadFailed = false;
             _addons = null;
-            var _ = LoadAddonsAsync().ContinueWith(t => RaiseAddonsChanged());
+            var _ = LoadAddonsAsync().ContinueWith(t =>
+            {
+                Log.Write("[DIAG] StremioService.ReloadAddons: reload complete count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] loadFailed=" + _addonsLoadFailed);
+                RaiseAddonsChanged();
+            });
         }
 
         public IReadOnlyList<Addon> ListAddons()
@@ -268,6 +275,7 @@ namespace Nuvio.Services
         /// <summary>First run: install the default addons.</summary>
         public async Task EnsureDefaultAddonsAsync()
         {
+            Log.Write("[DIAG] StremioService.EnsureDefaultAddonsAsync: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "] hasStored=" + _hasStoredAddons + " loadFailed=" + _addonsLoadFailed);
             await LoadAddonsAsync().ConfigureAwait(false);
             if (_addonsLoadFailed)
             {
@@ -286,6 +294,7 @@ namespace Nuvio.Services
             installed.Sort((a, b) => urlOrder.IndexOf(a.TransportUrl).CompareTo(urlOrder.IndexOf(b.TransportUrl)));
             _addons = installed;
             _hasStoredAddons = true;
+            Log.Write("[DIAG] StremioService.EnsureDefaultAddonsAsync: installed defaults count=" + _addons.Count + " names=[" + string.Join(", ", _addons.Select(a => AddonName(a))) + "]");
             SaveAndNotifyAsync();
         }
 
@@ -353,6 +362,7 @@ namespace Nuvio.Services
         public void MergeAddons(IEnumerable<Addon> entries)
         {
             if (_addons == null) _addons = new List<Addon>();
+            Log.Write("[DIAG] StremioService.MergeAddons: entry count=" + _addons.Count + " names=[" + string.Join(", ", _addons.Select(a => AddonName(a))) + "]");
             var known = new HashSet<string>(_addons.Select(a => a.TransportUrl));
             foreach (var entry in entries)
             {
@@ -363,6 +373,7 @@ namespace Nuvio.Services
                 entry.RefreshedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 _addons.Add(entry);
             }
+            Log.Write("[DIAG] StremioService.MergeAddons: merged count=" + _addons.Count + " names=[" + string.Join(", ", _addons.Select(a => AddonName(a))) + "]");
             _hasStoredAddons = true;
             SaveAndNotifyAsync();
         }
@@ -370,6 +381,7 @@ namespace Nuvio.Services
         public void RemoveAddon(string transportUrl)
         {
             if (_addons == null) return;
+            Log.Write("[DIAG] StremioService.RemoveAddon: entry count=" + _addons.Count + " names=[" + string.Join(", ", _addons.Select(a => AddonName(a))) + "] removingName=" + AddonName(_addons.FirstOrDefault(a => a.TransportUrl == transportUrl)));
             _addons = _addons.Where(a => a.TransportUrl != transportUrl).ToList();
             SaveAndNotifyAsync();
         }
@@ -399,6 +411,7 @@ namespace Nuvio.Services
         /// <summary>Replaces the whole list, keeping manifests already known (used by account sync).</summary>
         public async Task ReplaceAddonsAsync(IEnumerable<KeyValuePair<string, bool>> entries)
         {
+            Log.Write("[DIAG] StremioService.ReplaceAddonsAsync: entry count=" + (_addons == null ? 0 : _addons.Count) + " names=[" + (_addons == null ? string.Empty : string.Join(", ", _addons.Select(a => AddonName(a)))) + "]");
             await LoadAddonsAsync().ConfigureAwait(false);
             var known = _addons.ToDictionary(a => a.TransportUrl);
             var next = new List<Addon>();
@@ -426,6 +439,7 @@ namespace Nuvio.Services
             }
             _addons = next;
             _hasStoredAddons = true;
+            Log.Write("[DIAG] StremioService.ReplaceAddonsAsync: replaced count=" + _addons.Count + " names=[" + string.Join(", ", _addons.Select(a => AddonName(a))) + "]");
             SaveAndNotifyAsync();
         }
 
