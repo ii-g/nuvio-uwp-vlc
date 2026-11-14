@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
+using Nuvio.ViewModels;
 using Nuvio.Views;
 using Windows.Storage;
 using Windows.UI.Core;
@@ -515,8 +516,8 @@ namespace Nuvio.Diagnostics
         {
             var container = FocusManager.GetFocusedElement() as GridViewItem;
             if (container == null) return null;
-            var meta = container.Content as Meta;
-            return meta != null ? meta.Id : null;
+            var card = container.Content as CatalogCardItem;
+            return card != null && card.Meta != null ? card.Meta.Id : null;
         }
 
         private string FocusedContinueContentId()
@@ -576,7 +577,7 @@ namespace Nuvio.Diagnostics
                     stream.Seek(offset, SeekOrigin.Begin);
                     using (var reader = new StreamReader(stream))
                     {
-                        return reader.ReadToEnd().IndexOf(text, StringComparison.Ordinal) >= 0;
+                        return reader.ReadToEnd().IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0;
                     }
                 }
             }
@@ -1046,12 +1047,15 @@ namespace Nuvio.Diagnostics
             if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "addons did not load");
             await WaitForSettleAsync().ConfigureAwait(true);
             var expanded = false;
+            // Toward the sidebar = toward the flow-start edge: right in RTL,
+            // left in LTR (the strip sits at the start edge).
+            var towardSidebar = _shell.FlowDirection == FlowDirection.RightToLeft ? "right" : "left";
             for (var i = 0; i < 3 && !expanded; i++)
             {
-                await PressAsync("left").ConfigureAwait(true);
+                await PressAsync(towardSidebar).ConfigureAwait(true);
                 expanded = _shell.IsSidebarExpanded;
             }
-            if (!expanded) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "Left from the section did not expand the strip");
+            if (!expanded) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "Press toward the sidebar from the section did not expand the strip");
             await PressAsync("back").ConfigureAwait(true);
             var collapsed = await WaitForAsync(() => !_shell.IsSidebarExpanded && FocusedTag() == "root|addons", 5000).ConfigureAwait(true);
             if (!collapsed) return FocusTestResult.Fail("settings-menu-back-collapses-returns-to-page", "after B expanded=" + _shell.IsSidebarExpanded + " tag=" + FocusedTag());
@@ -1257,6 +1261,14 @@ namespace Nuvio.Diagnostics
         {
             if (!await ReachCatalogAsync().ConfigureAwait(true)) return FocusTestResult.Skip("catalog-back-opened-card", "catalog did not load");
             var metaId = FocusedCardMetaId();
+            // The View All card has no Meta by design: step to the previous
+            // card (toward the flow-start edge) instead of failing on it.
+            var stepToPrevious = _shell.FlowDirection == FlowDirection.RightToLeft ? "right" : "left";
+            for (var i = 0; i < 3 && metaId == null; i++)
+            {
+                await PressAsync(stepToPrevious).ConfigureAwait(true);
+                metaId = FocusedCardMetaId();
+            }
             if (metaId == null) return FocusTestResult.Fail("catalog-back-opened-card", "first card has no Meta id");
             await PressAsync("select").ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
