@@ -45,6 +45,7 @@ namespace Nuvio.Playback
         private bool _disposed;
         private long _openGeneration;
         private long _lastPositionEventTicks;
+        private long _lastHeartbeatTicks;
         private double _lastPositionSeconds;
         private bool _hardwareDecodingRequested;
         private double _pendingStartSeconds;
@@ -84,6 +85,8 @@ namespace Nuvio.Playback
             player.PlaybackSession.NaturalDurationChanged += OnNaturalDurationChanged;
             player.PlaybackSession.NaturalVideoSizeChanged += OnNaturalVideoSizeChanged;
             player.PlaybackSession.BufferingProgressChanged += OnBufferingProgressChanged;
+            player.PlaybackSession.BufferingStarted += OnBufferingStarted;
+            player.PlaybackSession.BufferingEnded += OnBufferingEnded;
             try
             {
                 _view.SetMediaPlayer(player);
@@ -100,6 +103,8 @@ namespace Nuvio.Playback
                 player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
                 player.PlaybackSession.NaturalVideoSizeChanged -= OnNaturalVideoSizeChanged;
                 player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
+                player.PlaybackSession.BufferingStarted -= OnBufferingStarted;
+                player.PlaybackSession.BufferingEnded -= OnBufferingEnded;
                 player.Dispose();
                 throw;
             }
@@ -178,7 +183,8 @@ namespace Nuvio.Playback
             }
             catch (Exception ex)
             {
-                // Log type + HResult only: the message may carry the stream URL.
+                // Messages are included URL-redacted (see DescribeOpenException):
+                // the message may carry the stream URL, so it is never logged raw.
                 Log.Write("FFmpeg media source could not be opened: " + DescribeOpenException(ex) +
                     " hwdec=" + _hardwareDecodingRequested + " at " + Math.Round(_lastPositionSeconds) + "s");
                 FailOpen(generation, "FFmpeg could not open this source.", ClassifyOpenError(ex));
@@ -190,6 +196,11 @@ namespace Nuvio.Playback
             FFmpegMediaSource ffmpegSource = null;
             HttpRangeStream rangeStream = null;
             IRandomAccessStream randomAccessStream = null;
+            // Which open stage failed: "connect" is our own HTTP stack
+            // (HttpRangeStream), "probe" is FFmpeg reading the container
+            // from that stream, "fetch+probe" is FFmpeg fetching the URI
+            // itself (adaptive playlists and header-less sources).
+            var stage = "connect";
             try
             {
                 var hasHeaders = request.Headers != null && request.Headers.Count > 0;
@@ -213,8 +224,11 @@ namespace Nuvio.Playback
                     // The headers ride on our own HTTP stack (HttpRangeStream),
                     // which also gives FFmpeg a seekable stream. FFmpeg itself
                     // never sees the header values.
+                    Log.Write("FFmpeg open stage: connect (HttpRangeStream, host=" + uri.Host + ")");
                     rangeStream = await HttpRangeStream.CreateAsync(uri, request.Headers, token);
                     randomAccessStream = rangeStream.AsRandomAccessStream();
+                    stage = "probe";
+                    Log.Write("FFmpeg open stage: probe (CreateFromStream)");
                     ffmpegSource = await FFmpegMediaSource.CreateFromStreamAsync(randomAccessStream, config).AsTask(token);
                 }
                 else
@@ -224,6 +238,8 @@ namespace Nuvio.Playback
                     // are passed through FFmpeg's own HTTP options (names only
                     // are ever logged).
                     if (hasHeaders) AddHeaderOptions(config, request.Headers);
+                    stage = "fetch+probe";
+                    Log.Write("FFmpeg open stage: fetch+probe (CreateFromUri, host=" + uri.Host + ")");
                     ffmpegSource = await FFmpegMediaSource.CreateFromUriAsync(uri.AbsoluteUri, config).AsTask(token);
                 }
                 token.ThrowIfCancellationRequested();
@@ -248,10 +264,11 @@ namespace Nuvio.Playback
             }
             catch (Exception ex)
             {
-                // Log type + HResult only: the message may carry the stream URL.
+                // Messages are included URL-redacted (see DescribeOpenException).
                 // The hwdec flag matters here: a failure while hardware decoding
                 // was requested may be a D3D11VA failure, not a bad source.
                 Log.Write("FFmpeg media source could not be opened: " + DescribeOpenException(ex) +
+                    " stage=" + stage +
                     " hwdec=" + _hardwareDecodingRequested + " at " + Math.Round(_lastPositionSeconds) + "s");
                 FailOpen(generation, "FFmpeg could not open this source.", ClassifyOpenError(ex));
             }
@@ -302,25 +319,64 @@ namespace Nuvio.Playback
             config.FFmpegOptions["headers"] = string.Join("\r\n", lines) + "\r\n";
         }
 
+        // The 30-second open timeout is unchanged; the watchdog now also
+        // logs progress every 5 seconds while the open is still waiting,
+        // so a stalled open leaves a trail of session states instead of
+        // silence followed by a single OpenTimeout line.
         private async Task WatchOpenTimeoutAsync(long generation)
         {
             try
             {
-                await Task.Delay(OpenTimeout).ConfigureAwait(false);
-                var view = _view;
-                if (view == null || _disposed) return;
-                await view.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+                for (var elapsed = 5; elapsed <= (int)OpenTimeout.TotalSeconds; elapsed += 5)
                 {
-                    if (IsCurrentOpen(generation, CancellationToken.None) && !_readySent && !_openFailed)
+                    await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    if (_disposed || !IsCurrentOpen(generation, CancellationToken.None) || _readySent || _openFailed) return;
+                    var tickElapsed = elapsed;
+                    var view = _view;
+                    if (view == null) return;
+                    await view.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
                     {
-                        FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.", "OpenTimeout");
-                    }
-                });
+                        if (!IsCurrentOpen(generation, CancellationToken.None) || _readySent || _openFailed) return;
+                        if (tickElapsed < (int)OpenTimeout.TotalSeconds) LogOpenProgress(tickElapsed);
+                        else FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.", "OpenTimeout");
+                    });
+                }
+                // The loop only fails the open when the timeout lands exactly
+                // on a 5-second tick (30s today). If OpenTimeout ever stops
+                // being a multiple of 5, the loop ends after the last progress
+                // tick without failing the open — so wait out the remainder
+                // and fail it here, with the same exit guards. At 30s this is
+                // a no-op: the 30s tick already called FailOpen, and its
+                // _openFailed guard makes the check below return. FailOpen is
+                // already called from background threads elsewhere in this
+                // file (OpenSourceAsync), so no dispatcher hop is needed here.
+                var timeoutSeconds = (int)OpenTimeout.TotalSeconds;
+                var remainderSeconds = timeoutSeconds - (timeoutSeconds / 5) * 5;
+                if (remainderSeconds > 0)
+                    await Task.Delay(TimeSpan.FromSeconds(remainderSeconds)).ConfigureAwait(false);
+                if (_disposed || !IsCurrentOpen(generation, CancellationToken.None) || _readySent || _openFailed) return;
+                FailOpen(generation, "The stream did not start within 30 seconds. Check the link or network, then try again.", "OpenTimeout");
             }
             catch (Exception ex)
             {
                 Log.Error("Playback startup watchdog failed", ex);
             }
+        }
+
+        // Runs on the UI thread (from the watchdog): session state,
+        // buffering and download progress while the open is still waiting.
+        private void LogOpenProgress(int elapsedSeconds)
+        {
+            var session = _mediaPlayer == null ? null : _mediaPlayer.PlaybackSession;
+            if (session == null)
+            {
+                Log.Write("FFmpeg open still waiting (" + elapsedSeconds + "s/" + (int)OpenTimeout.TotalSeconds + "s, no playback session)");
+                return;
+            }
+            Log.Write("FFmpeg open still waiting (" + elapsedSeconds + "s/" + (int)OpenTimeout.TotalSeconds + "s, state=" + session.PlaybackState +
+                " pos=" + Math.Round(session.Position.TotalSeconds) + "s" +
+                " buffering=" + Math.Round(session.BufferingProgress * 100) + "%" +
+                " download=" + Math.Round(session.DownloadProgress * 100) + "%)");
         }
 
         private bool IsCurrentOpen(long generation, CancellationToken token)
@@ -366,14 +422,54 @@ namespace Nuvio.Playback
             return ex.GetType().Name + ":0x" + ex.HResult.ToString("X8");
         }
 
+        // Type + HResult + the exception messages, with any URL redacted.
+        // The message may carry the stream URL or a token, so it is never
+        // logged raw — but type + HResult alone left an instant 0x80004005
+        // (E_FAIL) indistinguishable from a network timeout, and the inner
+        // message is what names the real failure class.
         private static string DescribeOpenException(Exception ex)
         {
             if (ex == null) return "null";
-            var description = ex.GetType().Name + " HResult=0x" + ex.HResult.ToString("X8");
-            if (ex.InnerException != null)
-                description += " inner=" + ex.InnerException.GetType().Name +
-                    " HResult=0x" + ex.InnerException.HResult.ToString("X8");
+            var description = DescribeOneException(ex);
+            var inner = ex.InnerException;
+            var depth = 0;
+            while (inner != null && depth < 3)
+            {
+                description += " inner=" + DescribeOneException(inner);
+                inner = inner.InnerException;
+                depth++;
+            }
             return description;
+        }
+
+        private static string DescribeOneException(Exception ex)
+        {
+            var description = ex.GetType().Name + " HResult=0x" + ex.HResult.ToString("X8");
+            if (!string.IsNullOrEmpty(ex.Message))
+            {
+                var message = RedactUrls(ex.Message);
+                if (message.Length > 500) message = message.Substring(0, 500) + "...";
+                description += " msg=\"" + message + "\"";
+            }
+            return description;
+        }
+
+        // Replaces any http(s)://... token (which may carry a query string
+        // or token) with "(url)"; the rest of the message is diagnostic text.
+        private static string RedactUrls(string message)
+        {
+            var result = message;
+            foreach (var scheme in new[] { "https://", "http://" })
+            {
+                int index;
+                while ((index = result.IndexOf(scheme, StringComparison.OrdinalIgnoreCase)) >= 0)
+                {
+                    var end = index;
+                    while (end < result.Length && !char.IsWhiteSpace(result[end])) end++;
+                    result = result.Substring(0, index) + "(url)" + result.Substring(end);
+                }
+            }
+            return result;
         }
 
         // Reports the decoder FFmpeg actually selected for each video stream
@@ -540,6 +636,8 @@ namespace Nuvio.Playback
             player.PlaybackSession.NaturalDurationChanged -= OnNaturalDurationChanged;
             player.PlaybackSession.NaturalVideoSizeChanged -= OnNaturalVideoSizeChanged;
             player.PlaybackSession.BufferingProgressChanged -= OnBufferingProgressChanged;
+            player.PlaybackSession.BufferingStarted -= OnBufferingStarted;
+            player.PlaybackSession.BufferingEnded -= OnBufferingEnded;
             try { player.Dispose(); }
             catch (Exception ex) { Log.Error("Disposing FFmpeg playback failed", ex); }
             _mediaPlayer = null;
@@ -685,12 +783,25 @@ namespace Nuvio.Playback
             // Keep the freshest position for failure logs even when the
             // progress event below is coalesced.
             _lastPositionSeconds = Math.Max(0, sender.Position.TotalSeconds);
+            // Playback heartbeat: the only periodic proof the picture is
+            // still advancing. FFmpegInteropX exposes no dropped-frame
+            // counter (its public API is stream info only), and neither
+            // does MediaPlaybackSession, so a heartbeat whose position
+            // stops moving while the state stays Playing is the stall
+            // signal — plus buffering/download progress for the cause.
+            var now = DateTime.UtcNow;
+            var previousHeartbeat = Interlocked.Read(ref _lastHeartbeatTicks);
+            if (_readySent && sender.PlaybackState == MediaPlaybackState.Playing &&
+                now.Ticks - previousHeartbeat >= TimeSpan.TicksPerSecond * 10 &&
+                Interlocked.CompareExchange(ref _lastHeartbeatTicks, now.Ticks, previousHeartbeat) == previousHeartbeat)
+            {
+                LogHeartbeat(sender);
+            }
             // PositionChanged can fire several times per second. Coalesce progress updates so
             // the WebView bridge doesn't build a backlog on the Xbox renderer thread.
-            var now = DateTime.UtcNow.Ticks;
             var previous = Interlocked.Read(ref _lastPositionEventTicks);
-            if (now - previous < TimeSpan.TicksPerMillisecond * 250 ||
-                Interlocked.CompareExchange(ref _lastPositionEventTicks, now, previous) != previous)
+            if (now.Ticks - previous < TimeSpan.TicksPerMillisecond * 250 ||
+                Interlocked.CompareExchange(ref _lastPositionEventTicks, now.Ticks, previous) != previous)
                 return;
 
             var payload = new JsonObject();
@@ -704,6 +815,36 @@ namespace Nuvio.Playback
             var payload = new JsonObject();
             payload.SetNamedValue("duration", JsonValue.CreateNumberValue(sender.NaturalDuration.TotalSeconds));
             Raise("player.duration", payload);
+        }
+        private void LogHeartbeat(MediaPlaybackSession session)
+        {
+            try
+            {
+                // BufferingProgress and DownloadProgress are 0..1 ratios
+                // (Microsoft Learn: multiply by 100 for a percentage).
+                Log.Write("FFmpeg heartbeat: state=" + session.PlaybackState +
+                    " pos=" + Math.Round(session.Position.TotalSeconds) + "s/" + Math.Round(session.NaturalDuration.TotalSeconds) + "s" +
+                    " buffering=" + Math.Round(session.BufferingProgress * 100) + "%" +
+                    " download=" + Math.Round(session.DownloadProgress * 100) + "%");
+            }
+            catch (Exception ex)
+            {
+                Log.Write("FFmpeg heartbeat: could not read session: " + ex.GetType().Name);
+            }
+        }
+        private void OnBufferingStarted(MediaPlaybackSession sender, object args)
+        {
+            // BufferingStarted/BufferingEnded mark the exact start/end of
+            // a stall; the state machine already reports "buffering", but
+            // without these the log cannot tell a rebuffer from a state
+            // that was never left. Fires during the open too, at pos 0s.
+            if (_disposed || _openFailed) return;
+            Log.Write("FFmpeg buffering started at " + Math.Round(_lastPositionSeconds) + "s");
+        }
+        private void OnBufferingEnded(MediaPlaybackSession sender, object args)
+        {
+            if (_disposed || _openFailed) return;
+            Log.Write("FFmpeg buffering ended at " + Math.Round(_lastPositionSeconds) + "s");
         }
         private void OnBufferingProgressChanged(MediaPlaybackSession sender, object args)
         {
