@@ -154,6 +154,13 @@ namespace Nuvio.Input
         private object _holdCheckExpected;
         private int _holdCheckChecksLeft;
         private bool _holdCheckRestoreUsed;
+        // User-input clock for the hold check: bumped on every HandleInput
+        // call (the single input entry point), snapshotted in ArmHoldCheck.
+        // A tick whose count still matches the snapshot saw no user input
+        // since arming, so a focus move in between is the framework's own
+        // doing (late layout re-realizing a container), not a user move.
+        private int _inputCount;
+        private int _holdCheckInputCount;
         private static readonly TimeSpan HoldCheckInterval = TimeSpan.FromMilliseconds(200);
         private const int HoldCheckMaxChecks = 2;
         private const int SettleMaxAttempts = 10;
@@ -397,9 +404,14 @@ namespace Nuvio.Input
         /// router's NoteUserInput alongside this, or a takeover would be
         /// evaluated twice (harmless — the second call is a no-op once the
         /// settle has stopped — but redundant).
+        /// Every call also bumps _inputCount, the hold check's user-input
+        /// clock: the B press that caused a Back navigation is counted
+        /// here, before the settle arms the hold check, so it can never
+        /// look like input after arming.
         /// </summary>
         public void HandleInput(string action, bool repeat)
         {
+            _inputCount++;
             if (!IsDialogOpen)
             {
                 DispatchInput(action, repeat);
@@ -1063,6 +1075,10 @@ namespace Nuvio.Input
         /// CompleteSettle of the same arrival must not arm a second
         /// timer — but that call normally never reaches here, because
         /// StopSettle cleared _settleRestoredKey before it reads it.
+        /// Snapshots _inputCount here: the press that caused the Back
+        /// navigation was already counted in HandleInput before the
+        /// settle ran, so only a press after this snapshot counts as
+        /// user input at a tick.
         /// </summary>
         private void ArmHoldCheck(FocusablePage page, string key, object expectedFocus, long elapsedMs)
         {
@@ -1087,11 +1103,12 @@ namespace Nuvio.Input
             _holdCheckExpected = expectedFocus;
             _holdCheckChecksLeft = checks;
             _holdCheckRestoreUsed = false;
+            _holdCheckInputCount = _inputCount;
             _holdCheckTimer = new DispatcherTimer();
             _holdCheckTimer.Interval = HoldCheckInterval;
             _holdCheckTimer.Tick += OnHoldCheckTick;
             _holdCheckTimer.Start();
-            Log.Write("Hold check armed: key=" + key + ", checks=" + checks + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", elapsed=" + elapsedMs + "ms");
+            Log.Write("Hold check armed: key=" + key + ", checks=" + checks + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", inputCount=" + _inputCount + ", elapsed=" + elapsedMs + "ms");
         }
 
         /// <summary>Stops the hold-check timer and drops its state. No
@@ -1112,20 +1129,27 @@ namespace Nuvio.Input
             _holdCheckExpected = null;
             _holdCheckChecksLeft = 0;
             _holdCheckRestoreUsed = false;
+            _holdCheckInputCount = 0;
         }
 
         /// <summary>
         /// One hold check: is focus still on the card the Back settle
         /// restored? Still there — verified, and the next check (if any)
-        /// still runs, so a later drop is caught too. On a real target
-        /// elsewhere — the user moved focus deliberately (same rule as
-        /// the settle takeover: a real target counts, null / a bare
-        /// container does not) — skip and cancel: never yank focus the
-        /// user placed. Focus gone with no user move — re-apply the
+        /// still runs, so a later drop is caught too. Same card in a new
+        /// container (a late layout pass re-realized the GridViewItem)
+        /// is verified too: the focused card's Meta.Id matches the
+        /// restored "meta:" key, so focus never left the card. On a real
+        /// target elsewhere, the input clock decides: a press since
+        /// arming means the user moved focus deliberately — skip and
+        /// cancel, never yank focus the user placed. No press since
+        /// arming means the framework moved focus itself (a late layout
+        /// pass re-realizing the container parks focus on the nearest
+        /// target) — fall through to the re-restore below instead of
+        /// cancelling. Focus gone with no user move — re-apply the
         /// recorded key through TrySettleOnce, exactly once per arrival;
         /// a second check after a re-restore only verifies it held.
         /// The re-restore routes through the page's TryFocusKey, so no
-        /// new .Focus( site is added here.
+        /// new .Focus() site is added here.
         /// </summary>
         private void OnHoldCheckTick(object sender, object e)
         {
@@ -1147,11 +1171,35 @@ namespace Nuvio.Input
                 FinishHoldCheckTick();
                 return;
             }
+            // Same card, new container: a late layout pass re-realized
+            // the GridViewItem for the restored card, so ReferenceEquals
+            // fails even though focus never left the card. The new
+            // container becomes the expected focus for the next check.
+            if (focused != null && key.StartsWith("meta:", StringComparison.Ordinal)
+                && string.Equals(FocusedCardMetaId(), key.Substring(5), StringComparison.Ordinal))
+            {
+                _holdCheckExpected = focused;
+                Log.Write("Hold check verified: key=" + key + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", checksLeft=" + _holdCheckChecksLeft + " (re-realized container)");
+                FinishHoldCheckTick();
+                return;
+            }
             if (focused != null && FocusablePage.IsRealFocusTarget(CurrentFocused))
             {
-                Log.Write("Hold check skipped-user-input: key=" + key + ", focused=" + focused.GetType().Name + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
-                CancelHoldCheck();
-                return;
+                var focusedElement = focused as FrameworkElement;
+                var focusName = focusedElement != null && !string.IsNullOrEmpty(focusedElement.Name) ? focusedElement.Name : "(none)";
+                if (_inputCount != _holdCheckInputCount)
+                {
+                    Log.Write("Hold check skipped-user-input: key=" + key + ", focused=" + focused.GetType().Name + ", focusName=" + focusName + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
+                    CancelHoldCheck();
+                    return;
+                }
+                // No input since arming: the framework moved focus itself
+                // — a late layout pass re-realizing the container parks
+                // focus on the nearest target (log nuvio-vlc_16: the
+                // "All" filter chip, the only Button in the page). That
+                // is not a user move, so never-yank does not apply: fall
+                // through to the re-restore below instead of cancelling.
+                Log.Write("Hold check framework-move: key=" + key + ", focused=" + focused.GetType().Name + ", focusName=" + focusName + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", checksLeft=" + _holdCheckChecksLeft);
             }
             if (_holdCheckRestoreUsed)
             {
