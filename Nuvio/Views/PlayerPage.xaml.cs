@@ -306,18 +306,19 @@ namespace Nuvio.Views
         }
 
         /// <summary>
-        /// Phase 4: tells the coordinator when the OSD hides/shows so it
-        /// can park focus on Back while hidden and restore the remembered
-        /// OSD element on show. Flag-gated (same pattern as StreamsPage's
-        /// NotifyContentChanged call): with the flag off nothing is
-        /// notified and the old behaviour — focus stays on the hidden
-        /// button — returns exactly. Only a hide with focus on an OSD
-        /// element is notified: a visible NextCard/ErrorBox button keeps
-        /// focus (those cards are outside OsdRoot and stay visible while
-        /// the OSD is hidden). Runs inside the ControlsVisible property
-        /// change, after UpdateOsdVisibility and before the ViewModel's
-        /// focus hint, so the hint's never-yank rule keeps the restored
-        /// element on show.
+        /// Tells the coordinator when the OSD hides/shows so it can park
+        /// focus on Play/Pause while hidden and focus Play/Pause again on
+        /// show (the OSD anchor — after any hide, auto or manual, the
+        /// next show lands on Play/Pause). Flag-gated (same pattern as
+        /// StreamsPage's NotifyContentChanged call): with the flag off
+        /// nothing is notified and the old behaviour — focus stays on the
+        /// hidden button — returns exactly. Only a hide with focus on an
+        /// OSD element is notified: a visible NextCard/ErrorBox button
+        /// keeps focus (those cards are outside OsdRoot and stay visible
+        /// while the OSD is hidden). Runs inside the ControlsVisible
+        /// property change, after UpdateOsdVisibility and before the
+        /// ViewModel's focus hint, so a specific hint ("seek", "back",
+        /// ...) still wins after it.
         /// </summary>
         private void NotifyOsdVisibilityChanged()
         {
@@ -530,7 +531,41 @@ namespace Nuvio.Views
                 else _viewModel.TogglePause();
                 return true;
             }
+            // Down from a bottom-row button hides the OSD: there is
+            // nowhere to navigate below the controls row, so Down
+            // dismisses the buttons instead. HideControls goes through
+            // the existing path — NotifyOsdHidden arms the Play/Pause
+            // anchor, so the next show lands on Play/Pause. Non-repeat
+            // only: a held Down must not hide-show-hide as repeats
+            // alternate with the hidden branch (which shows on Down).
+            // Down from the seek row or the top row is untouched and
+            // keeps default focus movement.
+            if (action == "down" && !repeat && IsBottomRowButton(focused))
+            {
+                _viewModel.HideControls();
+                return true;
+            }
             return false;
+        }
+
+        /// <summary>
+        /// True when focus is on one of the OSD controls-row buttons
+        /// (OsdBottom row 1): Rewind / PlayPause / Forward on the left,
+        /// Subtitles / Audio / Speed / Aspect / Sources / Episodes /
+        /// Next on the right. Down from any of these hides the OSD.
+        /// </summary>
+        private bool IsBottomRowButton(object focused)
+        {
+            return focused == RewindButton
+                || focused == PlayPauseButton
+                || focused == ForwardButton
+                || focused == SubtitlesButton
+                || focused == AudioButton
+                || focused == SpeedButton
+                || focused == AspectButton
+                || focused == SourcesButton
+                || focused == EpisodesButton
+                || focused == NextButton;
         }
 
         private bool HandleBack()
