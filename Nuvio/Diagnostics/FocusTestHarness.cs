@@ -1673,17 +1673,20 @@ namespace Nuvio.Diagnostics
         {
             if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "could not steer to SpeedButton");
+            var invoker = FocusedName();
             await PressAsync("y").ConfigureAwait(true);
             if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "Y did not open the subtitle menu");
             if (!await InvokeDialogButtonAsync("elay", "تأخير").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "no delay row in the subtitle menu");
             if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "delay menu did not open");
             if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "delay dialog did not close");
             await WaitForSettleAsync().ConfigureAwait(true);
-            // The delay dialog's invoker is the subtitle menu's row button in
-            // the closed dialog's tree, so the coordinator falls back to the
-            // player arrival target (Back) — that IS the restore rule.
-            if (FocusedName() == "BackButton") return FocusTestResult.Pass("dialog-player-delay-restores", "close fell back to the arrival target Back");
-            return FocusTestResult.Fail("dialog-player-delay-restores", "after close focused=" + FocusedName() + " expected BackButton");
+            // The coordinator's restore skips when focus is already on a
+            // valid target in the current page ("Dialog restore skipped:
+            // focus is already on a valid target"), so closing the delay
+            // dialog leaves focus on its invoker — the same rule the
+            // subtitle test asserts, not a fallback to the arrival target.
+            if (FocusedName() == invoker) return FocusTestResult.Pass("dialog-player-delay-restores", "close restored the invoker " + invoker);
+            return FocusTestResult.Fail("dialog-player-delay-restores", "after close focused=" + FocusedName() + " expected " + invoker);
         }
 
         private async Task<FocusTestResult> TestDialogSettingsConfirmAsync()
