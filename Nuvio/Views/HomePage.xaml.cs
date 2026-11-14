@@ -1356,6 +1356,25 @@ namespace Nuvio.Views
                         var container = grid.ContainerFromIndex(target) as GridViewItem;
                         if (container != null)
                         {
+                            // Pre-scroll the strip to the target card's anchor
+                            // BEFORE moving focus, so the focused card lands on
+                            // the second slot (one pitch inside the hero edge)
+                            // and the ring stays put instead of chasing the
+                            // 105 ms glide during held repeats (110 ms): the
+                            // jump is instant (animation disabled), and the
+                            // GotFocus correction then measures ~0 delta and
+                            // no-ops. TryComputeRowAnchorTarget takes the
+                            // target card and anchors on the card before it
+                            // (index-1), which is exactly this offset. When
+                            // it returns false the row is already on the
+                            // anchor and focus moves as before; a null viewer
+                            // likewise leaves focus unchanged.
+                            var viewer = FindScrollViewer(grid);
+                            double anchorTarget;
+                            if (viewer != null && TryComputeRowAnchorTarget(grid, container, viewer, out anchorTarget))
+                            {
+                                viewer.ChangeView(anchorTarget, null, null, disableAnimation: true);
+                            }
                             container.Focus(FocusState.Programmatic);
                             return true;
                         }
