@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Nuvio.Diagnostics;
 using Nuvio.Services;
+using Nuvio.ViewModels;
 using Nuvio.Views;
 using Windows.ApplicationModel.Resources;
 using Windows.UI.Xaml;
@@ -84,6 +85,10 @@ namespace Nuvio.Input
         // (or by user takeover via NoteUserInput) — never in a finally.
         private FocusablePage _settlingPage;
         private bool _settleIsBack;
+        // Navigation parameter of the current settle (the SettleArrivalFocus
+        // argument): TrySettleOnce rebuilds the entry key from it while
+        // EntryKey is still empty (Navigated runs before OnNavigatedTo).
+        private object _settleParameter;
         private int _settleAttempts;
         private DateTime _settleStartedAt = DateTime.MinValue;
         private DispatcherTimer _settleTimer;
@@ -130,7 +135,7 @@ namespace Nuvio.Input
         /// entries. Only ids and catalog manifest URLs appear here — never
         /// stream URLs, API keys or tokens (none of these parameter fields
         /// can carry one: TransportUrl is a catalog manifest URL, the same
-        /// identity CatalogPage already uses as LastOpenedCatalogKey).
+        /// identity CatalogPage already uses as its catalog key).
         /// </summary>
         internal static string EntryIdentity(object parameter)
         {
@@ -267,6 +272,7 @@ namespace Nuvio.Input
             }
             _settlingPage = page;
             _settleIsBack = isBack;
+            _settleParameter = parameter;
             _settleAttempts = 0;
             _settleStartedAt = DateTime.UtcNow;
             _settleInitialFocus = FocusManager.GetFocusedElement();
@@ -367,9 +373,13 @@ namespace Nuvio.Input
 
         /// <summary>
         /// One settle attempt. On a Back arrival, focus already inside the
-        /// page counts as success WITHOUT moving anything (a late attempt
-        /// must never yank focus the user already placed); on a fresh
-        /// arrival it does not — the focus may be the cached page's stale
+        /// page counts as success WITHOUT moving anything when no key is
+        /// recorded for the entry (a late attempt must never yank focus the
+        /// user already placed); when a key IS recorded, the recorded card
+        /// is tried first (TrySettleOnce) before accepting the focus already
+        /// in the page — that focus may be the framework's park, not the
+        /// recorded card. On a fresh arrival it does not — the focus may be
+        /// the cached page's stale
         /// focus (Home/Search are Required-cache, so re-navigating Home
         /// returns the same instance with focus still on a card), and
         /// accepting it would declare the settle done on a card instead of
@@ -386,7 +396,24 @@ namespace Nuvio.Input
             var settled = false;
             try
             {
-                if (_settleIsBack && IsFocusInsidePage(page)) settled = true;
+                if (_settleIsBack && IsFocusInsidePage(page))
+                {
+                    // Back arrival with focus already inside the page: that
+                    // focus may be the framework's park (first card / grid),
+                    // not the card this entry recorded. When a key is
+                    // recorded for the entry, try it first — TrySettleOnce
+                    // restores the recorded card, falling back to the
+                    // arrival target when the key cannot land. The shortcut
+                    // stays only when no key is recorded for the entry.
+                    string backKey;
+                    if (TryGetLastFocusKey(SettleEntryKey(page), out backKey))
+                    {
+                        var restored = TrySettleOnce(page, true) && IsFocusInsidePage(page);
+                        Log.Write("Settle back restore: key=" + backKey + ", restored=" + restored + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
+                        if (restored) settled = true;
+                    }
+                    else settled = true;
+                }
                 else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus)
                     && FocusablePage.IsRealFocusTarget(FocusManager.GetFocusedElement() as DependencyObject))
                 {
@@ -419,6 +446,17 @@ namespace Nuvio.Input
             return settled;
         }
 
+        /// <summary>Meta.Id of the currently focused catalog card, if focus is
+        /// on a GridViewItem holding one; null otherwise. Diagnostic only —
+        /// Meta.Id only, never URLs or keys.</summary>
+        private static string FocusedCardMetaId()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return null;
+            var card = container.Content as CatalogCardItem;
+            return card != null && card.Meta != null ? card.Meta.Id : null;
+        }
+
         /// <summary>
         /// Settle finished: stop the watchdog, drop the ContentReady
         /// subscription, and clear the sidebar guard. Success and watchdog
@@ -439,6 +477,7 @@ namespace Nuvio.Input
             if (page != null) page.ContentReady -= OnSettleContentReady;
             _settlingPage = null;
             _settleInitialFocus = null;
+            _settleParameter = null;
             if (clearGuard)
             {
                 // Phase 3: with the flag on the coordinator owns the
@@ -502,6 +541,20 @@ namespace Nuvio.Input
             StopSettle(clearGuard: true);
         }
 
+        /// <summary>
+        /// Entry key for a settle lookup: the page's EntryKey when set, else
+        /// rebuilt from the navigation parameter SettleArrivalFocus received
+        /// (same formula FocusablePage uses: type + "|" + EntryIdentity).
+        /// Covers the first sync attempt, where Navigated runs before
+        /// OnNavigatedTo sets EntryKey.
+        /// </summary>
+        private string SettleEntryKey(Page page)
+        {
+            var fp = page as FocusablePage;
+            if (fp != null && !string.IsNullOrEmpty(fp.EntryKey)) return fp.EntryKey;
+            return page.GetType().FullName + "|" + EntryIdentity(_settleParameter);
+        }
+
         private bool TrySettleOnce(Page page, bool isBack)
         {
             try
@@ -511,12 +564,10 @@ namespace Nuvio.Input
                 if (isBack)
                 {
                     var fp = page as FocusablePage;
-                    var entryKey = fp != null && !string.IsNullOrEmpty(fp.EntryKey)
-                        ? fp.EntryKey
-                        : page.GetType().FullName;
+                    var entryKey = SettleEntryKey(page);
                     if (string.IsNullOrEmpty(fp?.EntryKey))
                     {
-                        Log.Write("Settle: page " + page.GetType().Name + " has no entry key (not a FocusablePage yet); Back restore falls back to the type key");
+                        Log.Write("Settle: page " + page.GetType().Name + " has no entry key (not a FocusablePage yet); Back restore falls back to the parameter-derived key");
                     }
                     string key;
                     if (TryGetLastFocusKey(entryKey, out key))
