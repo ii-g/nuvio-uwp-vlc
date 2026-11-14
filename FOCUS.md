@@ -219,6 +219,14 @@ Every new page must satisfy all of these to join the system:
 - Row left/right: index-based neighbour, forward-stop at the row end
   (RTL-aware), never drops to the next row. Up/down between rows lands on
   the remembered poster or index 0.
+- Pinned anchor (المرساة): in-row Left/Right keeps the focus ring pinned at
+  the second slot — the card before the focused one sits on the hero edge
+  (k−1 target, build 292; RTL 619..707, LTR 123..211) — and the row scrolls
+  underneath it (pre-scroll before the focus move, instant jump, no glide).
+  Which card is focused, the order, and per-row memory are unchanged. At
+  the row tail (offset clamped at ScrollableWidth) and in short rows the
+  ring detaches and follows the card. Catalog has no anchor (single
+  wrapping 2-D grid); Search pins to its own 6 epx start edge.
 - Edges: a forward move past the last card stops dead; the row-start edge is
   open so a move toward the sidebar enters it. Up on the first / Down on the
   last sidebar button stops dead.
