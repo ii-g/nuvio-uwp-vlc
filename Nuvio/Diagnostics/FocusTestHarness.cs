@@ -144,6 +144,12 @@ namespace Nuvio.Diagnostics
         private readonly string _armedVia;
         private long _suiteLogOffset;
 
+        /// <summary>Failing step recorded by TryReachPlayerAsync on every
+        /// false return, so its callers can skip with the real reason
+        /// ("reach failed: ...") instead of the blanket "no playable
+        /// stream". Cleared at the start of each reach attempt.</summary>
+        private string _lastReachFailure;
+
         public FocusTestHarness(MainPage shell)
             : this(shell, "unknown")
         {
@@ -839,28 +845,52 @@ namespace Nuvio.Diagnostics
         /// step is bounded; any step timing out means the fixture (catalog
         /// data, a stream, playback) was absent and the caller SKIPs.
         /// Returns true only when the player is open and focus is inside it.
+        /// Every false return records the failing step in
+        /// _lastReachFailure (see ReachFailureDetail) so callers skip with
+        /// the real reason instead of the old blanket "no playable stream"
+        /// — that reason now survives only when the Streams list itself is
+        /// empty after settling (no sources / no results for the title).
         /// </summary>
         private async Task<bool> TryReachPlayerAsync()
         {
+            _lastReachFailure = null;
             if (FindPage<PlayerPage>(_shell) != null) return true;
-            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return false;
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) { _lastReachFailure = "home did not settle"; return false; }
             await PressAsync("down").ConfigureAwait(true);
-            if (FocusManager.GetFocusedElement() as GridViewItem == null) return false;
-            await ActivateFocusedAsync().ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() as GridViewItem == null) { _lastReachFailure = "no card on first Down"; return false; }
+            if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "card activation unavailable in harness"; return false; }
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return false;
+            if (details == null) { _lastReachFailure = "Details did not open"; return false; }
             await WaitForSettleAsync().ConfigureAwait(true);
-            if (FocusedName() != "PlayButton") return false;
-            await ActivateFocusedAsync().ConfigureAwait(true);
+            if (FocusedName() != "PlayButton") { _lastReachFailure = "no Play button on Details"; return false; }
+            if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "Play button activation unavailable in harness"; return false; }
             var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
-            if (streams == null) return false;
+            if (streams == null) { _lastReachFailure = "Streams did not open"; return false; }
             await WaitForSettleAsync().ConfigureAwait(true);
-            if (FocusManager.GetFocusedElement() == null) return false;
-            await ActivateFocusedAsync().ConfigureAwait(true);
+            // Arrival parks on the "all" filter chip when rows exist, so a
+            // focused element that is not a stream row is a steering miss,
+            // not an absent stream — unless the list itself is empty.
+            var list = FindNamedDescendant<ListView>(streams, "StreamsListView");
+            var noStreams = list != null && list.Items.Count == 0;
+            var focused = FocusManager.GetFocusedElement();
+            if (focused == null || !(focused is ListViewItem))
+            {
+                _lastReachFailure = noStreams ? "no playable stream" : "no focused stream row";
+                return false;
+            }
+            if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "stream row activation unavailable in harness"; return false; }
             var player = await WaitForPageAsync<PlayerPage>(PlayerOpenTimeoutMs).ConfigureAwait(true);
-            if (player == null) return false;
+            if (player == null) { _lastReachFailure = "Player did not open"; return false; }
             await WaitForSettleAsync().ConfigureAwait(true);
-            return HasAncestor<PlayerPage>(FocusManager.GetFocusedElement() as DependencyObject);
+            if (!HasAncestor<PlayerPage>(FocusManager.GetFocusedElement() as DependencyObject)) { _lastReachFailure = "focus not inside Player"; return false; }
+            return true;
+        }
+
+        /// <summary>Skip detail for a failed TryReachPlayerAsync attempt,
+        /// carrying the step it actually failed on.</summary>
+        private string ReachFailureDetail()
+        {
+            return "reach failed: " + (_lastReachFailure ?? "unknown");
         }
 
         /// <summary>
@@ -1381,8 +1411,17 @@ namespace Nuvio.Diagnostics
         {
             if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Fail("home-back-details-meta-key", "home did not settle");
             await PressAsync("down").ConfigureAwait(true);
+            // The first row is Continue Watching, whose ProgressEntry cards
+            // carry no Meta — step Down (bounded) until a card with a Meta
+            // id is focused. No Meta card in the scanned rows is a missing
+            // fixture, not a product failure.
             var metaId = FocusedCardMetaId();
-            if (metaId == null) return FocusTestResult.Fail("home-back-details-meta-key", "no card with a Meta id on first Down");
+            for (var i = 0; i < 4 && metaId == null; i++)
+            {
+                await PressAsync("down").ConfigureAwait(true);
+                metaId = FocusedCardMetaId();
+            }
+            if (metaId == null) return FocusTestResult.Skip("home-back-details-meta-key", "no Meta card found in rows");
             await ActivateFocusedAsync().ConfigureAwait(true);
             var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
             if (details == null) return FocusTestResult.Fail("home-back-details-meta-key", "activation did not open Details");
@@ -1601,7 +1640,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestDialogPlayerSubtitleAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-subtitle-restores", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-subtitle-restores", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-subtitle-restores", "could not steer to SpeedButton");
             var invoker = FocusedName();
             await PressAsync("y").ConfigureAwait(true);
@@ -1614,7 +1653,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestDialogPlayerDelayAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-player-delay-restores", "could not steer to SpeedButton");
             await PressAsync("y").ConfigureAwait(true);
             if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-player-delay-restores", "Y did not open the subtitle menu");
@@ -1682,7 +1721,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestDialogNestedAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("dialog-nested-outer-only-on-outer-close", "could not steer to SpeedButton");
             await PressAsync("y").ConfigureAwait(true);
             if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "Y did not open the subtitle menu");
@@ -1757,7 +1796,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdHideParksBackAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hide-parks-back-remembers", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hide-parks-back-remembers", ReachFailureDetail());
             var offset = LogOffset();
             var hidden = await WaitForOsdHiddenAsync().ConfigureAwait(true);
             if (!hidden) return FocusTestResult.Fail("osd-hide-parks-back-remembers", "OSD did not hide within the wait");
@@ -1769,7 +1808,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdShowRestoresAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "could not steer to SpeedButton");
             var offset = LogOffset();
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
@@ -1785,7 +1824,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdSeekHintWinsAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-seek-explicit-hint-wins", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-seek-explicit-hint-wins", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SeekBar").ConfigureAwait(true)) return FocusTestResult.Skip("osd-seek-explicit-hint-wins", "could not steer to SeekBar");
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
             await PressAsync("right").ConfigureAwait(true);
@@ -1796,7 +1835,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdHiddenYDialogAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", "could not steer to SpeedButton");
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
             await PressAsync("y").ConfigureAwait(true);
@@ -1812,7 +1851,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdPauseXHiddenAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", "could not steer to SpeedButton");
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
             await PressAsync("x").ConfigureAwait(true);
@@ -1823,7 +1862,7 @@ namespace Nuvio.Diagnostics
 
         private async Task<FocusTestResult> TestOsdHiddenBackTwiceExitsAsync()
         {
-            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-back-twice-exits", "no playable stream");
+            if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-back-twice-exits", ReachFailureDetail());
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
             await PressAsync("back").ConfigureAwait(true);
             await Task.Delay(500).ConfigureAwait(true);
@@ -1846,7 +1885,7 @@ namespace Nuvio.Diagnostics
             FocusCoordinator.UseFocusCoordinator = false;
             try
             {
-                if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-flag-off-old-behaviour", "no playable stream");
+                if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-flag-off-old-behaviour", ReachFailureDetail());
                 if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-flag-off-old-behaviour", "could not steer to SpeedButton");
                 await Task.Delay(5000).ConfigureAwait(true);
                 var opacity = OsdOpacity();
