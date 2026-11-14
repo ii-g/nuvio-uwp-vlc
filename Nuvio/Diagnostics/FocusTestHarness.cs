@@ -1834,7 +1834,15 @@ namespace Nuvio.Diagnostics
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "could not steer to SpeedButton");
             var offset = LogOffset();
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
-            await PressAsync("right").ConfigureAwait(true);
+            // Show with Down, not Right: while the OSD is hidden Right
+            // means "scrub right" — HandleAction calls
+            // ShowControls("seek"), whose unconditional "seek" hint yanks
+            // focus from the just-restored SpeedButton onto SeekBar (the
+            // restore itself works; the sibling seek-hint test asserts
+            // that Right lands on SeekBar). Down shows the OSD with the
+            // "play" hint instead, whose never-yank rule keeps the
+            // restored button, so this test measures the restore alone.
+            await PressAsync("down").ConfigureAwait(true);
             var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
             if (restored)
             {
