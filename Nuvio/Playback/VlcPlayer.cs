@@ -44,6 +44,8 @@ namespace Nuvio.Playback
         private bool _durationSent;
         private int _lastBufferingPercent = -1;
         private DateTime _lastTimeReport = DateTime.MinValue;
+        private DateTime _lastVlcStatsLog = DateTime.MinValue;
+        private bool _vlcBuffering;
 
         // Set once LibVLC has started or failed to; _libVlc, _mediaPlayer and _initError are only
         // written before that.
@@ -590,6 +592,7 @@ namespace Nuvio.Playback
             _readySent = false;
             _durationSent = false;
             _lastBufferingPercent = -1;
+            _vlcBuffering = false;
             VideoVisibleChanged?.Invoke(false);
         }
 
@@ -649,7 +652,8 @@ namespace Nuvio.Playback
             }
             using (media)
             {
-                _mediaPlayer.Play(media);
+                var accepted = _mediaPlayer.Play(media);
+                Log.Write("VLC play requested (accepted=" + accepted + " state=" + SafeState() + ")");
             }
         }
 
@@ -697,8 +701,10 @@ namespace Nuvio.Playback
 
         private void Subscribe(MediaPlayer mediaPlayer)
         {
+            mediaPlayer.Opening += (s, e) => QueueFromVlc(OnOpening);
             mediaPlayer.Playing += (s, e) => QueueFromVlc(OnPlaying);
-            mediaPlayer.Paused += (s, e) => PostFromVlc(seq => RaiseState("paused", null));
+            mediaPlayer.Paused += (s, e) => PostFromVlc(seq => OnPaused());
+            mediaPlayer.Stopped += (s, e) => QueueFromVlc(OnStopped);
             mediaPlayer.Buffering += (s, e) =>
             {
                 var cache = e.Cache;
@@ -730,6 +736,35 @@ namespace Nuvio.Playback
             mediaPlayer.EncounteredError += (s, e) => QueueFromVlc(OnEncounteredError);
         }
 
+        // Worker. VLC's state line for the open: before this, a VLC load
+        // that never reached Playing left no trace at all in the log —
+        // the "Open ..." line was the last word.
+        private void OnOpening(long seq)
+        {
+            Log.Write("VLC opening (state=" + SafeState() + ")");
+        }
+
+        // Worker.
+        private void OnStopped(long seq)
+        {
+            Log.Write("VLC stopped (state=" + SafeState() + ")");
+        }
+
+        // The player may already be disposed when a queued callback runs;
+        // never let a state read throw.
+        private string SafeState()
+        {
+            try
+            {
+                var player = _mediaPlayer;
+                return player == null ? "no-player" : player.State.ToString();
+            }
+            catch (Exception)
+            {
+                return "unknown";
+            }
+        }
+
         // Worker.
         private void OnPlaying(long seq)
         {
@@ -737,7 +772,7 @@ namespace Nuvio.Playback
             if (!_inputStarted)
             {
                 _inputStarted = true;
-                Log.Write("Playing");
+                Log.Write("Playing (state=" + SafeState() + ") at " + Math.Round(Interlocked.Read(ref _lastTimeMs) / 1000.0) + "s");
                 if (_pendingSeekMs >= 0 && _mediaPlayer.IsSeekable)
                 {
                     _mediaPlayer.Time = _pendingSeekMs;
@@ -777,7 +812,7 @@ namespace Nuvio.Playback
                 RaiseState(paused ? "paused" : "playing", null);
                 if (hasVideoOutput)
                 {
-                    MarkVideoReady(seq);
+                    MarkVideoReady(seq, true);
                 }
                 else
                 {
@@ -787,12 +822,23 @@ namespace Nuvio.Playback
             });
         }
 
+        // UI thread.
+        private void OnPaused()
+        {
+            Log.Write("VLC paused at " + Math.Round(Interlocked.Read(ref _lastTimeMs) / 1000.0) + "s");
+            RaiseState("paused", null);
+        }
+
         // Worker.
         private void OnVideoOutput(long seq)
         {
             uint width = 0;
             uint height = 0;
             _mediaPlayer.Size(0, ref width, ref height);
+            if (width > 0 && height > 0)
+            {
+                Log.Write("VLC video output ready (" + width + "x" + height + ")");
+            }
             RunOnUi(() =>
             {
                 if (seq != _loadSeq)
@@ -806,7 +852,7 @@ namespace Nuvio.Playback
                     payload.SetNamedValue("height", JsonValue.CreateNumberValue(height));
                     Raise("player.video", payload);
                 }
-                MarkVideoReady(seq);
+                MarkVideoReady(seq, true);
             });
         }
 
@@ -824,7 +870,7 @@ namespace Nuvio.Playback
             // A stream that ends before it ever played failed to open; reporting it as finished
             // would make the app move on to the next episode.
             var failedToOpen = !_hasPlayed;
-            Log.Write(failedToOpen ? "Stream ended before it played" : "Stream finished");
+            Log.Write(failedToOpen ? "Stream ended before it played (state=" + SafeState() + ")" : "Stream finished");
             RunOnUi(() =>
             {
                 if (seq == _loadSeq)
@@ -843,7 +889,7 @@ namespace Nuvio.Playback
             {
                 return;
             }
-            Log.Write("VLC could not play the stream");
+            Log.Write("VLC could not play the stream (state=" + SafeState() + ") at " + Math.Round(Interlocked.Read(ref _lastTimeMs) / 1000.0) + "s");
             RunOnUi(() =>
             {
                 if (seq == _loadSeq)
@@ -1015,11 +1061,25 @@ namespace Nuvio.Playback
         private void OnBuffering(float cache)
         {
             var percent = (int)Math.Round(cache);
-            if (percent == _lastBufferingPercent)
+            var previous = _lastBufferingPercent;
+            if (percent == previous)
             {
                 return;
             }
             _lastBufferingPercent = percent;
+            // Startup buffering (before the first Playing) is covered by
+            // the Opening/Playing lines; a dip mid-playback is the stall
+            // signal the log was missing.
+            if (_hasPlayed && percent < 100 && !_vlcBuffering)
+            {
+                _vlcBuffering = true;
+                Log.Write("VLC buffering started (cache=" + percent + "%) at " + Math.Round(Interlocked.Read(ref _lastTimeMs) / 1000.0) + "s");
+            }
+            else if (_vlcBuffering && percent == 100)
+            {
+                _vlcBuffering = false;
+                Log.Write("VLC buffering ended at " + Math.Round(Interlocked.Read(ref _lastTimeMs) / 1000.0) + "s");
+            }
             var payload = new JsonObject();
             payload.SetNamedValue("percent", JsonValue.CreateNumberValue(percent));
             Raise("player.buffering", payload);
@@ -1051,15 +1111,52 @@ namespace Nuvio.Playback
             payload.SetNamedValue("time", JsonValue.CreateNumberValue(Math.Max(0, timeMs) / 1000.0));
             payload.SetNamedValue("duration", JsonValue.CreateNumberValue(Math.Max(0, Interlocked.Read(ref _lengthMs)) / 1000.0));
             Raise("player.time", payload);
+            // Periodic proof the decoder is still producing frames: VLC's
+            // own counters (decoded/displayed/lost pictures, lost audio
+            // buffers, bitrates) come from Media.Statistics. A heartbeat
+            // that stops arriving while Playing means time itself froze.
+            if (_hasPlayed && now - _lastVlcStatsLog >= TimeSpan.FromSeconds(10))
+            {
+                _lastVlcStatsLog = now;
+                LogVlcStats(timeMs);
+            }
         }
 
-        private void MarkVideoReady(long seq)
+        // UI thread. Media.Statistics wraps libvlc_media_get_stats; the
+        // "--stats" option defaults to true in VLC, so the counters are
+        // live while playing. All-zero counters while Playing would mean
+        // statistics are unavailable for this input.
+        private void LogVlcStats(long timeMs)
+        {
+            try
+            {
+                var player = _mediaPlayer;
+                if (player == null) return;
+                using (var media = player.Media)
+                {
+                    if (media == null) return;
+                    var stats = media.Statistics;
+                    Log.Write("VLC stats: time=" + Math.Round(timeMs / 1000.0) + "s state=" + SafeState() +
+                        " decodedVideo=" + stats.DecodedVideo + " displayed=" + stats.DisplayedPictures +
+                        " lost=" + stats.LostPictures + " lostABuf=" + stats.LostAudioBuffers +
+                        " inputBitrate=" + Math.Round(stats.InputBitrate) + " demuxBitrate=" + Math.Round(stats.DemuxBitrate) +
+                        " readBytes=" + stats.ReadBytes);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("VLC stats: could not read statistics: " + ex.GetType().Name);
+            }
+        }
+
+        private void MarkVideoReady(long seq, bool hasVideoOutput)
         {
             if (seq != _loadSeq || _readySent)
             {
                 return;
             }
             _readySent = true;
+            Log.Write(hasVideoOutput ? "VLC video track ready" : "VLC ready (no video output yet)");
             Raise("player.ready", new JsonObject());
             VideoVisibleChanged?.Invoke(true);
         }
@@ -1067,7 +1164,7 @@ namespace Nuvio.Playback
         private async void ScheduleReadyFallback(long seq)
         {
             await Task.Delay(ReadyFallbackDelay);
-            MarkVideoReady(seq);
+            MarkVideoReady(seq, false);
         }
 
         private void RaiseState(string state, string message)
