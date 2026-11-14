@@ -421,7 +421,7 @@ namespace Nuvio.Diagnostics
                     if (!endByUrl.TryGetValue(addon.TransportUrl, out current)) { missing.Add(addon); continue; }
                     if ((addon.Enabled != false) != (current.Enabled != false)) enabledChanged.Add(addon);
                 }
-                if (missing.Count == 0 && enabledChanged.Count == 0) return Task.FromResult(0);
+                if (missing.Count == 0 && enabledChanged.Count == 0) return;
                 if (missing.Count > 0)
                 {
                     Log.Write("Harness addon guard: WARNING missing " + missing.Count + " addon(s): " + AddonGuardNames(missing));
