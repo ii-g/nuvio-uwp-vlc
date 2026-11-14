@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Threading.Tasks;
 using Nuvio.Core;
+using Nuvio.Diagnostics;
 using Nuvio.Input;
 using Nuvio.Models;
 using Nuvio.Services;
@@ -715,6 +716,16 @@ namespace Nuvio.Views
 
         private async Task<object> ShowMenuDialogAsync(string title, List<MenuRow> rows)
         {
+            var shell = MainPage.Current;
+            // Re-entrancy guard: only one ContentDialog may be open at a time.
+            // A second open (e.g. another Y press, or a subtitle fetch timing
+            // out while a menu is already up) is ignored without touching
+            // any state — no flag is raised and no dialog is shown.
+            if ((shell != null && shell.DialogOpen) || _viewModel.MenuOpen)
+            {
+                Log.Write("Menu dialog open ignored: a dialog is already open");
+                return null;
+            }
             var dialog = new ContentDialog
             {
                 Title = title,
@@ -774,7 +785,6 @@ namespace Nuvio.Views
                 var first = firstButton;
                 dialog.Opened += (s, e) => first.Focus(FocusState.Programmatic);
             }
-            var shell = MainPage.Current;
             // Dialog restore: the coordinator owns it when the flag is on
             // (it captures the invoker when DialogOpen is set below, and
             // restores focus to it when DialogOpen clears); the capture
@@ -785,7 +795,21 @@ namespace Nuvio.Views
             _viewModel.MenuOpen = true;
             try
             {
-                await dialog.ShowAsync().AsTask().ConfigureAwait(true);
+                try
+                {
+                    await dialog.ShowAsync().AsTask().ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    // A re-entrant open throws InvalidOperationException
+                    // ("Only a single ContentDialog can be open at any time");
+                    // a cancelled show throws TaskCanceledException. Either way
+                    // the dialog is gone, so log the type only and return no
+                    // choice. The natural close path (Hide/Back) completes
+                    // normally without throwing, so this never swallows a
+                    // real close.
+                    Log.Write("Menu dialog ShowAsync failed: " + ex.GetType().Name);
+                }
             }
             finally
             {
