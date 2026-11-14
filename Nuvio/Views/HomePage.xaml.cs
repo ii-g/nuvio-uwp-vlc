@@ -437,7 +437,7 @@ namespace Nuvio.Views
         }
 
         // Anchor the focused element the way the old web UI did (focus.js): the
-        // card before the focused one stays at the row's start edge while the strip glides beneath
+        // focused card itself stays at the row's start edge while the strip glides beneath
         // it, and the focused row sits ~16% down the page. StartBringIntoView jumps
         // per move instead of gliding, which is why the UI felt fast even at a slower
         // repeat rate — so the anchor now drives the smooth scroller below, a port
@@ -459,7 +459,7 @@ namespace Nuvio.Views
             var rowChanged = row == null || !ReferenceEquals(row, _lastAnchoredRow);
             if (row != null && item != null)
             {
-                // Within a row the card before the focused one is pinned to the start edge (AnchorRow);
+                // Within a row the focused card itself is pinned to the start edge (AnchorRow);
                 // entering a row from elsewhere only keeps the
                 // card inside the padded viewport (web scrollIntoView) instead of
                 // yanking the strip to the anchor.
@@ -646,26 +646,16 @@ namespace Nuvio.Views
             }
         }
 
-        /// <summary>Anchors a row after an in-row focus move — but not on the
-        /// focused card itself: on the card just before it toward the flow
-        /// start (index k-1), whose start edge lands on the hero content's
+        /// <summary>Anchors a row after an in-row focus move on the focused
+        /// card itself: its start edge lands on the hero content's
         /// start edge (RowStartAnchorInset: 108 epx RTL / 26 epx LTR inside
         /// the track edge) — the same place the first card rests (rowHome
-        /// padding). The focused card then rests one pitch inside the hero
-        /// edge, with the previous card fully visible at the edge instead
-        /// of sliding under the sidebar. Mohammed's call on build 292:
-        /// with focus on Primetime (index 2) Halloween (index 1, the first
-        /// fully-visible card from the start side) must sit exactly on the
-        /// hero edge — pinning the focused card itself put Halloween 97 epx
-        /// past the edge, at the sidebar seam, and the row visibly lost the
-        /// hero alignment as soon as it scrolled (at rest, index 0, it was
-        /// perfect). For index 0 there is no previous card: the target is
-        /// the rest offset 0. The offset is computed from the anchored
-        /// card's on-screen rect, so no ratio is guessed and wide Continue
-        /// cards (176 epx) work the same way: BringIntoView ratios are
-        /// fractions of the flow extent, which is why 0.99 pinned the card
-        /// to the flow end (the left edge in RTL) on build 162 instead of
-        /// the start.</summary>
+        /// padding). For index 0 the target is the rest offset 0. The
+        /// offset is computed from the anchored card's on-screen rect, so
+        /// no ratio is guessed and wide Continue cards (176 epx) work the
+        /// same way: BringIntoView ratios are fractions of the flow extent,
+        /// which is why 0.99 pinned the card to the flow end (the left edge
+        /// in RTL) on build 162 instead of the start.</summary>
         private void AnchorRow(GridView row, GridViewItem item)
         {
             var viewer = FindScrollViewer(row);
@@ -699,23 +689,21 @@ namespace Nuvio.Views
             // row entry (KeepCardInView) and TidyRowEnd.
             _anchorGlideViewers.Add(viewer);
             _anchorSettlePasses[viewer] = 0;
-            SmoothScrollTo(viewer, target, null);
+            SmoothScrollTo(viewer, target, null, 35);
         }
 
-        /// <summary>Computes the offset that puts the anchor card's start edge
-        /// on the hero edge: the card before the focused one toward the flow
-        /// start (index k-1), or the rest offset 0 when focus is on the first
-        /// card. The anchor card is measured live (TransformToVisual reports
-        /// RTL-origin coordinates — build 180 — so the physical edges are
-        /// flipped back before use), which also makes the target correct
-        /// mid-glide: the delta is read off the card's current on-screen
-        /// rect, so retargeting during the 110 ms repeat only moves the
-        /// destination, never the start point. Returns false when the row is
-        /// already on the anchor (|delta| ≤ 1 epx — tidying there would apply
-        /// SnapRowEnd's nudge and push the card off it) or when the anchor
-        /// card is not realized (the caller then leaves the row alone; the
-        /// focused card's neighbour is adjacent and on screen, so this is
-        /// only a virtualization fallback).</summary>
+        /// <summary>Computes the offset that puts the focused card's own start
+        /// edge on the hero edge, or the rest offset 0 when focus is on the
+        /// first card. The focused card is measured live (TransformToVisual
+        /// reports RTL-origin coordinates — build 180 — so the physical
+        /// edges are flipped back before use), which also makes the target
+        /// correct mid-glide: the delta is read off the card's current
+        /// on-screen rect, so retargeting during the 110 ms repeat only
+        /// moves the destination, never the start point. Returns false when
+        /// the row is already on the anchor (|delta| ≤ 1 epx — tidying there
+        /// would apply SnapRowEnd's nudge and push the card off it) or when
+        /// the focused card is not realized (the caller then leaves the row
+        /// alone; this is only a virtualization fallback).</summary>
         private bool TryComputeRowAnchorTarget(GridView row, GridViewItem item, ScrollViewer viewer, out double target)
         {
             target = 0;
@@ -728,7 +716,7 @@ namespace Nuvio.Views
                 target = 0;
                 return true;
             }
-            var anchorItem = row.ContainerFromIndex(index - 1) as GridViewItem;
+            var anchorItem = item;
             if (anchorItem == null) return false;
             var rect = anchorItem.TransformToVisual(viewer).TransformBounds(new Rect(0, 0, anchorItem.ActualWidth, anchorItem.ActualHeight));
             var rtl = row.FlowDirection == FlowDirection.RightToLeft;
@@ -788,7 +776,7 @@ namespace Nuvio.Views
             if (passes >= 2) return;
             _anchorSettlePasses[viewer] = passes + 1;
             _anchorGlideViewers.Add(viewer);
-            SmoothScrollTo(viewer, target, null);
+            SmoothScrollTo(viewer, target, null, 35);
         }
 
         /// <summary>Anchors the current row's block at 16% of the page height (web
@@ -850,6 +838,7 @@ namespace Nuvio.Views
             public double? TargetV;
             public DateTime LastTime;
             public bool Running;
+            public double TauMs;
         }
 
         private const double SmoothTauMs = 105;
@@ -860,16 +849,19 @@ namespace Nuvio.Views
         private bool _smoothScrollHandlerAttached;
 
         /// <summary>Glides a ScrollViewer toward the given offsets (web smoothScrollTo).
-        /// Retargeting only moves the destination; a running glide is never restarted.</summary>
-        private void SmoothScrollTo(ScrollViewer viewer, double? targetH, double? targetV)
+        /// Retargeting only moves the destination; a running glide is never restarted.
+        /// tauMs is the exponential time constant (default SmoothTauMs = 105 ms;
+        /// anchor glides pass 35 ms).</summary>
+        private void SmoothScrollTo(ScrollViewer viewer, double? targetH, double? targetV, double tauMs = SmoothTauMs)
         {
             if (viewer == null) return;
             SmoothScrollState state;
             if (!_smoothScrolls.TryGetValue(viewer, out state))
             {
-                state = new SmoothScrollState { Viewer = viewer };
+                state = new SmoothScrollState { Viewer = viewer, TauMs = SmoothTauMs };
                 _smoothScrolls[viewer] = state;
             }
+            state.TauMs = tauMs;
             if (targetH.HasValue) state.TargetH = Math.Max(0, Math.Min(viewer.ScrollableWidth, targetH.Value));
             if (targetV.HasValue) state.TargetV = Math.Max(0, Math.Min(viewer.ScrollableHeight, targetV.Value));
             state.LastTime = DateTime.UtcNow;
@@ -915,7 +907,7 @@ namespace Nuvio.Views
                     }
                     else
                     {
-                        var next = current + distance * (1 - Math.Exp(-elapsedMs / SmoothTauMs));
+                        var next = current + distance * (1 - Math.Exp(-elapsedMs / state.TauMs));
                         viewer.ChangeView(next, null, null, true);
                         active = true;
                     }
@@ -931,7 +923,7 @@ namespace Nuvio.Views
                     }
                     else
                     {
-                        var next = current + distance * (1 - Math.Exp(-elapsedMs / SmoothTauMs));
+                        var next = current + distance * (1 - Math.Exp(-elapsedMs / state.TauMs));
                         viewer.ChangeView(null, next, null, true);
                         active = true;
                     }
