@@ -504,7 +504,10 @@ namespace Nuvio
             }
         }
 
-        private static void ShowOnScreenKeyboard()
+        // Internal so SearchPage can open the keyboard explicitly (Gamepad A
+        // on the search box, tap on the field): programmatic focus no longer
+        // opens it there, so the box asks for it on purpose instead.
+        internal static void ShowOnScreenKeyboard()
         {
             try
             {
