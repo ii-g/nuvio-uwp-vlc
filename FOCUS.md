@@ -219,6 +219,15 @@ Every new page must satisfy all of these to join the system:
 - Row left/right: index-based neighbour, forward-stop at the row end
   (RTL-aware), never drops to the next row. Up/down between rows lands on
   the remembered poster or index 0.
+- Pinned anchor (المرساة): in-row Left/Right keeps the focus ring pinned on
+  the anchor — the focused card itself (k, not k−1) sits on the hero edge
+  (RTL 716..804, LTR 26..114 — the second poster from the right edge) —
+  and the row glides underneath it with a smooth slide (tau ≈ 35 ms for
+  anchor slides only, no instant jump). Which card is focused, the order,
+  and per-row memory are unchanged. At the row tail (offset clamped at
+  ScrollableWidth) and in short rows the ring detaches and follows the
+  card. Catalog has no anchor (single wrapping 2-D grid); Search pins to
+  its own 6 epx start edge.
 - Edges: a forward move past the last card stops dead; the row-start edge is
   open so a move toward the sidebar enters it. Up on the first / Down on the
   last sidebar button stops dead.
@@ -237,7 +246,7 @@ Every new page must satisfy all of these to join the system:
 ## 7. Tests
 
 - **Harness:** `Nuvio/Diagnostics/FocusTestHarness.cs` — the Phase 5
-  package: 48 tests (46 automated in the registry, plus 2 manual gate
+  package: 49 tests (47 automated in the registry, plus 2 manual gate
   checks below). Scripted action sequences driven through the pinned
   `MainPage.SimulateFocusInput` seam — the same code path the
   ControllerBridge poll callback uses — on the UI thread with realistic
