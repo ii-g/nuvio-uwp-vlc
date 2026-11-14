@@ -25,15 +25,6 @@ namespace Nuvio.Views
         private readonly FocusScrollHelper _scrollHelper = new FocusScrollHelper();
         private CatalogViewModel _viewModel;
         private ScrollViewer _gridScroller;
-        /// <summary>Last card opened into Details from a catalog, kept outside
-        /// the page instance (the page is rebuilt on every navigation) so
-        /// back-navigation can restore focus to the opened card instead of the
-        /// first card. Guarded by the catalog key: a different catalog never
-        /// restores another catalog's card. Cleared once the restore runs.</summary>
-        internal static string LastOpenedMetaId;
-        internal static string LastOpenedCatalogKey;
-
-        private string _catalogKey;
 
         public CatalogPage()
         {
@@ -123,7 +114,6 @@ namespace Nuvio.Views
             ApplyFlowDirection(AppSettings.EffectiveIsRightToLeft());
             var shell = MainPage.Current;
             var navigation = e.Parameter as CatalogNavigation;
-            _catalogKey = navigation == null ? null : navigation.Type + "|" + navigation.Id + "|" + navigation.TransportUrl;
             _viewModel = new CatalogViewModel(shell.Stremio, shell.Progress, shell.Navigation, navigation);
             DataContext = _viewModel;
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -164,8 +154,9 @@ namespace Nuvio.Views
         /// <summary>Back-arrival target: the card for a recorded "meta:" key.
         /// Returns false when there is nothing to restore (different catalog,
         /// or the card sits on a page not loaded yet) so the router falls back
-        /// to TryFocusArrival. The static LastOpenedCatalogKey guard still
-        /// applies: a key recorded in another catalog never restores here.</summary>
+        /// to TryFocusArrival. The registry is keyed by EntryKey, which
+        /// carries the catalog identity — a key recorded in another catalog
+        /// never restores here.</summary>
         public override bool TryFocusKey(string key)
         {
             if (string.IsNullOrEmpty(key) || !key.StartsWith("meta:", StringComparison.Ordinal)) return false;
@@ -178,7 +169,7 @@ namespace Nuvio.Views
         /// on a page not loaded yet) so the caller falls back to the first card.</summary>
         private bool TryFocusOpenedCard(string metaId)
         {
-            if (string.IsNullOrEmpty(metaId) || LastOpenedCatalogKey != _catalogKey) return false;
+            if (string.IsNullOrEmpty(metaId)) return false;
             for (var i = 0; i < CatalogGridView.Items.Count; i++)
             {
                 var card = CatalogGridView.Items[i] as CatalogCardItem;
@@ -192,8 +183,6 @@ namespace Nuvio.Views
                 }
                 if (container != null && container.Focus(FocusState.Programmatic))
                 {
-                    LastOpenedMetaId = null;
-                    LastOpenedCatalogKey = null;
                     return true;
                 }
                 return false;
@@ -222,9 +211,6 @@ namespace Nuvio.Views
             var card = e.ClickedItem as CatalogCardItem;
             if (card != null && card.Meta != null)
             {
-                LastOpenedMetaId = card.Meta.Id;
-                LastOpenedCatalogKey = _catalogKey;
-                MainPage.Current?.RecordArrivalFocusKey(EntryKey, "meta:" + card.Meta.Id);
                 _viewModel.OpenTitle(card.Meta);
             }
         }
@@ -261,9 +247,9 @@ namespace Nuvio.Views
             // instance is destroyed on Back, so the shell registry (keyed by
             // navigation entry) is what the router's TryFocusKey call reads
             // back. The base GotFocus hook cannot record this: cards are
-            // GridViewItems, not Buttons with Tags. The LastOpenedCatalogKey
-            // guard in TryFocusKey still applies — a key only restores when
-            // it was opened from this catalog.
+            // GridViewItems, not Buttons with Tags. The registry is keyed
+            // by EntryKey, which carries the catalog identity — a key only
+            // restores in the catalog it was recorded from.
             var card = item.Content as CatalogCardItem;
             if (card != null && card.Meta != null)
             {
