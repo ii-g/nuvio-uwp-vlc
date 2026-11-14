@@ -9,6 +9,19 @@ using Windows.Storage;
 
 namespace Nuvio.Services
 {
+    internal enum JsonReadStatus
+    {
+        Missing,
+        Ok,
+        Failed
+    }
+
+    internal sealed class JsonReadResult
+    {
+        public JsonValue Value { get; set; }
+        public JsonReadStatus Status { get; set; }
+    }
+
     /// <summary>
     /// ApplicationData access. Small scalars live in LocalSettings; all collections and
     /// credentials are JSON files in LocalFolder/nuvio/ (architecture §9.2 — the per-value
@@ -43,6 +56,40 @@ namespace Nuvio.Services
         public Task<JsonValue> ReadProfileJsonAsync(string name)
         {
             return ReadJsonFileAsync(ProfileKey(name));
+        }
+
+        /// <summary>
+        /// Same read pipeline as ReadJsonFileAsync (GetFileAsync, FileIO.ReadTextAsync,
+        /// JsonHelpers.Parse), but distinguishes the three null sources: a missing file
+        /// (Missing, no log), any other read error (Failed, logged), and a file that
+        /// exists but is empty or not valid JSON — Parse returns null without throwing —
+        /// (Failed, logged with a distinct line). Callers must not treat Failed as a
+        /// first run: overwriting the stored file would destroy the user's data.
+        /// </summary>
+        public async Task<JsonReadResult> ReadProfileJsonDetailedAsync(string name)
+        {
+            var relativePath = ProfileKey(name);
+            try
+            {
+                SplitPath(relativePath, out var dir, out var fileName);
+                var folder = await GetFolderAsync(dir).ConfigureAwait(false);
+                var file = await folder.GetFileAsync(fileName).AsTask().ConfigureAwait(false);
+                var text = await FileIO.ReadTextAsync(file).AsTask().ConfigureAwait(false);
+                var value = JsonHelpers.Parse(text);
+                if (value == null)
+                {
+                    Log.Write("Reading " + relativePath + " failed: file exists but contents are empty or not valid JSON; treating as read failure, not first run");
+                    return new JsonReadResult { Value = null, Status = JsonReadStatus.Failed };
+                }
+                return new JsonReadResult { Value = value, Status = JsonReadStatus.Ok };
+            }
+            catch (Exception ex)
+            {
+                // Missing file is the normal "nothing stored yet" case; anything else is logged.
+                if (ex is System.IO.FileNotFoundException) return new JsonReadResult { Value = null, Status = JsonReadStatus.Missing };
+                Log.Error("Reading " + relativePath + " failed", ex);
+                return new JsonReadResult { Value = null, Status = JsonReadStatus.Failed };
+            }
         }
 
         public Task WriteProfileJsonAsync(string name, IJsonValue value)
