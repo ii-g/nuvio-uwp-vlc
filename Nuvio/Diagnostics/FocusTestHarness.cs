@@ -383,26 +383,30 @@ namespace Nuvio.Diagnostics
         /// Addon guard (b): re-read the installed addons, warn about any
         /// that went missing or changed enabled-state since the snapshot,
         /// and restore them through the existing public API only
-        /// (MergeAddons + SetAddonEnabled). Never fails the suite: warnings
-        /// stay warnings, and any problem logs an ERROR. An empty start
-        /// snapshot with addons at the end is a late load, not a loss — no
-        /// warning, no restore. Extra addons that were not in the snapshot
-        /// are not a loss either.
+        /// (MergeAddons + SetAddonEnabled). The restore is then persisted
+        /// with the awaitable SaveAddonsAsync: MergeAddons/SetAddonEnabled
+        /// only fire the fire-and-forget SaveAndNotifyAsync, so without
+        /// the await the app could close before the restored list reaches
+        /// disk. Never fails the suite: warnings stay warnings, and any
+        /// problem logs an ERROR. An empty start snapshot with addons at
+        /// the end is a late load, not a loss — no warning, no restore.
+        /// Extra addons that were not in the snapshot are not a loss
+        /// either.
         /// </summary>
-        private Task VerifyAndRestoreAddonGuardAsync()
+        private async Task VerifyAndRestoreAddonGuardAsync()
         {
             try
             {
                 var start = _addonGuardStart;
-                if (start == null) return Task.FromResult(0);
+                if (start == null) return;
                 if (_shell == null || _shell.Stremio == null)
                 {
                     Log.Write("Harness addon guard: WARNING no Stremio service, guard skipped");
-                    return Task.FromResult(0);
+                    return;
                 }
                 var end = _shell.Stremio.ListAddons();
                 Log.Write("Harness addon guard: end " + end.Count + " addons");
-                if (start.Count == 0) return Task.FromResult(0);
+                if (start.Count == 0) return;
                 var endByUrl = new Dictionary<string, Addon>();
                 foreach (var addon in end)
                 {
@@ -454,6 +458,39 @@ namespace Nuvio.Diagnostics
                 {
                     _shell.Stremio.SetAddonEnabled(addon.TransportUrl, addon.Enabled != false);
                 }
+                // Await the disk write before verifying: MergeAddons and
+                // SetAddonEnabled only fire SaveAndNotifyAsync (async void),
+                // so the restored list may still be in memory only. The
+                // awaited save is queued behind those writes and writes
+                // the same final list, so it is the last writer. It raises
+                // no AddonsChanged event itself; the CHANGE line(s) in the
+                // log come from the MergeAddons/SetAddonEnabled saves.
+                var saveResult = AddonSaveResult.Failed;
+                var saveThrew = false;
+                try
+                {
+                    saveResult = await _shell.Stremio.SaveAddonsAsync().ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    saveThrew = true;
+                    Log.Write("Harness addon guard: restore NOT persisted: save threw " + ex.GetType().Name + ": " + ex.Message);
+                }
+                if (!saveThrew)
+                {
+                    if (saveResult == AddonSaveResult.Saved)
+                    {
+                        Log.Write("Harness addon guard: restore persisted to disk (" + missing.Count + " restored, " + enabledChanged.Count + " enabled-state fix(es))");
+                    }
+                    else if (saveResult == AddonSaveResult.RefusedLoadFailed)
+                    {
+                        Log.Write("Harness addon guard: restore NOT persisted: save refused, stored addons file failed to load; stored file left untouched");
+                    }
+                    else
+                    {
+                        Log.Write("Harness addon guard: restore NOT persisted: save failed with an exception (see 'Saving addons failed' above)");
+                    }
+                }
                 var after = _shell.Stremio.ListAddons();
                 if (missing.Count > 0)
                 {
@@ -482,7 +519,6 @@ namespace Nuvio.Diagnostics
             {
                 Log.Write("Harness addon guard: ERROR " + ex.GetType().Name + ": " + ex.Message);
             }
-            return Task.FromResult(0);
         }
 
         /// <summary>
