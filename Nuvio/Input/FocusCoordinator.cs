@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Nuvio.Diagnostics;
 using Nuvio.Services;
+using Nuvio.ViewModels;
 using Nuvio.Views;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
@@ -207,7 +208,7 @@ namespace Nuvio.Input
         /// entries. Only ids and catalog manifest URLs appear here — never
         /// stream URLs, API keys or tokens (none of these parameter fields
         /// can carry one: TransportUrl is a catalog manifest URL, the same
-        /// identity CatalogPage already uses as LastOpenedCatalogKey).
+        /// identity CatalogPage already uses as its catalog key).
         /// </summary>
         internal static string EntryIdentity(object parameter)
         {
@@ -848,9 +849,13 @@ namespace Nuvio.Input
 
         /// <summary>
         /// One settle attempt. On a Back arrival, focus already inside the
-        /// page counts as success WITHOUT moving anything (a late attempt
-        /// must never yank focus the user already placed); on a fresh
-        /// arrival it does not — the focus may be the cached page's stale
+        /// page counts as success WITHOUT moving anything when no key is
+        /// recorded for the entry (a late attempt must never yank focus the
+        /// user already placed); when a key IS recorded, the recorded card
+        /// is tried first (TrySettleOnce) before accepting the focus already
+        /// in the page — that focus may be the framework's park, not the
+        /// recorded card. On a fresh arrival it does not — the focus may be
+        /// the cached page's stale
         /// focus (Home/Search are Required-cache, so re-navigating Home
         /// returns the same instance with focus still on a card), and
         /// accepting it would declare the settle done on a card instead of
@@ -868,7 +873,24 @@ namespace Nuvio.Input
             var settled = false;
             try
             {
-                if (_settleIsBack && IsFocusInsidePage(page)) settled = true;
+                if (_settleIsBack && IsFocusInsidePage(page))
+                {
+                    // Back arrival with focus already inside the page: that
+                    // focus may be the framework's park (first card / grid),
+                    // not the card this entry recorded. When a key is
+                    // recorded for the entry, try it first — TrySettleOnce
+                    // restores the recorded card, falling back to the
+                    // arrival target when the key cannot land. The shortcut
+                    // stays only when no key is recorded for the entry.
+                    string backKey;
+                    if (TryGetLastFocusKey(page.EntryKey, out backKey))
+                    {
+                        var restored = TrySettleOnce(page, true) && IsFocusInsidePage(page);
+                        Log.Write("Settle back restore: key=" + backKey + ", restored=" + restored + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
+                        if (restored) settled = true;
+                    }
+                    else settled = true;
+                }
                 else if (!ReferenceEquals(FocusManager.GetFocusedElement(), _settleInitialFocus) && !IsFocusInSidebar && FocusablePage.IsRealFocusTarget(CurrentFocused))
                 {
                     // The user deliberately moved focus off the settle's
@@ -921,6 +943,17 @@ namespace Nuvio.Input
             }
             Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null") + ", focusName=" + focusName + ", focusTag=" + focusTag);
             return settled;
+        }
+
+        /// <summary>Meta.Id of the currently focused catalog card, if focus is
+        /// on a GridViewItem holding one; null otherwise. Diagnostic only —
+        /// Meta.Id only, never URLs or keys.</summary>
+        private static string FocusedCardMetaId()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return null;
+            var card = container.Content as CatalogCardItem;
+            return card != null && card.Meta != null ? card.Meta.Id : null;
         }
 
         /// <summary>
