@@ -150,6 +150,12 @@ namespace Nuvio.Diagnostics
         /// stream". Cleared at the start of each reach attempt.</summary>
         private string _lastReachFailure;
 
+        /// <summary>Start-of-suite addon snapshot for the guard (b): the
+        /// installed addons as they were before the first test, so the
+        /// suite can warn about and restore anything a test removed or
+        /// disabled. Null when the guard was skipped (no service / error).</summary>
+        private List<Addon> _addonGuardStart;
+
         public FocusTestHarness(MainPage shell)
             : this(shell, "unknown")
         {
@@ -278,6 +284,7 @@ namespace Nuvio.Diagnostics
                 Log.Write("TEST suite FAIL shell-not-ready ms=" + stopwatch.ElapsedMilliseconds);
                 return;
             }
+            _addonGuardStart = await TakeAddonGuardSnapshotAsync().ConfigureAwait(true);
             foreach (var test in BuildTests())
             {
                 FocusTestResult result;
@@ -299,6 +306,7 @@ namespace Nuvio.Diagnostics
                     default: skipped++; break;
                 }
             }
+            await VerifyAndRestoreAddonGuardAsync().ConfigureAwait(true);
             // Defensive flag restore: the flag-off tests restore in their
             // own finally blocks; this is the backstop so the app never
             // leaves the suite with the coordinator switched off.
@@ -309,6 +317,164 @@ namespace Nuvio.Diagnostics
             }
             Log.Write("TEST suite DONE passed=" + passed + " failed=" + failed + " skipped=" + skipped
                 + " ms=" + stopwatch.ElapsedMilliseconds);
+        }
+
+        /// <summary>
+        /// Addon guard (b): snapshot the installed addons before the suite
+        /// runs, so VerifyAndRestoreAddonGuardAsync can warn about and
+        /// restore anything a test removed or disabled. The copies are
+        /// manual, never live references: MergeAddons mutates its inputs in
+        /// place, and SetAddonEnabled/RefreshAddonAsync mutate fields in
+        /// place. Never fails the suite: any problem logs an ERROR and the
+        /// guard is skipped (null snapshot).
+        /// </summary>
+        private async Task<List<Addon>> TakeAddonGuardSnapshotAsync()
+        {
+            try
+            {
+                if (_shell == null || _shell.Stremio == null)
+                {
+                    Log.Write("Harness addon guard: WARNING no Stremio service, guard skipped");
+                    return null;
+                }
+                await _shell.Stremio.LoadAddonsAsync().ConfigureAwait(true);
+                var start = new List<Addon>();
+                foreach (var addon in _shell.Stremio.ListAddons())
+                {
+                    if (addon == null || string.IsNullOrEmpty(addon.TransportUrl)) continue;
+                    start.Add(new Addon
+                    {
+                        TransportUrl = addon.TransportUrl,
+                        Manifest = addon.Manifest,
+                        Enabled = addon.Enabled,
+                        RefreshedAt = addon.RefreshedAt,
+                        Error = addon.Error,
+                        Handler = addon.Handler,
+                    });
+                }
+                Log.Write("Harness addon guard: start " + start.Count + " addons");
+                return start;
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Harness addon guard: ERROR " + ex.GetType().Name + ": " + ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Addon guard (b): re-read the installed addons, warn about any
+        /// that went missing or changed enabled-state since the snapshot,
+        /// and restore them through the existing public API only
+        /// (MergeAddons + SetAddonEnabled). Never fails the suite: warnings
+        /// stay warnings, and any problem logs an ERROR. An empty start
+        /// snapshot with addons at the end is a late load, not a loss — no
+        /// warning, no restore. Extra addons that were not in the snapshot
+        /// are not a loss either.
+        /// </summary>
+        private Task VerifyAndRestoreAddonGuardAsync()
+        {
+            try
+            {
+                var start = _addonGuardStart;
+                if (start == null) return Task.FromResult(0);
+                if (_shell == null || _shell.Stremio == null)
+                {
+                    Log.Write("Harness addon guard: WARNING no Stremio service, guard skipped");
+                    return Task.FromResult(0);
+                }
+                var end = _shell.Stremio.ListAddons();
+                Log.Write("Harness addon guard: end " + end.Count + " addons");
+                if (start.Count == 0) return Task.FromResult(0);
+                var endByUrl = new Dictionary<string, Addon>();
+                foreach (var addon in end)
+                {
+                    if (addon == null || string.IsNullOrEmpty(addon.TransportUrl)) continue;
+                    endByUrl[addon.TransportUrl] = addon;
+                }
+                var missing = new List<Addon>();
+                var enabledChanged = new List<Addon>();
+                foreach (var addon in start)
+                {
+                    Addon current;
+                    if (!endByUrl.TryGetValue(addon.TransportUrl, out current)) { missing.Add(addon); continue; }
+                    if ((addon.Enabled != false) != (current.Enabled != false)) enabledChanged.Add(addon);
+                }
+                if (missing.Count == 0 && enabledChanged.Count == 0) return Task.FromResult(0);
+                if (missing.Count > 0)
+                {
+                    Log.Write("Harness addon guard: WARNING missing " + missing.Count + " addon(s): " + AddonGuardNames(missing));
+                }
+                if (enabledChanged.Count > 0)
+                {
+                    Log.Write("Harness addon guard: WARNING enabled changed for " + enabledChanged.Count + " addon(s): " + AddonGuardNames(enabledChanged));
+                }
+                if (missing.Count > 0)
+                {
+                    // Fresh copies for the merge: MergeAddons mutates its
+                    // inputs (forces Enabled=true, stamps RefreshedAt), so
+                    // the snapshot itself must never be passed in.
+                    var copies = new List<Addon>();
+                    foreach (var addon in missing)
+                    {
+                        copies.Add(new Addon
+                        {
+                            TransportUrl = addon.TransportUrl,
+                            Manifest = addon.Manifest,
+                            Enabled = addon.Enabled,
+                            RefreshedAt = addon.RefreshedAt,
+                            Error = addon.Error,
+                            Handler = addon.Handler,
+                        });
+                    }
+                    _shell.Stremio.MergeAddons(copies);
+                    foreach (var addon in missing)
+                    {
+                        if (addon.Enabled == false) _shell.Stremio.SetAddonEnabled(addon.TransportUrl, false);
+                    }
+                }
+                foreach (var addon in enabledChanged)
+                {
+                    _shell.Stremio.SetAddonEnabled(addon.TransportUrl, addon.Enabled != false);
+                }
+                var after = _shell.Stremio.ListAddons();
+                if (missing.Count > 0)
+                {
+                    Log.Write("Harness addon guard: restored " + missing.Count + " addon(s): " + AddonGuardNames(missing));
+                }
+                var afterUrls = new HashSet<string>();
+                foreach (var addon in after)
+                {
+                    if (addon != null && !string.IsNullOrEmpty(addon.TransportUrl)) afterUrls.Add(addon.TransportUrl);
+                }
+                var stillMissing = new List<Addon>();
+                foreach (var addon in missing)
+                {
+                    if (!afterUrls.Contains(addon.TransportUrl)) stillMissing.Add(addon);
+                }
+                if (stillMissing.Count == 0)
+                {
+                    Log.Write("Harness addon guard: restore verified: " + after.Count + " addons");
+                }
+                else
+                {
+                    Log.Write("Harness addon guard: restore FAILED still missing " + stillMissing.Count + " addon(s): " + AddonGuardNames(stillMissing));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Write("Harness addon guard: ERROR " + ex.GetType().Name + ": " + ex.Message);
+            }
+            return Task.FromResult(0);
+        }
+
+        /// <summary>Guard log names only: the manifest name, else the host
+        /// — never the full transport URL, whose query may carry keys.</summary>
+        private static string AddonGuardNames(IEnumerable<Addon> addons)
+        {
+            var names = new List<string>();
+            foreach (var addon in addons) names.Add(StremioService.AddonName(addon));
+            return string.Join(", ", names);
         }
 
         /// <summary>
@@ -1700,24 +1866,19 @@ namespace Nuvio.Diagnostics
             return FocusTestResult.Fail("dialog-player-delay-restores", "after close focused=" + FocusedName() + " expected " + invoker);
         }
 
+        // The dialog under test is now the install-addon's text-entry dialog (RequestTextAsync; Hide/cancel/empty confirm change no state) — the Reset confirm dialog is never opened by this test; installed addons are protected by the suite-level addon guard in RunAllTestsAsync instead.
         private async Task<FocusTestResult> TestDialogSettingsConfirmAsync()
         {
             if (_shell == null || _shell.Navigation == null) return FocusTestResult.Fail("dialog-settings-confirm-restores", "no shell");
             _shell.Navigation.NavigateSettings("addons");
             if (await WaitForPageAsync<SettingsPage>().ConfigureAwait(true) == null) return FocusTestResult.Fail("dialog-settings-confirm-restores", "addons did not load");
             await WaitForSettleAsync().ConfigureAwait(true);
-            var reached = false;
-            for (var i = 0; i < 15; i++)
-            {
-                if (FocusedName() == "ResetAddonsButton") { reached = true; break; }
-                await PressAsync("down").ConfigureAwait(true);
-            }
-            if (!reached) return FocusTestResult.Skip("dialog-settings-confirm-restores", "Reset button not reached");
+            if (FocusedName() != "InstallAddonButton") return FocusTestResult.Fail("dialog-settings-confirm-restores", "arrival focused=" + FocusedName() + " expected InstallAddonButton");
             await ActivateFocusedAsync().ConfigureAwait(true);
-            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "activation did not open the confirm dialog");
+            if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "activation did not open the install dialog");
             if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("dialog-settings-confirm-restores", "dialog did not close");
             await WaitForSettleAsync().ConfigureAwait(true);
-            if (FocusedName() == "ResetAddonsButton") return FocusTestResult.Pass("dialog-settings-confirm-restores", "close restored the Reset button");
+            if (FocusedName() == "InstallAddonButton") return FocusTestResult.Pass("dialog-settings-confirm-restores", "close restored the Install button");
             return FocusTestResult.Fail("dialog-settings-confirm-restores", "after close focused=" + FocusedName());
         }
 
