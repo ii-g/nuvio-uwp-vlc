@@ -94,6 +94,7 @@ namespace Nuvio.Services
         private readonly List<Func<IReadOnlyList<Addon>>> _providers = new List<Func<IReadOnlyList<Addon>>>();
         private List<Addon> _addons;
         private bool _addonsLoaded;
+        private bool _addonsLoadFailed;
         private bool _hasStoredAddons;
 
         public event EventHandler<AddonsChangedEventArgs> AddonsChanged;
@@ -109,7 +110,9 @@ namespace Nuvio.Services
         {
             if (_addonsLoaded) return;
             _addonsLoaded = true;
-            var value = await _store.ReadProfileJsonAsync("addons").ConfigureAwait(false);
+            var result = await _store.ReadProfileJsonDetailedAsync("addons").ConfigureAwait(false);
+            _addonsLoadFailed = (result.Status == JsonReadStatus.Failed);
+            var value = result.Value;
             _addons = new List<Addon>();
             if (value != null && value.ValueType == JsonValueType.Array)
             {
@@ -124,6 +127,14 @@ namespace Nuvio.Services
 
         private async void SaveAndNotifyAsync()
         {
+            if (_addonsLoadFailed)
+            {
+                // The stored file failed to load, so the in-memory list is empty by
+                // accident, not by choice: writing it would destroy the stored addons.
+                Log.Write("Saving addons refused: stored addons file failed to load; refusing to overwrite it");
+                RaiseAddonsChanged();
+                return;
+            }
             try
             {
                 var array = new JsonArray();
@@ -147,6 +158,7 @@ namespace Nuvio.Services
         public void ReloadAddons()
         {
             _addonsLoaded = false;
+            _addonsLoadFailed = false;
             _addons = null;
             var _ = LoadAddonsAsync().ContinueWith(t => RaiseAddonsChanged());
         }
@@ -257,6 +269,11 @@ namespace Nuvio.Services
         public async Task EnsureDefaultAddonsAsync()
         {
             await LoadAddonsAsync().ConfigureAwait(false);
+            if (_addonsLoadFailed)
+            {
+                Log.Write("Default addons not installed: stored addons file could not be read; stored file left untouched");
+                return;
+            }
             if (_hasStoredAddons) return;
             var installed = new List<Addon>();
             var tasks = new List<Task>();
