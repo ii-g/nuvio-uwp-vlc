@@ -1213,3 +1213,51 @@ release msix on the Xbox, where there is no DEBUG build to install.
 - **Open question:** the correct pin position / anchor behaviour is
   still unknown — it needs a video from the user showing exactly where
   the ring should sit before any new attempt.
+
+## Anchor re-attempt — focused card pinned on the anchor (2026-11-14)
+
+Answers the open question in the removal section above: the pin
+position is now defined — the focused card itself sits on the anchor —
+and the build-634 failure is diagnosed below, not repeated.
+
+- **(a) The new rule (inverts k−1):** the focused card itself (k) sits
+  on the hero edge — RTL 716..804, LTR 26..114, the second poster from
+  the right edge — instead of the card before it (k−1 target, build 292,
+  kept through the removal round). The k−1 target is superseded. What
+  does not change: which card is focused, the order, and per-row memory.
+  At the row tail (offset clamped at `ScrollableWidth`) and in short rows
+  the ring detaches and follows the card, as before. Catalog has no
+  anchor; Search pins to its own 6 epx start edge.
+- **(b) Why build 634 failed in practice — two parallel scroll engines:**
+  the instant `JumpTo` was put in `FocusScrollHelper` (the shared helper
+  behind the Search path only — `HomePage` never uses the helper at all),
+  while `HomePage` owns a second, separate engine of its own
+  (`SmoothScrollTo` / `_smoothScrolls` / `OnSmoothScrollRendering`, an
+  exponential glide driven on `CompositionTarget.Rendering`). The
+  pre-scroll in `HomePage.HandleAction` used a raw `ChangeView`, which
+  moved the offset but never cancelled `HomePage`'s in-flight glide
+  state — so the stuck glide dragged the strip back toward the previous
+  target on every press, which matches the device video (the ring
+  travelled with the posters and the strip scrolled late). Separately,
+  tau 105 ms against the 110 ms repeat rate meant the glide was always
+  still running during a hold: each step was only ~65% covered
+  (`1 − exp(−110/105)`) when the next press landed, ~35% of every step
+  still outstanding, so the strip could never catch up. The jump fixed
+  the wrong engine, and the glide was too slow for the repeat rate.
+- **(c) tau ≈ 35 ms for anchor slides only:** `HomePage.AnchorRow` now
+  passes 35 ms to `SmoothScrollTo` (per-glide `SmoothScrollState.TauMs`;
+  the 105 ms default is untouched for every other glide — row entry,
+  vertical moves). One repeat interval (110 ms) now covers ~96% of a
+  step (`1 − exp(−110/35)`) instead of ~65%, so the strip is effectively
+  settled before the next press. Tunable 35–50 ms on the device if the
+  slide feels too snappy or too loose — the constant lives in the
+  `AnchorRow` call only.
+- **(d) Harness:** the position test is re-added as
+  `home-anchor-pins-focused-card` (47 automated tests now), with the new
+  constants: it walks a long 88 epx poster row and asserts the focused
+  card's rect sits at 716..804 RTL / 26..114 LTR (±2 epx) after the first
+  step and after a 3-step walk, while `HorizontalOffset` grows. It skips
+  when no 88 epx poster row is reached or the row is too short to move
+  the strip (`ScrollableWidth < 400`). Gate: device walk across a long
+  row — ring visually fixed on the anchor, strip gliding under it; tail
+  walk shows the documented detach.
