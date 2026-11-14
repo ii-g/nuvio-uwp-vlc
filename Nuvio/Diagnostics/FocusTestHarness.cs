@@ -1042,6 +1042,76 @@ namespace Nuvio.Diagnostics
             return first != null && first.Meta != null ? first.Meta.Id : null;
         }
 
+        /// <summary>True when focus is on a ListViewItem whose Content is
+        /// a StreamRowItem with IsPlayable true. VisibleRows are normally
+        /// playable-only (ShowUnsupported defaults false), so the
+        /// IsPlayable check is defence, not the filter.</summary>
+        private bool IsFocusedPlayableStreamRow()
+        {
+            var item = FocusManager.GetFocusedElement() as ListViewItem;
+            if (item == null) return false;
+            var row = item.Content as StreamRowItem;
+            return row != null && row.IsPlayable;
+        }
+
+        /// <summary>
+        /// Steers focus from the Streams arrival point down to the first
+        /// playable stream row. Arrival parks on the "all" filter chip —
+        /// StreamsPage.TryFocusArrival targets the chip first, and the chip
+        /// exists before any stream loads (ComputeFilterChips always seeds
+        /// "all") — while "content ready" fires on the loading-state
+        /// render, before any row exists (the ListView is Collapsed while
+        /// empty), so a single focus check at settle time can only ever
+        /// see the chip. Waits up to PageReadyTimeoutMs for the first row
+        /// to appear, then presses Down (bounded, 3) until a playable row
+        /// is focused. Returns false, with _lastReachFailure carrying the
+        /// exact reason, when the list never fills ("no playable stream")
+        /// or focus never lands on a row ("no focused stream row") — the
+        /// caller SKIPs with that reason; a timeout never PASSes.
+        /// </summary>
+        private async Task<bool> SteerStreamsToFirstPlayableRowAsync(StreamsPage streams)
+        {
+            var list = FindNamedDescendant<ListView>(streams, "StreamsListView");
+            if (list == null) { _lastReachFailure = "no playable stream"; return false; }
+            var loaded = await WaitForAsync(() => list.Items.Count > 0, PageReadyTimeoutMs).ConfigureAwait(true);
+            if (!loaded) { _lastReachFailure = "no playable stream"; return false; }
+            for (var i = 0; i < 3; i++)
+            {
+                if (IsFocusedPlayableStreamRow()) return true;
+                await PressAsync("down").ConfigureAwait(true);
+                await WaitForSettleAsync().ConfigureAwait(true);
+                if (IsFocusedPlayableStreamRow()) return true;
+            }
+            _lastReachFailure = "no focused stream row";
+            return false;
+        }
+
+        /// <summary>
+        /// Shared Home → Details → Streams preamble (the first half of
+        /// TryReachPlayerAsync, without its per-step failure recording
+        /// there — this copy records the same _lastReachFailure strings so
+        /// its callers SKIP with the real reason). Returns the Streams
+        /// page, or null when any step fails. TryReachPlayerAsync keeps
+        /// its own inline preamble unchanged; this helper serves the
+        /// tests that stop at Streams instead of continuing to the Player.
+        /// </summary>
+        private async Task<StreamsPage> ReachStreamsAsync()
+        {
+            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) { _lastReachFailure = "home did not settle"; return null; }
+            await PressAsync("down").ConfigureAwait(true);
+            if (FocusManager.GetFocusedElement() as GridViewItem == null) { _lastReachFailure = "no card on first Down"; return null; }
+            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) { _lastReachFailure = "no Meta card found in rows"; return null; }
+            if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "card activation unavailable in harness"; return null; }
+            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
+            if (details == null) { _lastReachFailure = "Details did not open"; return null; }
+            await WaitForSettleAsync().ConfigureAwait(true);
+            if (FocusedName() != "PlayButton") { _lastReachFailure = "no Play button on Details"; return null; }
+            if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "Play button activation unavailable in harness"; return null; }
+            var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
+            if (streams == null) { _lastReachFailure = "Streams did not open"; return null; }
+            return streams;
+        }
+
         /// <summary>
         /// Drives the real UI chain Home → Details → Streams → Player. Each
         /// step is bounded; any step timing out means the fixture (catalog
@@ -1070,17 +1140,11 @@ namespace Nuvio.Diagnostics
             var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
             if (streams == null) { _lastReachFailure = "Streams did not open"; return false; }
             await WaitForSettleAsync().ConfigureAwait(true);
-            // Arrival parks on the "all" filter chip when rows exist, so a
-            // focused element that is not a stream row is a steering miss,
-            // not an absent stream — unless the list itself is empty.
-            var list = FindNamedDescendant<ListView>(streams, "StreamsListView");
-            var noStreams = list != null && list.Items.Count == 0;
-            var focused = FocusManager.GetFocusedElement();
-            if (focused == null || !(focused is ListViewItem))
-            {
-                _lastReachFailure = noStreams ? "no playable stream" : "no focused stream row";
-                return false;
-            }
+            // Arrival parks on the "all" filter chip, not a row: steer
+            // Down to the first playable row (waits for the list to fill
+            // first). The helper records "no playable stream" /
+            // "no focused stream row" in _lastReachFailure itself.
+            if (!await SteerStreamsToFirstPlayableRowAsync(streams).ConfigureAwait(true)) return false;
             if (!await ActivateFocusedAsync().ConfigureAwait(true)) { _lastReachFailure = "stream row activation unavailable in harness"; return false; }
             var player = await WaitForPageAsync<PlayerPage>(PlayerOpenTimeoutMs).ConfigureAwait(true);
             if (player == null) { _lastReachFailure = "Player did not open"; return false; }
@@ -1931,31 +1995,46 @@ namespace Nuvio.Diagnostics
             return FocusTestResult.Fail("dialog-nested-outer-only-on-outer-close", "after inner close focused=" + FocusedName() + " expected BackButton");
         }
 
+        /// <summary>True when the focused element is a Button whose
+        /// ancestor chain contains the FiltersPanel — the structural chip
+        /// check. The old check tested FocusedTag().StartsWith("chip:"),
+        /// which can never be true: FocusedTag() returns the raw
+        /// Button.Tag, and chip Tags are chip.Key ("all" or an addon
+        /// manifest URL) — the "chip:" prefix exists only in the
+        /// coordinator's arrival-focus key, never in Button.Tag.</summary>
+        private static bool IsFocusedFilterChip(StackPanel filtersPanel)
+        {
+            var button = FocusManager.GetFocusedElement() as Button;
+            if (button == null || filtersPanel == null) return false;
+            for (var node = VisualTreeHelper.GetParent(button); node != null; node = VisualTreeHelper.GetParent(node))
+            {
+                if (ReferenceEquals(node, filtersPanel)) return true;
+            }
+            return false;
+        }
+
         private async Task<FocusTestResult> TestStreamsFilterRowVanishesAsync()
         {
-            // Reach Streams through the player chain's first half: open a
-            // title, play, and stop at the Streams page instead of playing.
-            if (!await NavigateHomeAndSettleAsync().ConfigureAwait(true)) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "home did not settle");
-            await PressAsync("down").ConfigureAwait(true);
-            if (FocusManager.GetFocusedElement() as GridViewItem == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no card on first Down");
-            if (await ScanForMetaCardAsync().ConfigureAwait(true) == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no Meta card found in rows");
-            await ActivateFocusedAsync().ConfigureAwait(true);
-            var details = await WaitForPageAsync<DetailsPage>().ConfigureAwait(true);
-            if (details == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "Details did not open");
+            // Reach Streams through the shared preamble, then steer to the
+            // first playable row: arrival parks on the "all" filter chip,
+            // not a row, so the old test's assumption (arrival focus is a
+            // row) was wrong in the same way as the reach chain's.
+            var streams = await ReachStreamsAsync().ConfigureAwait(true);
+            if (streams == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", ReachFailureDetail());
             await WaitForSettleAsync().ConfigureAwait(true);
-            if (FocusedName() != "PlayButton") return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no Play button on Details");
-            await ActivateFocusedAsync().ConfigureAwait(true);
-            var streams = await WaitForPageAsync<StreamsPage>().ConfigureAwait(true);
-            if (streams == null) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "no streams for the title");
-            await WaitForSettleAsync().ConfigureAwait(true);
-            var row = FocusManager.GetFocusedElement();
-            if (row == null) return FocusTestResult.Fail("streams-filter-row-vanishes-fallback", "focus lost on Streams arrival");
-            // Move up toward the filter chips; if a chip is reached, select
-            // it to change the filter, then focus must land on a neighbour,
-            // a chip, or the arrival target — never vanish.
-            await PressAsync("up").ConfigureAwait(true);
-            var tag = FocusedTag();
-            if (tag == null || !tag.StartsWith("chip:", StringComparison.Ordinal))
+            if (!await SteerStreamsToFirstPlayableRowAsync(streams).ConfigureAwait(true)) return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", ReachFailureDetail());
+            // Move up toward the filter chips in a bounded sweep; if a
+            // chip is reached, select it to change the filter, then focus
+            // must land on a neighbour, a chip, or the arrival target —
+            // never vanish. No chip in the sweep is a steering miss (Up
+            // row→chip has never been exercised in any log), so SKIP.
+            var filtersPanel = FindNamedDescendant<StackPanel>(streams, "FiltersPanel");
+            for (var i = 0; i < 2 && !IsFocusedFilterChip(filtersPanel); i++)
+            {
+                await PressAsync("up").ConfigureAwait(true);
+                await WaitForSettleAsync().ConfigureAwait(true);
+            }
+            if (!IsFocusedFilterChip(filtersPanel))
             {
                 return FocusTestResult.Skip("streams-filter-row-vanishes-fallback", "filter chips not reached from the rows");
             }
