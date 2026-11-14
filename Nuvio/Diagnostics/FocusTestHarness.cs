@@ -134,6 +134,9 @@ namespace Nuvio.Diagnostics
         /// <summary>Bounded wait for playback to open (stream resolve + player ready).</summary>
         private const int PlayerOpenTimeoutMs = 20000;
 
+        /// <summary>Bounded wait for the player to become hideable (Ready + playing) before an OSD-hide expectation is measured. Inside the player's 35 s open timeout: a stream not hideable in 30 s is a stuck load (log 22 died at ~30 s OpenTimeout with zero Playing), and a stuck load must keep its controls — the hide is not expected, so the wait ends in a Skip, never a Fail.</summary>
+        private const int PlayerHideableTimeoutMs = 30000;
+
         private const string HeroPlayButtonName = "HeroPlayButton";
         private const string ManageAddonsButtonName = "ManageAddonsButton";
         private const string ExpectedHeroTagAndType = "hero/Button";
@@ -1426,11 +1429,33 @@ namespace Nuvio.Diagnostics
             return FocusedName() == buttonName;
         }
 
+        /// <summary>
+        /// Waits for the player to become hideable: Ready and playing.
+        /// HideControls refuses in any other state, by design — a stuck
+        /// load keeps its controls so the user can act on it — so an
+        /// OSD-hide expectation is only meaningful once this is true.
+        /// The limited re-arm (max 7 x 4 s) guarantees the hide within
+        /// one 4 s interval after that. False when the player never
+        /// becomes hideable: the caller SKIPs, it does not fail — the
+        /// fix cannot green the test when the player never readies, and
+        /// that is correct by design, not a gap (log 22: zero Playing,
+        /// zero video-track-ready, OpenTimeout at ~30 s).
+        /// </summary>
+        private async Task<bool> WaitForPlayerHideableAsync()
+        {
+            return await WaitForAsync(() =>
+            {
+                var player = FindPage<PlayerPage>(_shell);
+                var viewModel = player != null ? player.DataContext as PlayerViewModel : null;
+                return viewModel != null && viewModel.Ready && viewModel.PlayState == "playing";
+            }, PlayerHideableTimeoutMs).ConfigureAwait(true);
+        }
+
         private async Task<bool> WaitForOsdHiddenAsync(int timeoutMs = 8000)
         {
             var offset = LogOffset();
             var hidden = await WaitForAsync(() =>
-                LogContainsSince("OSD hidden; parked focus on Back", offset)
+                LogContainsSince("OSD hidden; parked focus on Play/Pause (OSD anchor)", offset)
                 || OsdOpacity() == 0, timeoutMs).ConfigureAwait(true);
             return hidden;
         }
@@ -2392,37 +2417,74 @@ namespace Nuvio.Diagnostics
         private async Task<FocusTestResult> TestOsdHideParksBackAsync()
         {
             if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hide-parks-back-remembers", ReachFailureDetail());
+            // The hide is only expected once the player is hideable
+            // (Ready + playing): HideControls refuses while loading, and
+            // a stuck load must keep its controls. The old test waited
+            // for the hide from page arrival, so its 8 s wait expired
+            // before the player was even ready (log 20: ready at ~9.2 s,
+            // hide at 13.2 s) — a timing miss in the test, not a focus
+            // bug. Waiting for hideable first makes the 8 s wait measure
+            // the hide itself: the re-arm guarantees it within one 4 s
+            // interval after hideable, so 8 s is one full interval plus
+            // margin — unchanged, and still strict.
+            if (!await WaitForPlayerHideableAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hide-parks-back-remembers", "player never became hideable (Ready + playing); OSD hide not measurable");
+            // A previous test may have left the OSD already hidden with
+            // focus already parked: showing it first (Down) makes the
+            // wait below measure a fresh hide instead of passing on a
+            // stale one. Down while hidden shows with the "play" hint
+            // and re-arms the hide timer, so the hide still lands
+            // inside the same 8 s wait.
+            if (OsdOpacity() == 0)
+            {
+                await PressAsync("down").ConfigureAwait(true);
+                var shown = await WaitForAsync(() => OsdOpacity() == 1, 3000).ConfigureAwait(true);
+                if (!shown) return FocusTestResult.Fail("osd-hide-parks-back-remembers", "OSD did not show after Down");
+            }
             var offset = LogOffset();
             var hidden = await WaitForOsdHiddenAsync().ConfigureAwait(true);
-            if (!hidden) return FocusTestResult.Fail("osd-hide-parks-back-remembers", "OSD did not hide within the wait");
-            var parkedLog = LogContainsSince("OSD hidden; parked focus on Back", offset);
-            if (FocusedName() == "BackButton" && parkedLog) return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus parked on Back, log confirms");
-            if (FocusedName() == "BackButton") return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus parked on Back (log line not found)");
-            return FocusTestResult.Fail("osd-hide-parks-back-remembers", "after hide focused=" + FocusedName() + " expected BackButton");
+            if (!hidden) return FocusTestResult.Fail("osd-hide-parks-back-remembers", "OSD did not hide within 8s of the player becoming hideable");
+            var parkedLog = LogContainsSince("OSD hidden; parked focus on Play/Pause (OSD anchor)", offset);
+            if (FocusedName() == "PlayPauseButton" && parkedLog) return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus anchored on Play/Pause, log confirms");
+            if (FocusedName() == "PlayPauseButton") return FocusTestResult.Pass("osd-hide-parks-back-remembers", "OSD hid, focus anchored on Play/Pause (log line not found)");
+            return FocusTestResult.Fail("osd-hide-parks-back-remembers", "after hide focused=" + FocusedName() + " expected PlayPauseButton");
         }
 
         private async Task<FocusTestResult> TestOsdShowRestoresAsync()
         {
             if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "could not steer to SpeedButton");
+            // Same precondition as the hide test: the hide below is only
+            // expected once the player is hideable (Ready + playing).
+            // The old test ignored whether the hide ever happened and
+            // then pressed Down — on a still-visible OSD, Down from the
+            // bottom row hides instead of showing, so it measured a
+            // manual hide, not a show-after-hide. The hide is now
+            // required, and the show is verified by opacity, not just
+            // by focus (which the hide already parked on Play/Pause).
+            if (!await WaitForPlayerHideableAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-show-restores-same-button", "player never became hideable (Ready + playing); OSD hide not measurable");
             var offset = LogOffset();
-            await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            if (!await WaitForOsdHiddenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("osd-show-restores-same-button", "OSD did not hide within the wait");
             // Show with Down, not Right: while the OSD is hidden Right
             // means "scrub right" — HandleAction calls
             // ShowControls("seek"), whose unconditional "seek" hint yanks
-            // focus from the just-restored SpeedButton onto SeekBar (the
-            // restore itself works; the sibling seek-hint test asserts
+            // focus onto SeekBar (the sibling seek-hint test asserts
             // that Right lands on SeekBar). Down shows the OSD with the
-            // "play" hint instead, whose never-yank rule keeps the
-            // restored button, so this test measures the restore alone.
-            await PressAsync("down").ConfigureAwait(true);
-            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
-            if (restored)
+            // "play" hint instead, and the anchor lands focus on
+            // Play/Pause — the new rule replaces the Phase 4 restore of
+            // the remembered button (here SpeedButton).
+            if (OsdOpacity() == 0)
             {
-                var logged = LogContainsSince("OSD shown; focus restored to SpeedButton", offset);
-                return FocusTestResult.Pass("osd-show-restores-same-button", "OSD showed, focus back on SpeedButton" + (logged ? ", log confirms" : ""));
+                await PressAsync("down").ConfigureAwait(true);
             }
-            return FocusTestResult.Fail("osd-show-restores-same-button", "after show focused=" + FocusedName() + " expected SpeedButton");
+            var shown = await WaitForAsync(() => OsdOpacity() == 1, 3000).ConfigureAwait(true);
+            if (!shown) return FocusTestResult.Fail("osd-show-restores-same-button", "OSD did not show after Down");
+            var anchored = await WaitForAsync(() => FocusedName() == "PlayPauseButton", 3000).ConfigureAwait(true);
+            if (anchored)
+            {
+                var logged = LogContainsSince("OSD shown; focus on Play/Pause (OSD anchor)", offset);
+                return FocusTestResult.Pass("osd-show-restores-same-button", "OSD showed, focus anchored on Play/Pause" + (logged ? ", log confirms" : ""));
+            }
+            return FocusTestResult.Fail("osd-show-restores-same-button", "after show focused=" + FocusedName() + " expected PlayPauseButton");
         }
 
         private async Task<FocusTestResult> TestOsdSeekHintWinsAsync()
@@ -2441,15 +2503,45 @@ namespace Nuvio.Diagnostics
             if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-hidden-y-dialog-then-restore", "could not steer to SpeedButton");
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            var offset = LogOffset();
             await PressAsync("y").ConfigureAwait(true);
             if (!await WaitForDialogOpenAsync().ConfigureAwait(true)) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "Y did not open the subtitle menu while hidden");
             if (!await CloseOpenDialogAsync().ConfigureAwait(true)) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "dialog did not close");
             await WaitForSettleAsync().ConfigureAwait(true);
-            if (FocusedName() != "BackButton") return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after dialog close focused=" + FocusedName() + " expected BackButton");
-            await PressAsync("down").ConfigureAwait(true);
-            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
-            if (restored) return FocusTestResult.Pass("osd-hidden-y-dialog-then-restore", "dialog closed to Back, direction restored SpeedButton");
-            return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after direction focused=" + FocusedName() + " expected SpeedButton");
+            // Closing the dialog does NOT show the OSD: focus returns
+            // to Play/Pause through the dialog-invoker restore
+            // (FocusCoordinator.RestoreDialogInvoker) — the invoker is
+            // Play/Pause itself, parked there by the hide, and still a
+            // valid target because the hide is Opacity 0, not Collapsed.
+            // The OSD anchor is not what lands focus here (no show
+            // happened), so the anchor log line below is corroboration
+            // only, not the assertion — it may be absent here.
+            if (FocusedName() != "PlayPauseButton") return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after dialog close focused=" + FocusedName() + " expected PlayPauseButton");
+            // Direction from the anchor: show the OSD with Down first.
+            // While the OSD is hidden Right means "scrub right" —
+            // HandleAction calls ShowControls("seek"), whose "seek"
+            // hint yanks focus onto SeekBar — so Right before a show
+            // cannot prove direction. Down shows the OSD with the
+            // "play" hint instead, and the (still armed) anchor
+            // re-asserts Play/Pause — the same pattern as
+            // TestOsdShowRestoresAsync, show verified by opacity.
+            if (OsdOpacity() == 0)
+            {
+                await PressAsync("down").ConfigureAwait(true);
+            }
+            var shown = await WaitForAsync(() => OsdOpacity() == 1, 3000).ConfigureAwait(true);
+            if (!shown) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "OSD did not show after Down");
+            var anchored = await WaitForAsync(() => FocusedName() == "PlayPauseButton", 3000).ConfigureAwait(true);
+            if (!anchored) return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after show focused=" + FocusedName() + " expected PlayPauseButton");
+            var anchoredLog = LogContainsSince("OSD shown; focus on Play/Pause (OSD anchor)", offset);
+            // Now the OSD is visible, so Right moves within the
+            // controls row via XYFocus — Play/Pause's right neighbour
+            // is Forward — and proves steering still works from the
+            // anchor.
+            await PressAsync("right").ConfigureAwait(true);
+            var restored = await WaitForAsync(() => FocusedName() == "ForwardButton", 3000).ConfigureAwait(true);
+            if (restored) return FocusTestResult.Pass("osd-hidden-y-dialog-then-restore", "dialog closed to Play/Pause anchor" + (anchoredLog ? ", log confirms" : "") + ", Down showed OSD, Right moved to Forward");
+            return FocusTestResult.Fail("osd-hidden-y-dialog-then-restore", "after Right focused=" + FocusedName() + " expected ForwardButton");
         }
 
         private async Task<FocusTestResult> TestOsdPauseXHiddenAsync()
@@ -2457,10 +2549,19 @@ namespace Nuvio.Diagnostics
             if (!await TryReachPlayerAsync().ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", ReachFailureDetail());
             if (!await SteerToOsdButtonAsync("SpeedButton").ConfigureAwait(true)) return FocusTestResult.Skip("osd-pause-x-hidden-shows-restores", "could not steer to SpeedButton");
             await WaitForOsdHiddenAsync().ConfigureAwait(true);
+            var offset = LogOffset();
             await PressAsync("x").ConfigureAwait(true);
-            var restored = await WaitForAsync(() => FocusedName() == "SpeedButton", 3000).ConfigureAwait(true);
-            if (restored) return FocusTestResult.Pass("osd-pause-x-hidden-shows-restores", "X paused, OSD showed, focus back on SpeedButton");
-            return FocusTestResult.Fail("osd-pause-x-hidden-shows-restores", "after X focused=" + FocusedName() + " expected SpeedButton");
+            // X while hidden pauses and shows the OSD; the anchor rule
+            // lands focus on Play/Pause, not on the remembered button
+            // (SpeedButton before). The log line is corroboration only;
+            // focus on Play/Pause is the assertion.
+            var restored = await WaitForAsync(() => FocusedName() == "PlayPauseButton", 3000).ConfigureAwait(true);
+            if (restored)
+            {
+                var logged = LogContainsSince("OSD shown; focus on Play/Pause (OSD anchor)", offset);
+                return FocusTestResult.Pass("osd-pause-x-hidden-shows-restores", "X paused, OSD showed, focus anchored on Play/Pause" + (logged ? ", log confirms" : ""));
+            }
+            return FocusTestResult.Fail("osd-pause-x-hidden-shows-restores", "after X focused=" + FocusedName() + " expected PlayPauseButton");
         }
 
         private async Task<FocusTestResult> TestOsdHiddenBackTwiceExitsAsync()
