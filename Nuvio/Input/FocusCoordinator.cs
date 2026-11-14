@@ -122,6 +122,40 @@ namespace Nuvio.Input
         private EventHandler<object> _settleLayoutHandler;
         // Source label of the last settle attempt, for ArrivalSettled.
         private string _settleLastSource;
+        // Key the last TrySettleOnce call in this settle restored via
+        // (null when it fell through to TryFocusArrival or failed).
+        // Reporting only: cleared at the top of TrySettleOnce and in
+        // StopSettle, read by CompleteSettle to decide whether a
+        // post-settle hold check applies. The restore logic is untouched.
+        private string _settleRestoredKey;
+
+        // Post-settle hold check: a Back settle that restored a recorded
+        // key can still lose focus ~450 ms later (log nuvio-vlc_15:
+        // settle succeeded at 20.892, focus gone by 21.349, no log line
+        // in between — most likely a late layout pass re-realizing the
+        // GridViewItem once the posters load). The check verifies that
+        // focus is still on the restored card and, if it dropped with
+        // no user input, re-applies the recorded key exactly once.
+        // Timing: at most two checks, one HoldCheckInterval (200 ms)
+        // apart, so the last check lands ~400 ms after success — before
+        // the harness reads focus (~457 ms after success in that log).
+        // A 500 ms check would fire after the read and be useless for
+        // the test. Every check must also land inside the 2 s guard
+        // budget measured from settle start; the guard itself is never
+        // re-armed or extended (it was already cleared by CompleteSettle).
+        // The _settleTimer is NOT reused for this: ClearNavigationGuard
+        // stops it when the settle ends and its tick's idle branch stops
+        // it while no settle runs, so a separate one-shot timer is the
+        // only way to watch past settle end without touching the guard
+        // enforcement invariants.
+        private DispatcherTimer _holdCheckTimer;
+        private FocusablePage _holdCheckPage;
+        private string _holdCheckKey;
+        private object _holdCheckExpected;
+        private int _holdCheckChecksLeft;
+        private bool _holdCheckRestoreUsed;
+        private static readonly TimeSpan HoldCheckInterval = TimeSpan.FromMilliseconds(200);
+        private const int HoldCheckMaxChecks = 2;
         private const int SettleMaxAttempts = 10;
         private static readonly TimeSpan SettleWatchdogInterval = TimeSpan.FromMilliseconds(500);
         // Inputs arriving within this window of a settle starting are the
@@ -941,7 +975,7 @@ namespace Nuvio.Input
                 var tagText = focusedElement.Tag.ToString();
                 if (!string.IsNullOrEmpty(tagText)) focusTag = tagText;
             }
-            Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null") + ", focusName=" + focusName + ", focusTag=" + focusTag);
+            Log.Write("Settle attempt " + _settleAttempts + "/" + SettleMaxAttempts + " (" + source + "): entry=" + page.EntryKey + ", isBack=" + _settleIsBack + ", settled=" + settled + ", focused=" + (focused != null ? focused.GetType().Name : "null") + ", focusName=" + focusName + ", focusTag=" + focusTag + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
             return settled;
         }
 
@@ -954,6 +988,19 @@ namespace Nuvio.Input
             if (container == null) return null;
             var card = container.Content as CatalogCardItem;
             return card != null && card.Meta != null ? card.Meta.Id : null;
+        }
+
+        /// <summary>Index of the currently focused card in its GridView,
+        /// or -1 when focus is not on a GridViewItem in a GridView.
+        /// Diagnostic only — pairs with FocusedCardMetaId so a restore
+        /// log line names both the card and where it sits.</summary>
+        private static int FocusedCardIndex()
+        {
+            var container = FocusManager.GetFocusedElement() as GridViewItem;
+            if (container == null) return -1;
+            var grid = ItemsControl.ItemsControlFromItemContainer(container) as GridView;
+            if (grid == null) return -1;
+            return grid.IndexFromContainer(container);
         }
 
         /// <summary>
@@ -974,8 +1021,25 @@ namespace Nuvio.Input
             var attempts = _settleAttempts;
             var source = _settleLastSource ?? "sync";
             var milliseconds = (long)(DateTime.UtcNow - _settleStartedAt).TotalMilliseconds;
+            // Capture before StopSettle clears the settle state: a Back
+            // settle that restored a recorded key earns a post-settle
+            // hold check.
+            var isBack = _settleIsBack;
+            var restoredKey = _settleRestoredKey;
+            var expectedFocus = FocusManager.GetFocusedElement();
             Log.Write("Settle " + (success ? "succeeded" : "expired") + " after " + attempts + " attempts; clearing the sidebar guard");
-            StopSettle(clearGuard: true);
+            // cancelHoldCheck: false — CompleteSettle runs twice for
+            // Catalog arrivals (LayoutUpdated re-enters inside
+            // TryFocusKey's UpdateLayout), and the second call's
+            // StopSettle must not cancel the hold check the first call
+            // just armed. A stale check from an earlier settle cannot
+            // be pending here: RequestArrival / CancelArrival /
+            // takeover cancel it through StopSettle's default.
+            StopSettle(clearGuard: true, cancelHoldCheck: false);
+            if (success && isBack && page != null && !string.IsNullOrEmpty(restoredKey))
+            {
+                ArmHoldCheck(page, restoredKey, expectedFocus, milliseconds);
+            }
             var handler = ArrivalSettled;
             if (handler != null)
             {
@@ -990,7 +1054,137 @@ namespace Nuvio.Input
             }
         }
 
-        private void StopSettle(bool clearGuard)
+        /// <summary>
+        /// Arms the post-settle hold check for a Back settle that restored
+        /// a recorded key. At most HoldCheckMaxChecks checks, one
+        /// HoldCheckInterval apart, each landing inside the 2 s guard
+        /// budget from settle start; checks that would land past the
+        /// budget are not armed. Idempotent: the second (re-entrant)
+        /// CompleteSettle of the same arrival must not arm a second
+        /// timer — but that call normally never reaches here, because
+        /// StopSettle cleared _settleRestoredKey before it reads it.
+        /// </summary>
+        private void ArmHoldCheck(FocusablePage page, string key, object expectedFocus, long elapsedMs)
+        {
+            if (_holdCheckTimer != null)
+            {
+                Log.Write("Hold check already armed for key=" + _holdCheckKey + "; skipping duplicate arm");
+                return;
+            }
+            var remainingMs = (long)GuardHardTimeout.TotalMilliseconds - elapsedMs;
+            var checks = 0;
+            for (var k = 1; k <= HoldCheckMaxChecks; k++)
+            {
+                if (remainingMs >= k * (long)HoldCheckInterval.TotalMilliseconds) checks = k;
+            }
+            if (checks == 0)
+            {
+                Log.Write("Hold check not armed: key=" + key + ", elapsed=" + elapsedMs + "ms leaves no room inside the 2s guard budget");
+                return;
+            }
+            _holdCheckPage = page;
+            _holdCheckKey = key;
+            _holdCheckExpected = expectedFocus;
+            _holdCheckChecksLeft = checks;
+            _holdCheckRestoreUsed = false;
+            _holdCheckTimer = new DispatcherTimer();
+            _holdCheckTimer.Interval = HoldCheckInterval;
+            _holdCheckTimer.Tick += OnHoldCheckTick;
+            _holdCheckTimer.Start();
+            Log.Write("Hold check armed: key=" + key + ", checks=" + checks + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", elapsed=" + elapsedMs + "ms");
+        }
+
+        /// <summary>Stops the hold-check timer and drops its state. No
+        /// timer runs when idle: this is called when the checks are done,
+        /// when the user moved focus deliberately, when the page changed,
+        /// and by StopSettle (new navigation / cancel / takeover).</summary>
+        private void CancelHoldCheck()
+        {
+            var timer = _holdCheckTimer;
+            _holdCheckTimer = null;
+            if (timer != null)
+            {
+                timer.Tick -= OnHoldCheckTick;
+                timer.Stop();
+            }
+            _holdCheckPage = null;
+            _holdCheckKey = null;
+            _holdCheckExpected = null;
+            _holdCheckChecksLeft = 0;
+            _holdCheckRestoreUsed = false;
+        }
+
+        /// <summary>
+        /// One hold check: is focus still on the card the Back settle
+        /// restored? Still there — verified, and the next check (if any)
+        /// still runs, so a later drop is caught too. On a real target
+        /// elsewhere — the user moved focus deliberately (same rule as
+        /// the settle takeover: a real target counts, null / a bare
+        /// container does not) — skip and cancel: never yank focus the
+        /// user placed. Focus gone with no user move — re-apply the
+        /// recorded key through TrySettleOnce, exactly once per arrival;
+        /// a second check after a re-restore only verifies it held.
+        /// The re-restore routes through the page's TryFocusKey, so no
+        /// new .Focus( site is added here.
+        /// </summary>
+        private void OnHoldCheckTick(object sender, object e)
+        {
+            var timer = _holdCheckTimer;
+            if (timer != null) timer.Stop();
+            var page = _holdCheckPage;
+            var key = _holdCheckKey;
+            if (page == null || key == null || !ReferenceEquals(_frame.Content, page))
+            {
+                Log.Write("Hold check cancelled: page changed");
+                CancelHoldCheck();
+                return;
+            }
+            _holdCheckChecksLeft--;
+            var focused = FocusManager.GetFocusedElement();
+            if (ReferenceEquals(focused, _holdCheckExpected))
+            {
+                Log.Write("Hold check verified: key=" + key + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", checksLeft=" + _holdCheckChecksLeft);
+                FinishHoldCheckTick();
+                return;
+            }
+            if (focused != null && FocusablePage.IsRealFocusTarget(CurrentFocused))
+            {
+                Log.Write("Hold check skipped-user-input: key=" + key + ", focused=" + focused.GetType().Name + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)"));
+                CancelHoldCheck();
+                return;
+            }
+            if (_holdCheckRestoreUsed)
+            {
+                Log.Write("Hold check: focus lost, restore already used; leaving as-is, key=" + key);
+                CancelHoldCheck();
+                return;
+            }
+            _holdCheckRestoreUsed = true;
+            string currentKey;
+            var keyStillRecorded = TryGetLastFocusKey(page.EntryKey, out currentKey) && currentKey == key;
+            var restored = false;
+            if (keyStillRecorded)
+            {
+                restored = TrySettleOnce(page, true) && IsFocusInsidePage(page);
+                if (restored) _holdCheckExpected = FocusManager.GetFocusedElement();
+            }
+            Log.Write("Hold check re-restored: key=" + key + ", keyStillRecorded=" + keyStillRecorded + ", restored=" + restored + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", checksLeft=" + _holdCheckChecksLeft);
+            FinishHoldCheckTick();
+        }
+
+        /// <summary>After one check: run the next check one interval
+        /// later while checks remain, else drop the hold-check state.</summary>
+        private void FinishHoldCheckTick()
+        {
+            if (_holdCheckChecksLeft > 0 && _holdCheckTimer != null)
+            {
+                _holdCheckTimer.Start();
+                return;
+            }
+            CancelHoldCheck();
+        }
+
+        private void StopSettle(bool clearGuard, bool cancelHoldCheck = true)
         {
             // The shared watchdog/enforcement timer is NOT stopped here:
             // it is the same timer ArmNavigationGuard starts for the
@@ -999,11 +1193,18 @@ namespace Nuvio.Input
             // 2 s bound. It stops in ClearNavigationGuard (settle end
             // with the guard down) or in the tick's idle branch (no
             // settle, guard down) — so no timer runs when idle.
+            // The hold-check timer IS stopped here by default: a new
+            // navigation, a cancel or a takeover ends the premise of
+            // any pending check. CompleteSettle passes false — its
+            // second (re-entrant) call must not cancel the check the
+            // first call just armed (see CompleteSettle).
+            if (cancelHoldCheck) CancelHoldCheck();
             UnsubscribeSettleLayout();
             var page = _settlingPage;
             if (page != null) page.ContentReady -= OnSettleContentReady;
             _settlingPage = null;
             _settleInitialFocus = null;
+            _settleRestoredKey = null;
             if (clearGuard) ClearNavigationGuard();
         }
 
@@ -1076,6 +1277,11 @@ namespace Nuvio.Input
 
         private bool TrySettleOnce(Page page, bool isBack)
         {
+            // Reporting only: cleared on every call so the field always
+            // says what THIS call restored via a recorded key (null when
+            // it fell through to TryFocusArrival or failed). The restore
+            // logic below is untouched.
+            _settleRestoredKey = null;
             try
             {
                 var arrival = page as IArrivalFocus;
@@ -1093,7 +1299,12 @@ namespace Nuvio.Input
                     string key;
                     if (TryGetLastFocusKey(entryKey, out key))
                     {
-                        if (arrival.TryFocusKey(key)) return true;
+                        if (arrival.TryFocusKey(key))
+                        {
+                            _settleRestoredKey = key;
+                            Log.Write("Settle restore via key: key=" + key + ", focusedCard=" + (FocusedCardMetaId() ?? "(none)") + ", index=" + FocusedCardIndex());
+                            return true;
+                        }
                     }
                 }
                 if (!isBack && page is HomePage)
